@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
   import { fade, fly, scale } from 'svelte/transition';
   import { type Card, SUIT_SYMBOL, cardLabel, suitOf } from '../../lib/engine/cards';
   import type { Trick } from '../../lib/engine/hand';
@@ -102,36 +101,21 @@
   const shown = $derived(t.current && t.current.plays.length > 0 ? t.current : held);
   const showingWinner = $derived(!!shown && shown.winner !== null);
 
-  // ----- Card shape and hand spread come from the theme (CSS tokens on <html>)
-  let look = $state({ aspect: 1.4, step: 0.74, arc: 1 });
-  function readLook() {
-    const css = getComputedStyle(document.documentElement);
-    const num = (name: string, fallback: number) => {
-      const v = parseFloat(css.getPropertyValue(name));
-      return Number.isFinite(v) ? v : fallback;
-    };
-    look = { aspect: num('--card-aspect', 1.4), step: num('--hand-step', 0.74), arc: num('--hand-arc', 1) };
-  }
-  onMount(() => {
-    readLook();
-    document.addEventListener('themechange', readLook);
-    return () => document.removeEventListener('themechange', readLook);
-  });
-
   // ----- Responsive sizing
   let arenaW = $state(900);
   let arenaH = $state(470);
   let handW = $state(900);
   // Trick cards grow with the table so the middle of the felt doesn't feel empty.
-  const trickW = $derived(Math.round(Math.max(56, Math.min(124, arenaW * 0.11, (arenaH * 0.34) / look.aspect))));
+  const trickW = $derived(Math.round(Math.max(56, Math.min(124, arenaW * 0.11, arenaH * 0.24))));
   const cardW = $derived(handW < 520 ? 62 : handW < 760 ? 78 : 96);
   const handCount = $derived(t.myHand.length);
-  const step = $derived(Math.max(14, Math.min(cardW * look.step, (handW - cardW - 8) / Math.max(1, handCount - 1))));
+  const step = $derived(Math.max(14, Math.min(cardW * 0.74, (handW - cardW - 8) / Math.max(1, handCount - 1))));
   const handOffset = $derived((handW - (cardW + step * Math.max(0, handCount - 1))) / 2);
   const mid = $derived((handCount - 1) / 2);
-  const spread = $derived(Math.min(2.4, 24 / Math.max(handCount, 1)) * look.arc);
-  const arc = $derived(0.5 * look.arc);
-  const arcDrop = $derived(mid ** 2 * arc);
+  // A gentle fan: a little rotation and a shallow arc.
+  const spread = $derived(Math.min(1.5, 15 / Math.max(handCount, 1)));
+  const ARC = 0.3;
+  const arcDrop = $derived(mid ** 2 * ARC);
 
   // Everyone holds the same number of cards, so one counter covers the whole table.
   const tricksLeft = $derived(t.phase === 'playing' ? t.totalTricks - t.trickNumber + 1 : t.totalTricks);
@@ -197,9 +181,7 @@
     </div>
 
     <div class="arena" bind:clientWidth={arenaW} bind:clientHeight={arenaH} class:five={n === 5} style={`--tw: ${trickW}px`}>
-      <div class="rail">
       <div class="felt">
-        <div class="felt-mark" aria-hidden="true"></div>
 
         <div class="center">
           {#if shown}
@@ -245,7 +227,6 @@
             <div class="center-note" in:fade><strong>Your lead</strong></div>
           {/if}
         </div>
-      </div>
       </div>
 
       <div class="counter" title={t.phase === 'passing' ? 'Cards in each hand' : 'Tricks left in this hand, including this one'}>
@@ -305,12 +286,12 @@
         {/if}
       </div>
 
-      <div class="hand" bind:clientWidth={handW} style={`height: ${cardW * look.aspect + 34 + arcDrop}px; --rack-w: ${cardW + step * Math.max(0, handCount - 1) + 28}px`}>
+      <div class="hand" bind:clientWidth={handW} style={`height: ${cardW * 1.4 + 34 + arcDrop}px`}>
         {#each t.myHand as card, i (card)}
           {@const playable = needPass || (myTurn && t.legal.includes(card))}
           <div
             class="slot"
-            style={`transform: translate(${handOffset + i * step}px, ${(i - mid) ** 2 * arc}px) rotate(${(i - mid) * spread}deg); z-index: ${i}`}
+            style={`transform: translate(${handOffset + i * step}px, ${(i - mid) ** 2 * ARC}px) rotate(${(i - mid) * spread}deg); z-index: ${i}`}
             out:fly={{ y: -60, duration: 200 }}
           >
             <PlayingCard
@@ -454,49 +435,16 @@
     height: clamp(340px, calc(100dvh - 420px), 580px);
   }
 
-  .rail {
+  .felt {
     position: absolute;
     inset: 34px 64px 30px;
-    padding: var(--rail);
-    border-radius: var(--felt-radius);
-    background: var(--rail-bg);
-    box-shadow: var(--rail-shadow);
-  }
-
-  .felt {
-    position: relative;
-    height: 100%;
-    border-radius: max(0px, calc(var(--felt-radius) - var(--rail)));
+    border-radius: 34px;
     background: var(--felt-bg);
     box-shadow: var(--felt-shadow);
     overflow: hidden;
   }
 
-  .felt::after {
-    content: '';
-    position: absolute;
-    inset: var(--inlay-inset);
-    border: var(--inlay);
-    outline: var(--inlay-2);
-    outline-offset: 3px;
-    border-radius: max(0px, calc(var(--felt-radius) - var(--rail) - var(--inlay-inset)));
-    pointer-events: none;
-  }
-
-  .felt-mark {
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    width: var(--felt-mark-size);
-    height: var(--felt-mark-size);
-    transform: translate(-50%, -50%);
-    background-color: var(--felt-mark-color);
-    -webkit-mask: var(--felt-mark) center / contain no-repeat;
-    mask: var(--felt-mark) center / contain no-repeat;
-    pointer-events: none;
-  }
-
-  /* Nudged down a touch: the top seat's plaque and fan take more room than yours. */
+  /* Nudged down a touch: the top seat's plaque takes more room than yours. */
   .center {
     position: absolute;
     inset: 16px 0 0;
@@ -507,7 +455,7 @@
   .trick {
     position: relative;
     width: var(--tw);
-    height: calc(var(--tw) * var(--card-aspect));
+    height: calc(var(--tw) * 1.4);
   }
 
   .played {
@@ -611,7 +559,7 @@
   .crib-stack {
     position: relative;
     width: calc(var(--tw) * 0.72 + 18px);
-    height: calc(var(--tw) * 0.72 * var(--card-aspect) + 8px);
+    height: calc(var(--tw) * 0.72 * 1.4 + 8px);
   }
 
   .crib-stack span {
@@ -684,10 +632,10 @@
     gap: 9px;
     max-width: 190px;
     padding: 3px 14px 3px 3px;
-    border-radius: var(--plaque-radius);
+    border-radius: 99px;
     background: var(--plaque-bg);
-    border: 1px solid var(--plaque-border);
-    color: var(--plaque-ink);
+    border: 1px solid transparent;
+    color: var(--text);
     box-shadow: var(--plaque-shadow);
     transition:
       border-color 0.2s,
@@ -757,7 +705,7 @@
   }
 
   .dots i.on {
-    background: var(--counter-dot);
+    background: var(--gold);
   }
 
   .seat-avatar {
@@ -907,23 +855,6 @@
     margin-top: 10px;
   }
 
-  /* Optional ledge your hand stands on, for tile themes. */
-  .hand::after {
-    content: '';
-    display: var(--rack);
-    position: absolute;
-    z-index: 40;
-    left: 50%;
-    bottom: 0;
-    width: min(100%, var(--rack-w));
-    height: 18px;
-    transform: translateX(-50%);
-    border-radius: 9px;
-    background: var(--rack-bg);
-    box-shadow: var(--rack-shadow);
-    pointer-events: none;
-  }
-
   .slot {
     position: absolute;
     top: 26px;
@@ -1051,7 +982,7 @@
       height: 330px;
     }
 
-    .rail {
+    .felt {
       inset: 30px 34px 26px;
     }
 
@@ -1070,17 +1001,13 @@
       display: none;
     }
 
-    .felt-mark {
-      width: calc(var(--felt-mark-size) * 0.65);
-      height: calc(var(--felt-mark-size) * 0.65);
-    }
-
     /* Narrow tables stack each plaque: avatar over name and score. */
     .plaque {
       flex-direction: column;
       gap: 1px;
       padding: 3px 8px 4px;
       max-width: 92px;
+      border-radius: 16px;
     }
 
     .plaque-text {

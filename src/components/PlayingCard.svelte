@@ -35,7 +35,7 @@
   const rank = $derived(r ? RANK_LABEL[r] : '');
   const face = $derived(r === 'J' || r === 'Q' || r === 'K');
   const ace = $derived(r === 'A');
-  /** Small cards drop the centre art and show a big index instead. */
+  /** Small cards (side panels, playtest rows) drop the big art and show a giant index instead. */
   const compact = $derived(width < 56);
   const tag = $derived(card === 'QS' ? '+13' : card === 'JD' && jackScored ? '−10' : null);
   const name = $derived(
@@ -49,7 +49,6 @@
   this={onclick ? 'button' : 'div'}
   type={onclick ? 'button' : undefined}
   class={`pc ${card ? `suit-${suitOf(card)}` : 'back'}`}
-  class:face
   class:ace
   class:compact
   class:selected
@@ -65,15 +64,12 @@
   role={onclick ? undefined : 'img'}
 >
   {#if card}
-    {#if !compact}<span class="frame" aria-hidden="true"></span>{/if}
-    <span class="index tl" aria-hidden="true"><b class:ten={rank === '10'}>{rank}</b><i class="sym"></i></span>
+    <span class="index" aria-hidden="true"><b class:ten={rank === '10'}>{rank}</b><i class="sym"></i></span>
     {#if compact}
       <span class="big-suit sym" aria-hidden="true"></span>
     {:else}
-      {#if face}
-        <span class="court" aria-hidden="true"><span class="letter">{rank}</span><i class="sym"></i></span>
-      {/if}
-      <span class="solo" aria-hidden="true">
+      <!-- One giant symbol (a crown on face cards), cropped by the corner like a watermark. -->
+      <span class="art" aria-hidden="true">
         {#if face}
           <svg class="crown" viewBox="0 0 40 26">
             {#if r === 'K'}
@@ -88,10 +84,10 @@
             {/if}
             <rect x="4" y="22" width="32" height="4" rx="1.2" />
           </svg>
+        {:else}
+          <i class="sym"></i>
         {/if}
-        <i class="sym art"></i>
       </span>
-      <span class="index br" aria-hidden="true"><b class:ten={rank === '10'}>{rank}</b><i class="sym"></i></span>
       {#if showValue && tag}
         <span class="tag" class:good={card === 'JD'} aria-hidden="true">{tag}</span>
       {/if}
@@ -103,21 +99,20 @@
 
 <style>
   .pc {
-    --h: calc(var(--w) * var(--card-aspect));
-    --tint: var(--card-face);
+    --h: calc(var(--w) * 1.4);
     position: relative;
     display: block;
     flex: none;
     width: var(--w);
     height: var(--h);
     padding: 0;
-    border-radius: calc(var(--w) * var(--card-radius));
-    background-color: var(--tint);
+    border: 0;
+    border-radius: calc(var(--w) * 0.12);
+    background-color: var(--tile);
     background-image: var(--card-sheen);
-    color: var(--suit-s);
-    border: var(--card-border);
+    color: var(--card-ink);
     box-shadow: var(--card-shadow);
-    font-family: var(--index-font);
+    font-family: var(--card-font);
     user-select: none;
     -webkit-user-select: none;
     container-type: inline-size;
@@ -126,38 +121,22 @@
       box-shadow 0.18s var(--ease);
   }
 
-  /*
-   * Each suit picks its ink, its shapes, an optional paint for the symbols (a gradient,
-   * say) and an optional tint for the whole card face. --card-ink overrides the ink for
-   * themes that print white on a coloured card.
-   */
+  /* Each card is a solid tile of its suit colour. */
   .suit-S {
-    color: var(--card-ink, var(--suit-s));
+    --tile: var(--suit-s);
     --suit-mask: var(--mask-s);
-    --art-mask: var(--art-s);
-    --paint: var(--paint-s, currentColor);
-    --tint: var(--card-tint-s, var(--card-face));
   }
   .suit-H {
-    color: var(--card-ink, var(--suit-h));
+    --tile: var(--suit-h);
     --suit-mask: var(--mask-h);
-    --art-mask: var(--art-h);
-    --paint: var(--paint-h, currentColor);
-    --tint: var(--card-tint-h, var(--card-face));
   }
   .suit-D {
-    color: var(--card-ink, var(--suit-d));
+    --tile: var(--suit-d);
     --suit-mask: var(--mask-d);
-    --art-mask: var(--art-d);
-    --paint: var(--paint-d, currentColor);
-    --tint: var(--card-tint-d, var(--card-face));
   }
   .suit-C {
-    color: var(--card-ink, var(--suit-c));
+    --tile: var(--suit-c);
     --suit-mask: var(--mask-c);
-    --art-mask: var(--art-c);
-    --paint: var(--paint-c, currentColor);
-    --tint: var(--card-tint-c, var(--card-face));
   }
 
   .sym {
@@ -165,135 +144,70 @@
     flex: none;
     width: 1em;
     height: 1em;
-    background: var(--paint);
+    background-color: currentColor;
     -webkit-mask: var(--suit-mask) center / contain no-repeat;
     mask: var(--suit-mask) center / contain no-repeat;
   }
 
-  .frame {
-    display: var(--card-frame);
-    position: absolute;
-    inset: var(--card-frame-inset);
-    border: var(--card-frame-line);
-    border-radius: calc(var(--w) * var(--card-radius) * 0.6);
-    pointer-events: none;
-  }
-
-  /* ----- Corner index: big and bold so a fanned hand reads at a glance ----- */
+  /* ----- Corner index: big and bold so a fanned hand reads at a glance. Sizes are in cqi, hundredths of the card's width. ----- */
   .index {
     position: absolute;
     z-index: 1;
+    top: 7cqi;
+    left: 9cqi;
     display: flex;
     flex-direction: column;
-    align-items: var(--index-align);
+    align-items: flex-start;
     line-height: 0.86;
-    width: var(--index-width);
-    font-variation-settings: var(--index-vars);
+    font-variation-settings: 'wdth' 112;
   }
 
   .index b {
-    font-weight: var(--index-weight);
-    font-size: var(--index-rank);
-    letter-spacing: var(--index-tracking);
+    font-weight: 800;
+    font-size: 42cqi;
+    letter-spacing: -0.03em;
   }
 
   .index b.ten {
-    letter-spacing: calc(var(--index-tracking) - 0.07em);
+    letter-spacing: -0.1em;
     margin-left: -0.08em;
-    font-size: calc(var(--index-rank) * 0.88);
+    font-size: 37cqi;
   }
 
   .index .sym {
-    font-size: var(--index-suit);
-    margin-top: var(--index-gap);
-  }
-
-  .tl {
-    top: var(--index-top);
-    left: var(--index-left);
-  }
-
-  .br {
-    display: var(--index-br);
-    bottom: var(--index-top);
-    right: var(--index-left);
-    transform: rotate(180deg);
-  }
-
-  /* ----- The one big symbol (or a crown, on face cards) ----- */
-  /* Clipped to the card, so a theme can push the symbol off the edge as a watermark. */
-  .solo {
-    display: var(--card-solo);
-    position: absolute;
-    inset: 0;
-    padding: var(--solo-pad);
-    overflow: hidden;
-    border-radius: inherit;
-    place-items: var(--solo-place);
-    font-size: var(--solo-size);
-    opacity: var(--solo-opacity);
-  }
-
-  .solo > * {
-    translate: var(--solo-shift);
-  }
-
-  .face .solo {
-    display: var(--face-solo);
-  }
-
-  .ace .solo {
-    font-size: var(--solo-ace);
+    font-size: 22cqi;
+    margin-top: 3cqi;
   }
 
   .art {
-    --suit-mask: var(--art-mask);
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: end;
+    overflow: hidden;
+    border-radius: inherit;
+    font-size: 86cqi;
+    opacity: 0.28;
   }
 
-  .face .art {
-    display: var(--face-sym);
+  .art > * {
+    translate: 24% 20%;
+  }
+
+  .ace .art {
+    font-size: 96cqi;
   }
 
   .crown {
-    display: var(--crown);
     width: 1.15em;
-    fill: var(--crown-fill);
-    stroke: var(--crown-stroke);
-    stroke-width: 1.6;
-    stroke-linejoin: round;
-  }
-
-  /* ----- Court cards in the classic style: a framed letter ----- */
-  .court {
-    display: var(--court);
-    position: absolute;
-    inset: var(--court-inset);
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 1cqi;
-    border: var(--court-border);
-    border-radius: var(--court-radius);
-    background: var(--court-bg);
-  }
-
-  .letter {
-    font-family: var(--court-font);
-    font-weight: var(--court-weight);
-    font-size: var(--court-letter);
-    line-height: 1;
-    font-variation-settings: var(--court-vars);
-  }
-
-  .court .sym {
-    font-size: var(--court-sym);
+    fill: currentColor;
   }
 
   .tag {
     position: absolute;
     z-index: 2;
-    bottom: var(--tag-bottom);
-    left: var(--tag-x);
+    bottom: 7cqi;
+    left: 30%;
     transform: translateX(-50%);
     font-family: var(--font-ui);
     font-size: 11cqi;
@@ -312,12 +226,10 @@
     color: var(--tag-good-ink);
   }
 
-  /* ----- Compact cards (side panels, playtest rows): just a giant index ----- */
+  /* ----- Compact cards: just a giant index ----- */
   .compact .index {
-    width: auto;
     top: 6cqi;
     left: 8cqi;
-    align-items: flex-start;
   }
 
   .compact .index b {
@@ -330,7 +242,6 @@
 
   .compact .index .sym {
     font-size: 30cqi;
-    margin-top: 3cqi;
   }
 
   .big-suit {
@@ -343,29 +254,26 @@
 
   /* ----- Card back ----- */
   .back {
-    background: var(--back-edge);
-    border: var(--back-border);
-    box-shadow: var(--back-shadow);
-    --suit-mask: var(--back-emblem);
+    background: var(--card-face);
+    --suit-mask: var(--mask-h);
   }
 
   .back::before {
     content: '';
     position: absolute;
-    inset: var(--back-inset);
-    border-radius: calc(var(--w) * var(--card-radius) * 0.7);
+    inset: 6cqi;
+    border-radius: calc(var(--w) * 0.084);
     background: var(--back-panel);
-    border: var(--back-frame);
   }
 
   .emblem {
     position: absolute;
     left: 50%;
     top: 50%;
-    width: var(--back-emblem-size);
-    height: var(--back-emblem-size);
+    width: 22cqi;
+    height: 22cqi;
     transform: translate(-50%, -50%);
-    background: var(--back-emblem-ink);
+    background: var(--card-face);
     -webkit-mask: var(--suit-mask) center / contain no-repeat;
     mask: var(--suit-mask) center / contain no-repeat;
   }
@@ -392,7 +300,7 @@
   .selected {
     transform: translateY(-18%);
     box-shadow:
-      0 0 0 3px var(--card-ring),
+      0 0 0 3px var(--gold),
       var(--card-lift-shadow);
   }
 
@@ -418,7 +326,7 @@
     .interactive:not(:disabled):not(.selected):hover {
       transform: translateY(-10%);
       box-shadow:
-        0 0 0 2px color-mix(in srgb, var(--card-ring) 70%, transparent),
+        0 0 0 2px color-mix(in srgb, var(--gold) 70%, transparent),
         var(--card-lift-shadow);
     }
   }
