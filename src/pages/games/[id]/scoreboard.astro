@@ -1,0 +1,266 @@
+---
+import GameNav from '../../../components/GameNav.astro';
+import ScoreChart from '../../../components/charts/ScoreChart.svelte';
+import { SERIES_COLORS } from '../../../components/charts/chart';
+import Layout from '../../../layouts/Layout.astro';
+import { passLabel } from '../../../lib/engine/rules';
+import { isMember, loadGame } from '../../../lib/server/games';
+import { avg, gameStats } from '../../../lib/server/stats';
+import { avatarColor, fmtAvg, initials, signed } from '../../../lib/ui';
+
+const user = Astro.locals.user!;
+const game = loadGame(Astro.params.id!);
+if (!game || !isMember(game.id, user.id)) return Astro.redirect('/games?notice=missing');
+
+const { series, hands, seated } = gameStats(game.id);
+const totals = seated.map((p) => series[p.seat].totals.at(-1) ?? 0);
+const standings = seated
+  .map((p) => ({ ...p, total: totals[p.seat], rank: 1 + totals.filter((t) => t < totals[p.seat]).length }))
+  .sort((a, b) => a.total - b.total || a.seat - b.seat);
+const lastHand = hands.at(-1);
+const newestFirst = hands.slice().reverse();
+---
+
+<Layout title={`Scoreboard · ${game.name}`}>
+  <div class="container page">
+    <GameNav game={game} current="scoreboard" isOwner={game.ownerId === user.id} />
+
+    <div class="top">
+      <section class="panel panel-pad stack">
+        <div class="spread">
+          <h2 class="panel-title">Standings</h2>
+          <span class="faint small num">{hands.length} hands{game.settings.scoreLimit ? ` · plays to ${game.settings.scoreLimit}` : ''}</span>
+        </div>
+        <div class="table-wrap">
+          <table class="data">
+            <thead>
+              <tr><th>Player</th><th>Total</th><th>Last</th><th>Avg</th></tr>
+            </thead>
+            <tbody>
+              {
+                standings.map((p) => (
+                  <tr class:list={{ me: p.userId === user.id }}>
+                    <td>
+                      <span class="who">
+                        <span class:list={['rank', { lead: p.rank === 1 && hands.length > 0 }]}>{p.rank}</span>
+                        <span class="avatar" style={`--size: 26px; --avatar: ${avatarColor(p.username)}`}>
+                          {p.isBot ? '🤖' : initials(p.displayName)}
+                        </span>
+                        {p.displayName}
+                      </span>
+                    </td>
+                    <td>
+                      <strong>{p.total}</strong>
+                    </td>
+                    <td>{lastHand ? signed(lastHand.scores[p.seat]) : '–'}</td>
+                    <td>{fmtAvg(avg(p.total, hands.length))}</td>
+                  </tr>
+                ))
+              }
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel panel-pad stack">
+        <h2 class="panel-title">Running totals</h2>
+        <ScoreChart client:visible series={series.map((s) => ({ name: s.name, totals: s.totals }))} height={300} />
+      </section>
+    </div>
+
+    <section class="stack sheet-section">
+      <div class="spread">
+        <h2 class="panel-title">Score sheet</h2>
+        <span class="faint small">Newest hand first · hand score with running total beneath</span>
+      </div>
+      {
+        hands.length === 0 ? (
+          <div class="panel empty">No hands have been scored yet.</div>
+        ) : (
+          <div class="table-wrap sheet">
+            <table class="data">
+              <thead>
+                <tr>
+                  <th>Hand</th>
+                  {seated.map((p) => (
+                    <th>
+                      <span class="col-head">
+                        <span class="line-key" style={`background: ${SERIES_COLORS[p.seat % SERIES_COLORS.length]}`} />
+                        {p.displayName}
+                      </span>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {newestFirst.map((h) => {
+                  const idx = h.number - 1;
+                  const low = Math.min(...h.scores);
+                  return (
+                    <tr>
+                      <td>
+                        <span class="hand-no num">#{h.number}</span>
+                        <span class="faint pass">{passLabel(h.passOffset, h.numPlayers)}</span>
+                      </td>
+                      {seated.map((p) => {
+                        const s = h.scores[p.seat];
+                        return (
+                          <td class:list={{ low: s === low }}>
+                            <span class="cell">
+                              <span class="marks">
+                                {h.sun === p.seat && <span title="Shot the Sun">☀</span>}
+                                {h.moon === p.seat && <span title="Shot the Moon">☾</span>}
+                                {h.queen === p.seat && <span class="q" title="Took the Queen of Spades">Q♠</span>}
+                                {h.jack === p.seat && h.jackScored && <span class="j" title="Took the Jack of Diamonds">J♦</span>}
+                                {h.cribWinner === p.seat && <span class="c" title={`Won the crib (${h.cribPoints} pts)`}>▣</span>}
+                              </span>
+                              <span class:list={['score', { up: s > 0, down: s < 0 }]}>{signed(s)}</span>
+                            </span>
+                            <span class="running">{series[p.seat].totals[idx]}</span>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )
+      }
+      <p class="faint small legend">☀ Shot the Sun · ☾ Shot the Moon · Q♠ Queen · J♦ Jack · ▣ Crib</p>
+    </section>
+  </div>
+</Layout>
+
+<style>
+  .top {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+    gap: 20px;
+    align-items: start;
+  }
+
+  .small {
+    font-size: 13px;
+  }
+
+  .who {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .rank {
+    width: 16px;
+    text-align: center;
+    color: var(--faint);
+    font-weight: 700;
+    font-size: 12px;
+  }
+
+  .rank.lead {
+    color: var(--gold);
+  }
+
+  tr.me td {
+    background: rgb(255 255 255 / 0.03);
+  }
+
+  .sheet-section {
+    margin-top: 32px;
+    --gap: 12px;
+  }
+
+  .sheet {
+    max-height: 640px;
+    overflow: auto;
+  }
+
+  .sheet th {
+    z-index: 1;
+    background: #121a17 !important;
+  }
+
+  .col-head {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+  .line-key {
+    width: 12px;
+    height: 2px;
+    border-radius: 1px;
+  }
+
+  .hand-no {
+    font-weight: 600;
+    margin-right: 8px;
+  }
+
+  .pass {
+    font-size: 12px;
+  }
+
+  .cell {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    justify-content: flex-end;
+  }
+
+  .marks {
+    display: inline-flex;
+    gap: 3px;
+    font-size: 10.5px;
+    font-weight: 700;
+    color: var(--muted);
+  }
+
+  .marks .j {
+    color: var(--gold);
+  }
+
+  .marks .c {
+    color: var(--sky);
+  }
+
+  .score {
+    font-weight: 600;
+    min-width: 34px;
+    text-align: right;
+  }
+
+  .score.up {
+    color: #ff98a4;
+  }
+
+  .score.down {
+    color: var(--mint);
+  }
+
+  td.low {
+    background: rgb(79 209 161 / 0.05);
+  }
+
+  .running {
+    display: block;
+    font-size: 11.5px;
+    color: var(--faint);
+  }
+
+  .legend {
+    text-align: right;
+  }
+
+  @media (max-width: 960px) {
+    .top {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

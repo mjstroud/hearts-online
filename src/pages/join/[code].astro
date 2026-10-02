@@ -1,0 +1,79 @@
+---
+import AuthCard from '../../components/AuthCard.astro';
+import Layout from '../../layouts/Layout.astro';
+import { GameError, findGameIdByCode, getPlayers, isMember, joinGame, loadGame } from '../../lib/server/games';
+import { avatarColor, initials } from '../../lib/ui';
+
+const user = Astro.locals.user!;
+const id = findGameIdByCode(Astro.params.code ?? '');
+const game = id ? loadGame(id) : null;
+if (!game) return Astro.redirect('/join');
+if (isMember(game.id, user.id)) return Astro.redirect(`/games/${game.id}`);
+
+let error = '';
+if (Astro.request.method === 'POST') {
+  try {
+    joinGame(game.id, user.id);
+    return Astro.redirect(`/games/${game.id}`, 303);
+  } catch (err) {
+    error = err instanceof GameError ? err.message : 'Could not join that game.';
+    Astro.response.status = 400;
+  }
+}
+const players = getPlayers(game.id);
+const open = game.status === 'lobby' && players.length < 5;
+---
+
+<Layout title={`Join ${game.name}`}>
+  <AuthCard title={game.name} subtitle={open ? 'You’ve been invited to a Hearts game.' : 'This game can’t take new players.'}>
+    {error && <p class="alert" role="alert">{error}</p>}
+    <ul class="players">
+      {
+        players.map((p) => (
+          <li>
+            <span class="avatar" style={`--size: 28px; --avatar: ${avatarColor(p.username)}`}>
+              {p.isBot ? '🤖' : initials(p.displayName)}
+            </span>
+            {p.displayName}
+          </li>
+        ))
+      }
+    </ul>
+    {
+      open ? (
+        <form method="post">
+          <button class="btn btn-primary btn-lg btn-block" type="submit">
+            Take seat {players.length + 1}
+          </button>
+        </form>
+      ) : (
+        <p class="muted" style="text-align: center">
+          {game.status === 'lobby' ? 'The table is full.' : 'The game has already started.'}
+        </p>
+      )
+    }
+    <p slot="below"><a href="/games">← Back to your games</a></p>
+  </AuthCard>
+</Layout>
+
+<style>
+  .players {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .players li {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border-radius: 12px;
+    background: rgb(255 255 255 / 0.03);
+    border: 1px solid var(--border);
+    font-weight: 500;
+  }
+</style>

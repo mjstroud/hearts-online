@@ -1,0 +1,13 @@
+---
+import Game from '../../../components/game/Game.svelte';
+import Layout from '../../../layouts/Layout.astro';
+import { getGameView } from '../../../lib/server/games';
+
+const view = getGameView(Astro.params.id!, Astro.locals.user!.id);
+if (!view) return Astro.redirect('/games?notice=missing');
+Astro.response.headers.set('Cache-Control', 'no-store');
+---
+
+<Layout title={view.name} full>
+  <Game client:load initial={view} />
+</Layout>

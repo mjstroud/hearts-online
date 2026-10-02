@@ -1,0 +1,235 @@
+---
+import GameNav from '../../../components/GameNav.astro';
+import StatsTable from '../../../components/StatsTable.astro';
+import BarList from '../../../components/charts/BarList.svelte';
+import Layout from '../../../layouts/Layout.astro';
+import { isMember, loadGame } from '../../../lib/server/games';
+import { type PlayerStats, avg, gameStats, pct } from '../../../lib/server/stats';
+import { fmtAvg, fmtPct } from '../../../lib/ui';
+
+const user = Astro.locals.user!;
+const game = loadGame(Astro.params.id!);
+if (!game || !isMember(game.id, user.id)) return Astro.redirect('/games?notice=missing');
+
+const { players, hands } = gameStats(game.id);
+const handCount = hands.length;
+const moons = hands.filter((h) => h.moon !== null).length;
+const suns = hands.filter((h) => h.sun !== null).length;
+const avgCrib = avg(
+  hands.reduce((sum, h) => sum + h.cribPoints, 0),
+  handCount,
+);
+const queenInCrib = hands.filter((h) => h.crib.includes('QS')).length;
+
+/** Leader for a metric, or null if nobody stands out yet. */
+function top(metric: (s: PlayerStats) => number, lowest = false) {
+  const ranked = players.filter((p) => p.hands > 0).sort((a, b) => (lowest ? metric(a) - metric(b) : metric(b) - metric(a)));
+  if (!ranked.length || (!lowest && metric(ranked[0]) <= 0)) return null;
+  return ranked[0];
+}
+const qRate = (s: PlayerStats) => pct(s.queens, s.hands);
+const jRate = (s: PlayerStats) => pct(s.jacks, s.hands);
+const cRate = (s: PlayerStats) => pct(s.cribs, s.hands);
+const cleanRate = (s: PlayerStats) => pct(s.clean, s.hands);
+const avgPts = (s: PlayerStats) => avg(s.total, s.hands);
+
+const superlatives = [
+  { icon: '♠', title: 'Queen magnet', who: top(qRate), stat: (s: PlayerStats) => `took the Q♠ in ${fmtPct(qRate(s))} of hands` },
+  { icon: '♦', title: 'Jack collector', who: top(jRate), stat: (s: PlayerStats) => `grabbed the J♦ in ${fmtPct(jRate(s))} of hands` },
+  { icon: '▣', title: 'Crib raider', who: top(cRate), stat: (s: PlayerStats) => `won the crib ${fmtPct(cRate(s))} of the time` },
+  { icon: '✧', title: 'Squeaky clean', who: top(cleanRate), stat: (s: PlayerStats) => `${fmtPct(cleanRate(s))} of hands at 0 or better` },
+  { icon: '♥', title: 'Steadiest hand', who: top(avgPts, true), stat: (s: PlayerStats) => `averages ${fmtAvg(avgPts(s))} points a hand` },
+  {
+    icon: '⇄',
+    title: 'Royal courier',
+    who: top((s) => s.queenPassed),
+    stat: (s: PlayerStats) => `passed the Queen away ${s.queenPassed} time${s.queenPassed === 1 ? '' : 's'}`,
+  },
+].filter((s) => s.who);
+
+const bars = (metric: (s: PlayerStats) => number, display: (s: PlayerStats) => string, detail: (s: PlayerStats) => string) =>
+  players
+    .filter((p) => p.hands > 0)
+    .map((p) => ({ label: p.name, value: metric(p), display: display(p), detail: detail(p) }))
+    .sort((a, b) => b.value - a.value);
+---
+
+<Layout title={`Stats · ${game.name}`}>
+  <div class="container page">
+    <GameNav game={game} current="stats" isOwner={game.ownerId === user.id} />
+
+    {
+      handCount === 0 ? (
+        <div class="panel empty">Stats appear once the first hand has been scored.</div>
+      ) : (
+        <div class="stack" style="--gap: 24px">
+          <div class="tiles">
+            <div class="panel tile">
+              <span class="label">Hands played</span>
+              <span class="value">{handCount}</span>
+            </div>
+            <div class="panel tile">
+              <span class="label">Moons shot</span>
+              <span class="value">{moons}</span>
+              <span class="sub faint">{fmtPct(pct(moons, handCount))} of hands</span>
+            </div>
+            <div class="panel tile">
+              <span class="label">Suns shot</span>
+              <span class="value">{suns}</span>
+              <span class="sub faint">{fmtPct(pct(suns, handCount))} of hands</span>
+            </div>
+            <div class="panel tile">
+              <span class="label">Average crib</span>
+              <span class="value">{fmtAvg(avgCrib)}</span>
+              <span class="sub faint">
+                Q♠ hid in the crib {queenInCrib} time{queenInCrib === 1 ? '' : 's'}
+              </span>
+            </div>
+          </div>
+
+          {superlatives.length > 0 && (
+            <div class="superlatives">
+              {superlatives.map((s) => (
+                <div class="panel sup">
+                  <span class="sup-icon">{s.icon}</span>
+                  <div>
+                    <span class="eyebrow">{s.title}</span>
+                    <p>
+                      <strong>{s.who!.name}</strong> <span class="muted">{s.stat(s.who!)}</span>
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div class="charts">
+            <section class="panel panel-pad stack">
+              <div>
+                <h2 class="panel-title">Queen of Spades rate</h2>
+                <p class="faint small">Share of hands each player ended up with the Q♠</p>
+              </div>
+              <BarList
+                client:visible
+                max={100}
+                items={bars(qRate, (s) => fmtPct(qRate(s)), (s) => `${s.queens} of ${s.hands} hands`)}
+              />
+            </section>
+            <section class="panel panel-pad stack">
+              <div>
+                <h2 class="panel-title">Jack of Diamonds rate</h2>
+                <p class="faint small">Share of hands each player took the J♦</p>
+              </div>
+              <BarList client:visible max={100} items={bars(jRate, (s) => fmtPct(jRate(s)), (s) => `${s.jacks} of ${s.hands} hands`)} />
+            </section>
+            <section class="panel panel-pad stack">
+              <div>
+                <h2 class="panel-title">Average points per hand</h2>
+                <p class="faint small">Lower is better</p>
+              </div>
+              <BarList
+                client:visible
+                items={bars(
+                  (s) => Math.max(0, avgPts(s)),
+                  (s) => fmtAvg(avgPts(s)),
+                  (s) => `${s.total} points over ${s.hands} hands`,
+                )}
+              />
+            </section>
+          </div>
+
+          <section class="stack" style="--gap: 12px">
+            <div class="spread">
+              <h2 class="panel-title">Everything, by player</h2>
+              <span class="faint small">Hover a column header for its definition</span>
+            </div>
+            <StatsTable players={players} highlightId={user.id} />
+          </section>
+        </div>
+      )
+    }
+  </div>
+</Layout>
+
+<style>
+  .small {
+    font-size: 13px;
+  }
+
+  .tiles {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+  }
+
+  .tile {
+    padding: 18px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .tile .label {
+    font-size: 13px;
+    color: var(--muted);
+    font-weight: 500;
+  }
+
+  .tile .value {
+    font-size: 34px;
+    font-weight: 650;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+  }
+
+  .tile .sub {
+    font-size: 12.5px;
+  }
+
+  .superlatives {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+  }
+
+  .sup {
+    display: flex;
+    gap: 14px;
+    align-items: center;
+    padding: 16px 18px;
+  }
+
+  .sup p {
+    font-size: 14px;
+    margin-top: 2px;
+  }
+
+  .sup-icon {
+    flex: none;
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    display: grid;
+    place-items: center;
+    font-size: 18px;
+    background: var(--gold-soft);
+    color: var(--gold);
+  }
+
+  .charts {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+  }
+
+  @media (max-width: 960px) {
+    .tiles {
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .superlatives,
+    .charts {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

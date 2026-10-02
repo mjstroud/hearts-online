@@ -1,0 +1,65 @@
+---
+import type { PlayerStats } from '../lib/server/stats';
+import { avg, pct } from '../lib/server/stats';
+import { fmtAvg, fmtPct } from '../lib/ui';
+
+interface Props {
+  players: PlayerStats[];
+  highlightId?: number;
+}
+const { players, highlightId } = Astro.props;
+const columns: { label: string; title: string; value: (s: PlayerStats) => string }[] = [
+  { label: 'Hands', title: 'Hands played', value: (s) => String(s.hands) },
+  { label: 'Avg pts', title: 'Average points per hand', value: (s) => fmtAvg(avg(s.total, s.hands)) },
+  { label: 'Q♠ %', title: 'Share of hands where they took the Queen of Spades', value: (s) => fmtPct(pct(s.queens, s.hands)) },
+  { label: 'J♦ %', title: 'Share of hands where they took the Jack of Diamonds', value: (s) => fmtPct(pct(s.jacks, s.hands)) },
+  { label: 'Crib %', title: 'Share of hands where they won the crib', value: (s) => fmtPct(pct(s.cribs, s.hands)) },
+  { label: 'Crib avg', title: 'Average value of the cribs they won', value: (s) => (s.cribs ? fmtAvg(avg(s.cribValue, s.cribs)) : '–') },
+  { label: '♥ / hand', title: 'Hearts taken per hand', value: (s) => fmtAvg(avg(s.hearts, s.hands)) },
+  { label: 'Tricks', title: 'Tricks won per hand', value: (s) => fmtAvg(avg(s.tricks, s.hands)) },
+  { label: 'Clean %', title: 'Hands finished at 0 points or better', value: (s) => fmtPct(pct(s.clean, s.hands)) },
+  { label: 'Won hand', title: 'Hands where they had the lowest score (ties count)', value: (s) => fmtPct(pct(s.handWins, s.hands)) },
+  { label: '☾', title: 'Moons shot', value: (s) => String(s.moons) },
+  { label: '☀', title: 'Suns shot', value: (s) => String(s.suns) },
+  { label: 'Best', title: 'Best single hand', value: (s) => (s.best === null ? '–' : String(s.best)) },
+  { label: 'Worst', title: 'Worst single hand', value: (s) => (s.worst === null ? '–' : String(s.worst)) },
+  { label: 'Q♠ passed', title: 'Times they passed the Queen away', value: (s) => String(s.queenPassed) },
+  { label: 'Q♠ received', title: 'Times someone passed them the Queen', value: (s) => String(s.queenReceived) },
+];
+---
+
+<div class="table-wrap">
+  <table class="data">
+    <thead>
+      <tr>
+        <th>Player</th>
+        {columns.map((c) => <th title={c.title}>{c.label}</th>)}
+      </tr>
+    </thead>
+    <tbody>
+      {
+        players.map((s) => (
+          <tr class:list={{ me: s.userId === highlightId }}>
+            <td>
+              <strong>{s.name}</strong>
+              {s.isBot && <span class="faint"> · bot</span>}
+            </td>
+            {columns.map((c) => (
+              <td>{s.hands ? c.value(s) : '–'}</td>
+            ))}
+          </tr>
+        ))
+      }
+    </tbody>
+  </table>
+</div>
+
+<style>
+  tr.me td {
+    background: rgb(255 255 255 / 0.03);
+  }
+
+  th[title] {
+    cursor: help;
+  }
+</style>

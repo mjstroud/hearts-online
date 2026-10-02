@@ -1,0 +1,57 @@
+---
+import AuthCard from '../components/AuthCard.astro';
+import Layout from '../layouts/Layout.astro';
+import { authenticate, clearAttempts, createSession, setSessionCookie, takeAttempt } from '../lib/server/auth';
+import { clientIp, isSecure, readForm, safeNext } from '../lib/server/http';
+
+const next = safeNext(Astro.url.searchParams.get('next'));
+if (Astro.locals.user) return Astro.redirect(next);
+
+let error = '';
+let username = '';
+if (Astro.request.method === 'POST') {
+  const form = await readForm(Astro.request);
+  username = form.username ?? '';
+  let addr = 'unknown';
+  try {
+    addr = Astro.clientAddress;
+  } catch {}
+  const userKey = `login:user:${username.toLowerCase()}`;
+  const allowed = takeAttempt([
+    { key: userKey, limit: 10 },
+    { key: `login:ip:${clientIp(Astro.request, addr)}`, limit: 40 },
+  ]);
+  if (!allowed) {
+    error = 'Too many attempts. Please wait a few minutes and try again.';
+  } else {
+    const user = await authenticate(username, form.password ?? '');
+    if (user) {
+      clearAttempts(userKey);
+      const { token, expires } = createSession(user.id);
+      setSessionCookie(Astro.cookies, token, expires, isSecure(Astro.request));
+      return Astro.redirect(safeNext(form.next), 303);
+    }
+    error = 'That username and password don’t match.';
+  }
+  Astro.response.status = 400;
+}
+---
+
+<Layout title="Sign in">
+  <AuthCard title="Welcome back" subtitle="Your seat is right where you left it.">
+    <form method="post" class="stack">
+      <input type="hidden" name="next" value={next} />
+      {error && <p class="alert" role="alert">{error}</p>}
+      <label class="field">
+        <span>Username</span>
+        <input class="input" name="username" autocomplete="username" required value={username} autofocus />
+      </label>
+      <label class="field">
+        <span>Password</span>
+        <input class="input" name="password" type="password" autocomplete="current-password" required />
+      </label>
+      <button class="btn btn-primary btn-lg btn-block" type="submit">Sign in</button>
+    </form>
+    <p slot="below">New here? <a href={`/signup${next !== '/games' ? `?next=${encodeURIComponent(next)}` : ''}`}>Create an account</a></p>
+  </AuthCard>
+</Layout>

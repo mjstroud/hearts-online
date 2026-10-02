@@ -1,0 +1,410 @@
+---
+import PlayingCard from '../components/PlayingCard.svelte';
+import Layout from '../layouts/Layout.astro';
+
+const sections = [
+  { id: 'goal', title: 'The goal' },
+  { id: 'deal', title: 'The deal & the crib' },
+  { id: 'passing', title: 'Passing' },
+  { id: 'play', title: 'Playing a hand' },
+  { id: 'scoring', title: 'Scoring' },
+  { id: 'shooting', title: 'Shooting the Moon & Sun' },
+  { id: 'ending', title: 'Ending the game' },
+  { id: 'online', title: 'Playing online' },
+];
+---
+
+<Layout title="How to play" description="How to play Hearts with our house rules: Jack of Diamonds, the crib, Shooting the Sun and more.">
+  <div class="container page">
+    <div class="page-head">
+      <div class="stack" style="--gap: 8px">
+        <span class="eyebrow">How to play</span>
+        <h1 class="display">Hearts, house rules</h1>
+        <p class="muted lede">
+          Classic Hearts with a few family twists: a −10 Jack, a secret crib, and the rare, glorious Shooting the Sun.
+        </p>
+      </div>
+    </div>
+
+    <div class="layout">
+      <nav class="toc" aria-label="On this page">
+        {sections.map((s) => <a href={`#${s.id}`}>{s.title}</a>)}
+      </nav>
+
+      <article class="stack doc" style="--gap: 20px">
+        <section id="goal" class="panel panel-pad">
+          <h2>The goal</h2>
+          <p>
+            Hearts is a trick-taking game where points are bad. Every heart you take costs you, the Queen of Spades costs you a
+            lot, and the Jack of Diamonds helps you. The <strong>lowest score wins</strong>. Our game runs over many hands, often
+            the whole year, so the running total is what matters.
+          </p>
+          <p>It’s played with <strong>4 or 5 players</strong> and a standard 52-card deck. Aces are high.</p>
+        </section>
+
+        <section id="deal" class="panel panel-pad">
+          <h2>The deal & the crib</h2>
+          <p>
+            Before anyone sees their cards, a few are set aside face down in the middle. That’s the <strong>crib</strong>.
+          </p>
+          <div class="callout">
+            <div class="crib-demo" aria-hidden="true">
+              <PlayingCard width={56} />
+              <PlayingCard width={56} />
+              <PlayingCard width={56} />
+              <PlayingCard width={56} />
+            </div>
+            <ul>
+              <li><strong>4 players:</strong> a 4-card crib, 12 cards each.</li>
+              <li>
+                <strong>5 players:</strong> the host picks either a 2-card crib (10 cards each) or a 7-card crib (9 cards each).
+              </li>
+              <li>Whoever <strong>wins the first trick wins the crib</strong>. Its cards count toward their score.</li>
+              <li>Only the crib winner gets to see what was in it. Everyone else finds out at the end of the hand.</li>
+            </ul>
+          </div>
+          <p class="muted">
+            Since the crib might hide the Queen, the Jack, or a handful of hearts, the first trick is a gamble every time.
+          </p>
+        </section>
+
+        <section id="passing" class="panel panel-pad">
+          <h2>Passing</h2>
+          <p>After the deal, everyone chooses <strong>3 cards</strong> to pass. The direction rotates every hand:</p>
+          <div class="cycle">
+            <div><span>1</span>Left</div>
+            <div><span>2</span>Right</div>
+            <div><span>3</span>Across</div>
+            <div><span>4</span>Keep</div>
+          </div>
+          <p class="muted">
+            With five players there’s no “across”, so the rotation is left, right, two to the left, two to the right, then keep.
+            On a keep hand nobody passes. Passed cards arrive marked <span class="new-chip">new</span> so you can spot them.
+          </p>
+        </section>
+
+        <section id="play" class="panel panel-pad">
+          <h2>Playing a hand</h2>
+          <ol class="steps">
+            <li>
+              The player holding the <strong>2♣</strong> leads it to start the first trick. If the 2♣ is hiding in the crib, the
+              lowest club in anyone’s hand leads instead.
+            </li>
+            <li>
+              Play goes clockwise (to the left). You must <strong>follow suit</strong> if you can. If you can’t, play anything.
+            </li>
+            <li>The highest card of the suit that was led wins the trick. The winner leads the next one.</li>
+            <li>
+              On the first trick nobody may throw hearts or the Queen of Spades, unless that’s all they have. (The host can turn
+              this off.)
+            </li>
+            <li>
+              You can’t <strong>lead hearts</strong> until hearts are “broken”, meaning someone has thrown a heart on an earlier
+              trick, unless you have nothing but hearts.
+            </li>
+          </ol>
+        </section>
+
+        <section id="scoring" class="panel panel-pad">
+          <h2>Scoring</h2>
+          <p>At the end of each hand, count up the cards you took in tricks (and the crib, if you won it):</p>
+          <div class="score-cards">
+            <div class="score-card">
+              <div class="cards"><PlayingCard card="2H" width={64} /><PlayingCard card="KH" width={64} /></div>
+              <strong>+1</strong><span class="muted">each heart</span>
+            </div>
+            <div class="score-card">
+              <div class="cards"><PlayingCard card="QS" width={64} /></div>
+              <strong>+13</strong><span class="muted">Queen of Spades</span>
+            </div>
+            <div class="score-card good">
+              <div class="cards"><PlayingCard card="JD" width={64} /></div>
+              <strong>−10</strong><span class="muted">Jack of Diamonds</span>
+            </div>
+          </div>
+          <p class="muted">
+            There are 26 penalty points in every hand. Everything else (clubs, the other diamonds and spades) is worth nothing.
+          </p>
+        </section>
+
+        <section id="shooting" class="panel panel-pad">
+          <h2>Shooting the Moon & Sun</h2>
+          <div class="shoot">
+            <div class="shoot-card moon">
+              <span class="icon">☾</span>
+              <h3>Shooting the Moon</h3>
+              <p>
+                Take <strong>all 13 hearts and the Queen of Spades</strong>, crib included. You score 0 for them and everyone
+                else takes <strong>+26</strong>.
+              </p>
+            </div>
+            <div class="shoot-card sun">
+              <span class="icon">☀</span>
+              <h3>Shooting the Sun</h3>
+              <p>
+                Win <strong>every single trick</strong> of the hand. You score 0 and everyone else takes <strong>+52</strong>. The
+                Sun replaces the Moon, so it isn’t counted twice.
+              </p>
+            </div>
+          </div>
+          <p class="muted">
+            The Jack of Diamonds still counts for whoever took it, so a Sun shooter (who takes every card) walks away with −10.
+          </p>
+        </section>
+
+        <section id="ending" class="panel panel-pad">
+          <h2>Ending the game</h2>
+          <p>
+            By default there’s <strong>no score limit</strong>. Scores keep climbing for as long as the family keeps playing, and the
+            game’s host ends it when the season is over. The host can also set a limit at any time. In that case, the game ends
+            after the first hand where someone reaches it. Lowest total wins.
+          </p>
+        </section>
+
+        <section id="online" class="panel panel-pad">
+          <h2>Playing online</h2>
+          <ul class="tips">
+            <li><strong>Take your time.</strong> Every move is saved instantly. Close the tab and come back tomorrow, and your seat is waiting.</li>
+            <li><strong>It updates live.</strong> When others are at the table, you’ll see their cards land as they play.</li>
+            <li><strong>Turn alerts.</strong> Switch on “Alert me when it’s my turn” at the table to get a notification while the tab is open.</li>
+            <li><strong>Short a player?</strong> The host can fill empty seats with computer players before starting.</li>
+            <li><strong>On a phone?</strong> Tap a card to lift it, then tap again (or press Play) to play it.</li>
+          </ul>
+        </section>
+      </article>
+    </div>
+  </div>
+</Layout>
+
+<style>
+  .lede {
+    font-size: 17px;
+    max-width: 620px;
+  }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 200px minmax(0, 1fr);
+    gap: 40px;
+    align-items: start;
+  }
+
+  .toc {
+    position: sticky;
+    top: 84px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    border-left: 1px solid var(--border);
+  }
+
+  .toc a {
+    padding: 6px 14px;
+    font-size: 14px;
+    color: var(--muted);
+    text-decoration: none;
+    margin-left: -1px;
+    border-left: 1px solid transparent;
+  }
+
+  .toc a:hover {
+    color: var(--text);
+    border-left-color: var(--heart);
+  }
+
+  .doc section {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    scroll-margin-top: 80px;
+  }
+
+  .doc h2 {
+    font-family: var(--font-display);
+    font-weight: 560;
+    font-size: 24px;
+  }
+
+  .doc p,
+  .doc li {
+    font-size: 15.5px;
+    line-height: 1.65;
+  }
+
+  .callout {
+    display: flex;
+    gap: 24px;
+    align-items: center;
+    padding: 18px;
+    border-radius: 14px;
+    background: rgb(0 0 0 / 0.2);
+    border: 1px solid var(--border);
+  }
+
+  .callout ul,
+  .tips {
+    margin: 0;
+    padding-left: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .crib-demo {
+    flex: none;
+    display: flex;
+  }
+
+  .crib-demo > :global(*:not(:first-child)) {
+    margin-left: -38px;
+  }
+
+  .cycle {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+  }
+
+  .cycle div {
+    padding: 12px;
+    border-radius: 12px;
+    background: rgb(255 255 255 / 0.03);
+    border: 1px solid var(--border);
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .cycle span {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    font-size: 12px;
+    background: var(--heart-soft);
+    color: var(--heart);
+  }
+
+  .new-chip {
+    padding: 1px 6px;
+    border-radius: 99px;
+    font-size: 11px;
+    font-weight: 700;
+    background: var(--mint);
+    color: #04261a;
+    text-transform: uppercase;
+  }
+
+  .steps {
+    margin: 0;
+    padding-left: 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .score-cards {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+  }
+
+  .score-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 18px 12px;
+    border-radius: 14px;
+    background: rgb(0 0 0 / 0.2);
+    border: 1px solid var(--border);
+    text-align: center;
+  }
+
+  .score-card .cards {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+
+  .score-card strong {
+    font-size: 26px;
+    color: #ff98a4;
+  }
+
+  .score-card.good strong {
+    color: var(--gold);
+  }
+
+  .shoot {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  .shoot-card {
+    padding: 18px;
+    border-radius: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .shoot-card h3 {
+    font-size: 17px;
+  }
+
+  .shoot-card p {
+    font-size: 14.5px !important;
+    color: var(--muted);
+  }
+
+  .shoot-card .icon {
+    font-size: 28px;
+    line-height: 1;
+  }
+
+  .moon {
+    background: linear-gradient(140deg, rgb(124 180 255 / 0.14), rgb(139 99 210 / 0.08));
+    border: 1px solid rgb(124 180 255 / 0.25);
+  }
+
+  .moon .icon {
+    color: var(--sky);
+  }
+
+  .sun {
+    background: linear-gradient(140deg, rgb(242 196 109 / 0.16), rgb(240 71 91 / 0.08));
+    border: 1px solid rgb(242 196 109 / 0.3);
+  }
+
+  .sun .icon {
+    color: var(--gold);
+  }
+
+  @media (max-width: 860px) {
+    .layout {
+      grid-template-columns: 1fr;
+    }
+
+    .toc {
+      display: none;
+    }
+
+    .callout {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+
+    .cycle {
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .score-cards,
+    .shoot {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

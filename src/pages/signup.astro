@@ -1,0 +1,95 @@
+---
+import AuthCard from '../components/AuthCard.astro';
+import Layout from '../layouts/Layout.astro';
+import {
+  createSession,
+  createUser,
+  setSessionCookie,
+  signupCodeRequired,
+  signupCodeValid,
+  takeAttempt,
+  validateSignup,
+} from '../lib/server/auth';
+import { clientIp, isSecure, readForm, safeNext } from '../lib/server/http';
+
+const next = safeNext(Astro.url.searchParams.get('next'));
+if (Astro.locals.user) return Astro.redirect(next);
+
+const needCode = signupCodeRequired();
+let error = '';
+let values = { username: '', displayName: '' };
+if (Astro.request.method === 'POST') {
+  const form = await readForm(Astro.request);
+  values = { username: form.username ?? '', displayName: form.displayName ?? '' };
+  const password = form.password ?? '';
+  error = validateSignup(values.username, values.displayName, password) ?? '';
+  if (!error && password !== form.confirmPassword) error = 'Those passwords don’t match.';
+  if (!error) {
+    let addr = 'unknown';
+    try {
+      addr = Astro.clientAddress;
+    } catch {}
+    if (!takeAttempt([{ key: `signup:ip:${clientIp(Astro.request, addr)}`, limit: 20 }]))
+      error = 'Too many sign-up attempts. Please wait a few minutes and try again.';
+  }
+  if (!error && !signupCodeValid(form.signupCode ?? '')) error = 'That family invite code isn’t right.';
+  if (!error) {
+    const user = await createUser(values.username, values.displayName, password);
+    if (!user) error = 'That username is already taken.';
+    else {
+      const { token, expires } = createSession(user.id);
+      setSessionCookie(Astro.cookies, token, expires, isSecure(Astro.request));
+      return Astro.redirect(safeNext(form.next), 303);
+    }
+  }
+  Astro.response.status = 400;
+}
+---
+
+<Layout title="Create account">
+  <AuthCard title="Pull up a chair" subtitle="Create an account to join the family table.">
+    <form method="post" class="stack">
+      <input type="hidden" name="next" value={next} />
+      {error && <p class="alert" role="alert">{error}</p>}
+      <label class="field">
+        <span>Your name</span>
+        <input class="input" name="displayName" maxlength="32" required value={values.displayName} placeholder="Grandma Jo" autofocus />
+        <small class="hint">What everyone sees at the table.</small>
+      </label>
+      <label class="field">
+        <span>Username</span>
+        <input
+          class="input"
+          name="username"
+          autocomplete="username"
+          required
+          minlength="3"
+          maxlength="24"
+          pattern="[a-zA-Z0-9_.\-]{3,24}"
+          value={values.username}
+          placeholder="grandmajo"
+        />
+        <small class="hint">For signing in. Letters, numbers, dots, dashes and underscores.</small>
+      </label>
+      <label class="field">
+        <span>Password</span>
+        <input class="input" name="password" type="password" autocomplete="new-password" required minlength="8" />
+      </label>
+      <label class="field">
+        <span>Confirm password</span>
+        <input class="input" name="confirmPassword" type="password" autocomplete="new-password" required minlength="8" />
+      </label>
+      {
+        needCode && (
+          <label class="field">
+            <span>Family invite code</span>
+            <input class="input" name="signupCode" required autocomplete="off" />
+            <small class="hint">Ask whoever runs this site for the code.</small>
+          </label>
+        )
+      }
+      <button class="btn btn-primary btn-lg btn-block" type="submit">Create account</button>
+    </form>
+    <p slot="below">Already have an account? <a href={`/login${next !== '/games' ? `?next=${encodeURIComponent(next)}` : ''}`}>Sign in</a></p>
+  </AuthCard>
+</Layout>

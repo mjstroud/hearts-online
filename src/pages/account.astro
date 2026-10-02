@@ -1,0 +1,79 @@
+---
+import Layout from '../layouts/Layout.astro';
+import { SESSION_COOKIE, changePassword, deleteOtherSessions, takeAttempt, updateDisplayName } from '../lib/server/auth';
+import { readForm } from '../lib/server/http';
+
+const user = Astro.locals.user!;
+let error = '';
+let saved = '';
+let displayName = user.displayName;
+
+if (Astro.request.method === 'POST') {
+  const form = await readForm(Astro.request);
+  if (form.intent === 'profile') {
+    displayName = (form.displayName ?? '').slice(0, 32);
+    if (!displayName) error = 'Display name can’t be empty.';
+    else {
+      updateDisplayName(user.id, displayName);
+      user.displayName = displayName; // so the header reflects it right away
+      saved = 'Name updated.';
+    }
+  } else if (form.intent === 'password') {
+    if (form.newPassword !== form.confirmPassword) error = 'The new passwords don’t match.';
+    else if (!takeAttempt([{ key: `password:user:${user.id}`, limit: 10 }])) error = 'Too many attempts. Please wait a few minutes.';
+    else {
+      error = (await changePassword(user.id, form.currentPassword ?? '', form.newPassword ?? '')) ?? '';
+      if (!error) {
+        deleteOtherSessions(user.id, Astro.cookies.get(SESSION_COOKIE)?.value);
+        saved = 'Password changed. Any other devices have been signed out.';
+      }
+    }
+  }
+  if (error) Astro.response.status = 400;
+}
+---
+
+<Layout title="Account">
+  <div class="container page" style="max-width: 620px">
+    <div class="page-head">
+      <div class="stack" style="--gap: 6px">
+        <span class="eyebrow">@{user.username}</span>
+        <h1 class="display">Account</h1>
+      </div>
+    </div>
+    <div class="stack" style="--gap: 20px">
+      {error && <p class="alert" role="alert">{error}</p>}
+      {saved && <p class="alert ok" role="status">{saved}</p>}
+
+      <form method="post" class="panel panel-pad stack">
+        <input type="hidden" name="intent" value="profile" />
+        <h2 class="panel-title">Profile</h2>
+        <label class="field">
+          <span>Display name</span>
+          <input class="input" name="displayName" maxlength="32" required value={displayName} />
+          <small class="hint">Shown at the table, on scoreboards and in stats.</small>
+        </label>
+        <div><button class="btn" type="submit">Save name</button></div>
+      </form>
+
+      <form method="post" class="panel panel-pad stack">
+        <input type="hidden" name="intent" value="password" />
+        <h2 class="panel-title">Change password</h2>
+        <input type="text" name="username" value={user.username} autocomplete="username" hidden />
+        <label class="field">
+          <span>Current password</span>
+          <input class="input" name="currentPassword" type="password" autocomplete="current-password" required />
+        </label>
+        <label class="field">
+          <span>New password</span>
+          <input class="input" name="newPassword" type="password" autocomplete="new-password" minlength="8" required />
+        </label>
+        <label class="field">
+          <span>Confirm new password</span>
+          <input class="input" name="confirmPassword" type="password" autocomplete="new-password" minlength="8" required />
+        </label>
+        <div><button class="btn" type="submit">Change password</button></div>
+      </form>
+    </div>
+  </div>
+</Layout>

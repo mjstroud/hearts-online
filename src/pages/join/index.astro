@@ -1,0 +1,54 @@
+---
+import AuthCard from '../../components/AuthCard.astro';
+import Layout from '../../layouts/Layout.astro';
+import { GameError, findGameIdByCode, joinGame } from '../../lib/server/games';
+import { readForm } from '../../lib/server/http';
+
+const user = Astro.locals.user!;
+let error = '';
+let code = '';
+if (Astro.request.method === 'POST') {
+  const form = await readForm(Astro.request);
+  code = (form.code ?? '').toUpperCase();
+  const id = findGameIdByCode(code);
+  if (!id) error = 'No game uses that code. Double-check it with the host.';
+  else {
+    try {
+      joinGame(id, user.id);
+      return Astro.redirect(`/games/${id}`, 303);
+    } catch (err) {
+      error = err instanceof GameError ? err.message : 'Could not join that game.';
+    }
+  }
+  Astro.response.status = 400;
+}
+---
+
+<Layout title="Join a game">
+  <AuthCard title="Join a game" subtitle="Enter the 6-character code from the host.">
+    <form method="post" class="stack">
+      {error && <p class="alert" role="alert">{error}</p>}
+      <input
+        class="input code big"
+        name="code"
+        maxlength="6"
+        required
+        autocomplete="off"
+        autofocus
+        value={code}
+        placeholder="ABC123"
+        aria-label="Join code"
+      />
+      <button class="btn btn-primary btn-lg btn-block" type="submit">Take a seat</button>
+    </form>
+    <p slot="below"><a href="/games">← Back to your games</a></p>
+  </AuthCard>
+</Layout>
+
+<style>
+  .big {
+    height: 60px;
+    font-size: 26px;
+    text-align: center;
+  }
+</style>

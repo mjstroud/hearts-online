@@ -1,0 +1,140 @@
+---
+import StatsTable from '../components/StatsTable.astro';
+import Layout from '../layouts/Layout.astro';
+import { avg, pct, userOverview } from '../lib/server/stats';
+import { fmtAvg, fmtPct, ordinal, timeAgo } from '../lib/ui';
+
+const user = Astro.locals.user!;
+const { me, everyone, games, gamesFinished, gamesWon } = userOverview(user.id, user.displayName);
+const tiles = [
+  { label: 'Hands played', value: String(me.hands) },
+  { label: 'Avg points / hand', value: me.hands ? fmtAvg(avg(me.total, me.hands)) : '–' },
+  { label: 'Queen of Spades', value: me.hands ? fmtPct(pct(me.queens, me.hands)) : '–', sub: `${me.queens} taken` },
+  { label: 'Jack of Diamonds', value: me.hands ? fmtPct(pct(me.jacks, me.hands)) : '–', sub: `${me.jacks} taken` },
+  { label: 'Cribs won', value: me.hands ? fmtPct(pct(me.cribs, me.hands)) : '–', sub: `${me.cribs} total` },
+  { label: 'Games won', value: `${gamesWon}`, sub: `of ${gamesFinished} finished` },
+  { label: 'Moons · Suns', value: `${me.moons} · ${me.suns}` },
+  { label: 'Clean hands', value: me.hands ? fmtPct(pct(me.clean, me.hands)) : '–', sub: '0 points or better' },
+];
+---
+
+<Layout title="Your stats">
+  <div class="container page">
+    <div class="page-head">
+      <div class="stack" style="--gap: 6px">
+        <span class="eyebrow">Across every game</span>
+        <h1 class="display">Your stats</h1>
+      </div>
+    </div>
+
+    {
+      me.hands === 0 ? (
+        <div class="panel empty">
+          Play a hand or two and your numbers will show up here. <a href="/games">Go to your games →</a>
+        </div>
+      ) : (
+        <div class="stack" style="--gap: 32px">
+          <div class="tiles">
+            {tiles.map((t) => (
+              <div class="panel tile">
+                <span class="label">{t.label}</span>
+                <span class="value">{t.value}</span>
+                {t.sub && <span class="sub faint">{t.sub}</span>}
+              </div>
+            ))}
+          </div>
+
+          <section class="stack" style="--gap: 12px">
+            <h2 class="panel-title">Your games</h2>
+            <div class="table-wrap">
+              <table class="data">
+                <thead>
+                  <tr>
+                    <th>Game</th>
+                    <th>Status</th>
+                    <th>Hands</th>
+                    <th>Your score</th>
+                    <th>Place</th>
+                    <th>Last played</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {games.map((g) => (
+                    <tr>
+                      <td>
+                        <a href={`/games/${g.id}/stats`}>{g.name}</a>
+                      </td>
+                      <td>
+                        {g.won ? (
+                          <span class="badge gold">Won</span>
+                        ) : (
+                          <span class="badge">{g.status === 'finished' ? 'Final' : 'In progress'}</span>
+                        )}
+                      </td>
+                      <td>{g.handsPlayed}</td>
+                      <td>{g.myScore}</td>
+                      <td>
+                        {g.handsPlayed ? ordinal(g.rank) : '–'} <span class="faint">of {g.playerCount}</span>
+                      </td>
+                      <td class="faint">{timeAgo(g.updatedAt)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="stack" style="--gap: 12px">
+            <div class="spread">
+              <h2 class="panel-title">Everyone you’ve played with</h2>
+              <span class="faint small">Totals across the games you shared</span>
+            </div>
+            <StatsTable players={everyone} highlightId={user.id} />
+          </section>
+        </div>
+      )
+    }
+  </div>
+</Layout>
+
+<style>
+  .tiles {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+  }
+
+  .tile {
+    padding: 18px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .tile .label {
+    font-size: 13px;
+    color: var(--muted);
+    font-weight: 500;
+  }
+
+  .tile .value {
+    font-size: 30px;
+    font-weight: 650;
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+  }
+
+  .tile .sub {
+    font-size: 12.5px;
+  }
+
+  .small {
+    font-size: 13px;
+  }
+
+  @media (max-width: 860px) {
+    .tiles {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+</style>

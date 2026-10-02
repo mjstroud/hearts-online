@@ -1,0 +1,80 @@
+---
+import type { GameSettings } from '../lib/engine/rules';
+
+interface Props {
+  settings: GameSettings;
+  /** Rules are locked once the game has started (only the score limit can change). */
+  locked?: boolean;
+}
+const { settings, locked = false } = Astro.props;
+const toggles: { name: keyof GameSettings; title: string; body: string }[] = [
+  { name: 'jackOfDiamonds', title: 'Jack of Diamonds is −10', body: 'Whoever takes the J♦ subtracts 10 points.' },
+  { name: 'shootTheMoon', title: 'Shoot the Moon', body: 'Take every heart and the Q♠ and everyone else gets +26.' },
+  { name: 'shootTheSun', title: 'Shoot the Sun', body: 'Win every single trick and everyone else gets +52.' },
+  {
+    name: 'noPointsOnFirstTrick',
+    title: 'No points on the first trick',
+    body: 'Hearts and the Q♠ can’t be dumped on trick one unless that’s all you hold.',
+  },
+];
+---
+
+<fieldset class="stack rules" disabled={locked}>
+  <legend class="label">House rules {locked && <span class="faint">· locked once cards are dealt</span>}</legend>
+  {
+    toggles.map((t) => (
+      <label class="toggle">
+        <input type="checkbox" name={t.name} checked={settings[t.name] as boolean} />
+        <span>
+          <strong>{t.title}</strong>
+          <small>{t.body}</small>
+        </span>
+      </label>
+    ))
+  }
+  <div class="toggle static">
+    <span>
+      <strong>Five-player crib</strong>
+      <small>Four players always use a 4-card crib with 12 cards each. With five players:</small>
+      <span class="segmented" role="radiogroup" aria-label="Five-player crib size">
+        <label>
+          <input type="radio" name="fivePlayerCribSize" value="2" checked={settings.fivePlayerCribSize === 2} />
+          <span>2-card crib · 10 each</span>
+        </label>
+        <label>
+          <input type="radio" name="fivePlayerCribSize" value="7" checked={settings.fivePlayerCribSize === 7} />
+          <span>7-card crib · 9 each</span>
+        </label>
+      </span>
+    </span>
+  </div>
+</fieldset>
+<input type="hidden" name="rulesForm" value="1" />
+
+<style>
+  fieldset {
+    border: 0;
+    padding: 0;
+    margin: 0;
+    min-width: 0;
+  }
+
+  legend {
+    padding: 0;
+    margin-bottom: 10px;
+  }
+
+  fieldset:disabled .toggle {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .static {
+    cursor: default;
+  }
+
+  .segmented {
+    margin-top: 10px;
+    flex-wrap: wrap;
+  }
+</style>

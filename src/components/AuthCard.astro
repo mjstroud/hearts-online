@@ -1,0 +1,67 @@
+---
+interface Props {
+  title: string;
+  subtitle?: string;
+}
+const { title, subtitle } = Astro.props;
+---
+
+<div class="container narrow page">
+  <div class="panel auth">
+    <div class="head">
+      <span class="mark" aria-hidden="true">♥</span>
+      <h1 class="display">{title}</h1>
+      {subtitle && <p class="muted">{subtitle}</p>}
+    </div>
+    <slot />
+  </div>
+  <div class="below"><slot name="below" /></div>
+</div>
+
+<style>
+  .auth {
+    padding: 32px;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+    margin-top: 24px;
+  }
+
+  .head {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 8px;
+  }
+
+  .mark {
+    width: 44px;
+    height: 44px;
+    border-radius: 13px;
+    display: grid;
+    place-items: center;
+    color: #fff;
+    font-size: 22px;
+    background: linear-gradient(135deg, var(--heart-2), var(--heart));
+    box-shadow: 0 10px 30px -8px rgb(240 71 91 / 0.7);
+    margin-bottom: 6px;
+  }
+
+  h1 {
+    font-size: 30px;
+  }
+
+  .below {
+    text-align: center;
+    margin-top: 18px;
+    color: var(--muted);
+    font-size: 14px;
+  }
+
+  @media (max-width: 520px) {
+    .auth {
+      padding: 22px;
+    }
+  }
+</style>

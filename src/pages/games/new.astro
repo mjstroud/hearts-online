@@ -1,0 +1,71 @@
+---
+import RuleSettings from '../../components/RuleSettings.astro';
+import Layout from '../../layouts/Layout.astro';
+import { DEFAULT_SETTINGS, normalizeSettings } from '../../lib/engine/rules';
+import { settingsFromForm } from '../../lib/server/forms';
+import { createGame } from '../../lib/server/games';
+import { readForm } from '../../lib/server/http';
+
+const user = Astro.locals.user!;
+let error = '';
+let name = `${user.displayName.split(' ')[0]}’s Hearts`;
+let settings = DEFAULT_SETTINGS;
+
+if (Astro.request.method === 'POST') {
+  const form = await readForm(Astro.request);
+  name = (form.name ?? '').slice(0, 60);
+  settings = normalizeSettings(settingsFromForm(form));
+  if (!name) error = 'Give your game a name.';
+  else {
+    const id = createGame(user.id, name, settings);
+    return Astro.redirect(`/games/${id}`, 303);
+  }
+  Astro.response.status = 400;
+}
+---
+
+<Layout title="New game">
+  <div class="container page" style="max-width: 720px">
+    <div class="page-head">
+      <div class="stack" style="--gap: 6px">
+        <a class="faint back" href="/games">← Games</a>
+        <h1 class="display">Start a new game</h1>
+        <p class="muted">You’ll get a join code to share. Start once 4 or 5 players have sat down.</p>
+      </div>
+    </div>
+    <form method="post" class="panel panel-pad stack" style="--gap: 22px">
+      {error && <p class="alert" role="alert">{error}</p>}
+      <label class="field">
+        <span>Game name</span>
+        <input class="input" name="name" required maxlength="60" value={name} />
+        <small class="hint">Something like “Stroud Family 2026”.</small>
+      </label>
+      <label class="field">
+        <span>Score limit <span class="faint">(optional)</span></span>
+        <input
+          class="input"
+          name="scoreLimit"
+          type="number"
+          min="1"
+          inputmode="numeric"
+          placeholder="No limit"
+          value={settings.scoreLimit ?? ''}
+          style="max-width: 220px"
+        />
+        <small class="hint">Leave blank for an open-ended game that you end yourself. You can change this later.</small>
+      </label>
+      <RuleSettings settings={settings} />
+      <div class="row" style="justify-content: flex-end">
+        <a class="btn btn-ghost" href="/games">Cancel</a>
+        <button class="btn btn-primary btn-lg" type="submit">Create game</button>
+      </div>
+    </form>
+  </div>
+</Layout>
+
+<style>
+  .back {
+    font-size: 14px;
+    text-decoration: none;
+  }
+</style>

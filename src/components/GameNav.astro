@@ -1,0 +1,78 @@
+---
+import type { GameRecord } from '../lib/server/games';
+
+interface Props {
+  game: GameRecord;
+  current: 'scoreboard' | 'stats' | 'settings';
+  isOwner: boolean;
+}
+const { game, current, isOwner } = Astro.props;
+const tabs = [
+  { key: 'table', href: `/games/${game.id}`, label: game.status === 'finished' ? 'Results' : game.status === 'lobby' ? 'Waiting room' : 'Table' },
+  { key: 'scoreboard', href: `/games/${game.id}/scoreboard`, label: 'Scoreboard' },
+  { key: 'stats', href: `/games/${game.id}/stats`, label: 'Stats' },
+  ...(isOwner ? [{ key: 'settings', href: `/games/${game.id}/settings`, label: 'Settings' }] : []),
+];
+const statusLabel = { lobby: 'Waiting room', active: 'In progress', finished: 'Finished' }[game.status];
+---
+
+<div class="game-head">
+  <div class="stack" style="--gap: 6px">
+    <span class="eyebrow">{statusLabel}</span>
+    <h1 class="display">{game.name}</h1>
+  </div>
+  <nav class="tabs" aria-label="Game sections">
+    {
+      tabs.map((t) => (
+        <a href={t.href} class:list={{ active: t.key === current }} aria-current={t.key === current ? 'page' : undefined}>
+          {t.label}
+        </a>
+      ))
+    }
+  </nav>
+</div>
+
+<style>
+  .game-head {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 28px;
+  }
+
+  h1 {
+    font-size: clamp(28px, 4vw, 40px);
+  }
+
+  .tabs {
+    display: flex;
+    gap: 2px;
+    padding: 3px;
+    border-radius: 12px;
+    background: rgb(0 0 0 / 0.25);
+    border: 1px solid var(--border);
+    overflow-x: auto;
+    max-width: 100%;
+  }
+
+  .tabs a {
+    padding: 7px 14px;
+    border-radius: 9px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--muted);
+    text-decoration: none;
+    white-space: nowrap;
+  }
+
+  .tabs a:hover {
+    color: var(--text);
+  }
+
+  .tabs a.active {
+    background: var(--surface-3);
+    color: var(--text);
+  }
+</style>

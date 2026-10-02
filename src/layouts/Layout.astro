@@ -1,0 +1,271 @@
+---
+import '../styles/global.css';
+import { SITE_NAME, avatarColor, initials } from '../lib/ui';
+
+interface Props {
+  title?: string;
+  description?: string;
+  /** Use the full-bleed layout (game table). */
+  full?: boolean;
+}
+
+const { title, description = 'A private online Hearts table for long-running family games.', full = false } = Astro.props;
+const user = Astro.locals.user;
+const path = Astro.url.pathname;
+const pageTitle = title ? `${title} · ${SITE_NAME}` : SITE_NAME;
+const nav = user
+  ? [
+      { href: '/games', label: 'Games' },
+      { href: '/stats', label: 'Stats' },
+      { href: '/rules', label: 'How to play' },
+    ]
+  : [{ href: '/rules', label: 'How to play' }];
+const active = (href: string) => path === href || path.startsWith(href + '/');
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#090d0c" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT@9..144,400..700,0..100&family=Geist:wght@400..700&family=Geist+Mono:wght@500&display=swap"
+      rel="stylesheet"
+    />
+    <title>{pageTitle}</title>
+  </head>
+  <body class:list={{ full }}>
+    <header class="site-header">
+      <div class:list={['container', 'header-inner', { wide: full }]}>
+        <a class="brand" href={user ? '/games' : '/'} aria-label={`${SITE_NAME} home`}>
+          <span class="brand-mark" aria-hidden="true">♥</span>
+          <span class="brand-name">{SITE_NAME}</span>
+        </a>
+        <nav class="nav" aria-label="Main">
+          {nav.map((item) => <a href={item.href} class:list={{ active: active(item.href) }}>{item.label}</a>)}
+        </nav>
+        <div class="header-actions">
+          {
+            user ? (
+              <details class="user-menu">
+                <summary aria-label="Account menu">
+                  <span class="avatar" style={`--size: 30px; --avatar: ${avatarColor(user.username)}`}>
+                    {initials(user.displayName)}
+                  </span>
+                  <span class="user-name">{user.displayName}</span>
+                </summary>
+                <div class="menu panel">
+                  <div class="menu-head">
+                    <strong>{user.displayName}</strong>
+                    <span class="faint">@{user.username}</span>
+                  </div>
+                  <a href="/account">Account</a>
+                  <form method="post" action="/logout">
+                    <button type="submit">Sign out</button>
+                  </form>
+                </div>
+              </details>
+            ) : (
+              <>
+                <a class="btn btn-ghost btn-sm" href="/login">Sign in</a>
+                <a class="btn btn-primary btn-sm" href="/signup">Get started</a>
+              </>
+            )
+          }
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <slot />
+    </main>
+
+    {
+      !full && (
+        <footer class="site-footer">
+          <div class="container spread">
+            <span class="faint">♥ {SITE_NAME} — one long game, wherever everyone is.</span>
+            <a class="faint" href="/rules">House rules</a>
+          </div>
+        </footer>
+      )
+    }
+  </body>
+</html>
+
+<style>
+  .site-header {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    backdrop-filter: saturate(1.4) blur(14px);
+    -webkit-backdrop-filter: saturate(1.4) blur(14px);
+    background: rgb(9 13 12 / 0.72);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .header-inner {
+    height: 60px;
+    display: flex;
+    align-items: center;
+    gap: 28px;
+  }
+
+  .brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    text-decoration: none;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    font-size: 16px;
+  }
+
+  .brand-mark {
+    width: 30px;
+    height: 30px;
+    display: grid;
+    place-items: center;
+    border-radius: 9px;
+    color: #fff;
+    font-size: 16px;
+    background: linear-gradient(135deg, var(--heart-2), var(--heart));
+    box-shadow:
+      0 1px 0 rgb(255 255 255 / 0.35) inset,
+      0 6px 18px -6px rgb(240 71 91 / 0.7);
+  }
+
+  .brand-name {
+    font-family: var(--font-display);
+    font-size: 19px;
+    font-weight: 600;
+    font-variation-settings: 'SOFT' 80;
+  }
+
+  .nav {
+    display: flex;
+    gap: 4px;
+  }
+
+  .nav a {
+    padding: 7px 12px;
+    border-radius: 9px;
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 500;
+    transition:
+      color 0.15s,
+      background 0.15s;
+  }
+
+  .nav a:hover {
+    color: var(--text);
+    background: rgb(255 255 255 / 0.04);
+  }
+
+  .nav a.active {
+    color: var(--text);
+    background: rgb(255 255 255 / 0.07);
+  }
+
+  .header-actions {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .user-menu {
+    position: relative;
+  }
+
+  .user-menu summary {
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 4px 10px 4px 4px;
+    border-radius: 99px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    border: 1px solid transparent;
+  }
+
+  .user-menu summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .user-menu summary:hover,
+  .user-menu[open] summary {
+    background: rgb(255 255 255 / 0.05);
+    border-color: var(--border);
+  }
+
+  .menu {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 8px);
+    min-width: 200px;
+    padding: 6px;
+    border-radius: 14px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: var(--shadow-lg);
+  }
+
+  .menu-head {
+    padding: 8px 10px 10px;
+    display: flex;
+    flex-direction: column;
+    font-size: 14px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 4px;
+  }
+
+  .menu a,
+  .menu button {
+    all: unset;
+    padding: 8px 10px;
+    border-radius: 8px;
+    font-size: 14px;
+    cursor: pointer;
+  }
+
+  .menu form {
+    display: contents;
+  }
+
+  .menu a:hover,
+  .menu button:hover {
+    background: rgb(255 255 255 / 0.06);
+  }
+
+  .site-footer {
+    padding: 28px 0 40px;
+    border-top: 1px solid var(--border);
+    font-size: 13px;
+  }
+
+  @media (max-width: 720px) {
+    .header-inner {
+      gap: 12px;
+    }
+
+    .brand-name,
+    .user-name {
+      display: none;
+    }
+
+    .nav a {
+      padding: 7px 9px;
+      font-size: 13.5px;
+    }
+  }
+</style>
