@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { type Card, RANK_LABEL, SUIT_NAME, SUIT_SYMBOL, rankOf, suitOf } from '../lib/engine/cards';
+  import { type Card, RANK_LABEL, SUIT_NAME, rankOf, suitOf } from '../lib/engine/cards';
 
   interface Props {
     /** Omit (or null) to show the card back. */
@@ -31,10 +31,10 @@
     title,
   }: Props = $props();
 
-  const rank = $derived(card ? RANK_LABEL[rankOf(card)] : '');
-  const suit = $derived(card ? SUIT_SYMBOL[suitOf(card)] : '');
-  const face = $derived(card ? ['J', 'Q', 'K'].includes(rankOf(card)) : false);
-  const ace = $derived(card ? rankOf(card) === 'A' : false);
+  const r = $derived(card ? rankOf(card) : null);
+  const rank = $derived(r ? RANK_LABEL[r] : '');
+  const face = $derived(r === 'J' || r === 'Q' || r === 'K');
+  const ace = $derived(r === 'A');
   /** Small cards drop the centre art and show a big index instead. */
   const compact = $derived(width < 56);
   const tag = $derived(card === 'QS' ? '+13' : card === 'JD' && jackScored ? '−10' : null);
@@ -49,6 +49,8 @@
   this={onclick ? 'button' : 'div'}
   type={onclick ? 'button' : undefined}
   class={`pc ${card ? `suit-${suitOf(card)}` : 'back'}`}
+  class:face
+  class:ace
   class:compact
   class:selected
   class:dimmed
@@ -63,45 +65,59 @@
   role={onclick ? undefined : 'img'}
 >
   {#if card}
-    <span class="index tl" aria-hidden="true"><b class:ten={rank === '10'}>{rank}</b><i>{suit}</i></span>
+    {#if !compact}<span class="frame" aria-hidden="true"></span>{/if}
+    <span class="index tl" aria-hidden="true"><b class:ten={rank === '10'}>{rank}</b><i class="sym"></i></span>
     {#if compact}
-      <span class="big-suit" aria-hidden="true">{suit}</span>
+      <span class="big-suit sym" aria-hidden="true"></span>
     {:else}
-      <span class="center" aria-hidden="true">
+      {#if face}
+        <span class="court" aria-hidden="true"><span class="letter">{rank}</span><i class="sym"></i></span>
+      {/if}
+      <span class="solo" aria-hidden="true">
         {#if face}
-          <span class="frame"><span class="letter">{rank}</span><span class="fsuit">{suit}</span></span>
-        {:else}
-          <span class="pip" class:ace>{suit}</span>
+          <svg class="crown" viewBox="0 0 40 26">
+            {#if r === 'K'}
+              <path d="M5 21 3 6l9 7 8-11 8 11 9-7-2 15z" />
+              <circle cx="3" cy="6" r="2.6" /><circle cx="20" cy="2.8" r="2.8" /><circle cx="37" cy="6" r="2.6" />
+            {:else if r === 'Q'}
+              <path d="M5 21v-8q4-8 8 0 7-13 14 0 4-8 8 0v8z" />
+              <circle cx="9" cy="7" r="2.2" /><circle cx="20" cy="3.2" r="2.8" /><circle cx="31" cy="7" r="2.2" />
+            {:else}
+              <path d="M5 21v-6l7 3 8-10 8 10 7-3v6z" />
+              <circle cx="20" cy="6" r="2.6" />
+            {/if}
+            <rect x="4" y="22" width="32" height="4" rx="1.2" />
+          </svg>
         {/if}
+        <i class="sym art"></i>
       </span>
-      <span class="index br" aria-hidden="true"><b class:ten={rank === '10'}>{rank}</b><i>{suit}</i></span>
+      <span class="index br" aria-hidden="true"><b class:ten={rank === '10'}>{rank}</b><i class="sym"></i></span>
       {#if showValue && tag}
         <span class="tag" class:good={card === 'JD'} aria-hidden="true">{tag}</span>
       {/if}
     {/if}
   {:else}
-    <span class="emblem" aria-hidden="true">♥</span>
+    <span class="emblem" aria-hidden="true"></span>
   {/if}
 </svelte:element>
 
 <style>
   .pc {
-    --h: calc(var(--w) * 1.4);
+    --h: calc(var(--w) * var(--card-aspect));
+    --tint: var(--card-face);
     position: relative;
     display: block;
     flex: none;
     width: var(--w);
     height: var(--h);
     padding: 0;
-    border-radius: calc(var(--w) * 0.1);
-    background: linear-gradient(165deg, #fffefb 0%, var(--card-face) 65%, #f1ece2 100%);
+    border-radius: calc(var(--w) * var(--card-radius));
+    background-color: var(--tint);
+    background-image: var(--card-sheen);
     color: var(--suit-s);
-    border: 1px solid rgb(0 0 0 / 0.2);
-    box-shadow:
-      0 1px 0 rgb(255 255 255 / 0.9) inset,
-      0 1px 2px rgb(0 0 0 / 0.3),
-      0 6px 14px -6px rgb(0 0 0 / 0.55);
-    font-family: var(--font-ui);
+    border: var(--card-border);
+    box-shadow: var(--card-shadow);
+    font-family: var(--index-font);
     user-select: none;
     -webkit-user-select: none;
     container-type: inline-size;
@@ -110,120 +126,190 @@
       box-shadow 0.18s var(--ease);
   }
 
+  /*
+   * Each suit picks its ink, its shapes, an optional paint for the symbols (a gradient,
+   * say) and an optional tint for the whole card face. --card-ink overrides the ink for
+   * themes that print white on a coloured card.
+   */
   .suit-S {
-    color: var(--suit-s);
+    color: var(--card-ink, var(--suit-s));
+    --suit-mask: var(--mask-s);
+    --art-mask: var(--art-s);
+    --paint: var(--paint-s, currentColor);
+    --tint: var(--card-tint-s, var(--card-face));
   }
   .suit-H {
-    color: var(--suit-h);
+    color: var(--card-ink, var(--suit-h));
+    --suit-mask: var(--mask-h);
+    --art-mask: var(--art-h);
+    --paint: var(--paint-h, currentColor);
+    --tint: var(--card-tint-h, var(--card-face));
   }
   .suit-D {
-    color: var(--suit-d);
+    color: var(--card-ink, var(--suit-d));
+    --suit-mask: var(--mask-d);
+    --art-mask: var(--art-d);
+    --paint: var(--paint-d, currentColor);
+    --tint: var(--card-tint-d, var(--card-face));
   }
   .suit-C {
-    color: var(--suit-c);
+    color: var(--card-ink, var(--suit-c));
+    --suit-mask: var(--mask-c);
+    --art-mask: var(--art-c);
+    --paint: var(--paint-c, currentColor);
+    --tint: var(--card-tint-c, var(--card-face));
+  }
+
+  .sym {
+    display: block;
+    flex: none;
+    width: 1em;
+    height: 1em;
+    background: var(--paint);
+    -webkit-mask: var(--suit-mask) center / contain no-repeat;
+    mask: var(--suit-mask) center / contain no-repeat;
+  }
+
+  .frame {
+    display: var(--card-frame);
+    position: absolute;
+    inset: var(--card-frame-inset);
+    border: var(--card-frame-line);
+    border-radius: calc(var(--w) * var(--card-radius) * 0.6);
+    pointer-events: none;
   }
 
   /* ----- Corner index: big and bold so a fanned hand reads at a glance ----- */
   .index {
     position: absolute;
+    z-index: 1;
     display: flex;
     flex-direction: column;
-    align-items: center;
+    align-items: var(--index-align);
     line-height: 0.86;
-    width: 30cqi;
+    width: var(--index-width);
+    font-variation-settings: var(--index-vars);
   }
 
   .index b {
-    font-weight: 800;
-    font-size: 30cqi;
-    letter-spacing: -0.04em;
+    font-weight: var(--index-weight);
+    font-size: var(--index-rank);
+    letter-spacing: var(--index-tracking);
   }
 
   .index b.ten {
-    letter-spacing: -0.11em;
-    margin-left: -0.11em;
-    font-size: 27cqi;
+    letter-spacing: calc(var(--index-tracking) - 0.07em);
+    margin-left: -0.08em;
+    font-size: calc(var(--index-rank) * 0.88);
   }
 
-  .index i {
-    font-style: normal;
-    font-size: 25cqi;
-    margin-top: 1cqi;
+  .index .sym {
+    font-size: var(--index-suit);
+    margin-top: var(--index-gap);
   }
 
   .tl {
-    top: 5cqi;
-    left: 3cqi;
+    top: var(--index-top);
+    left: var(--index-left);
   }
 
   .br {
-    bottom: 5cqi;
-    right: 3cqi;
+    display: var(--index-br);
+    bottom: var(--index-top);
+    right: var(--index-left);
     transform: rotate(180deg);
   }
 
-  .center {
+  /* ----- The one big symbol (or a crown, on face cards) ----- */
+  /* Clipped to the card, so a theme can push the symbol off the edge as a watermark. */
+  .solo {
+    display: var(--card-solo);
     position: absolute;
     inset: 0;
-    display: grid;
-    place-items: center;
+    padding: var(--solo-pad);
+    overflow: hidden;
+    border-radius: inherit;
+    place-items: var(--solo-place);
+    font-size: var(--solo-size);
+    opacity: var(--solo-opacity);
   }
 
-  .pip {
-    font-size: 46cqi;
-    line-height: 1;
+  .solo > * {
+    translate: var(--solo-shift);
   }
 
-  .pip.ace {
-    font-size: 66cqi;
+  .face .solo {
+    display: var(--face-solo);
   }
 
-  .frame {
-    width: 44cqi;
-    height: 70cqi;
-    border-radius: 5cqi;
-    border: 1.5px solid currentColor;
-    display: flex;
+  .ace .solo {
+    font-size: var(--solo-ace);
+  }
+
+  .art {
+    --suit-mask: var(--art-mask);
+  }
+
+  .face .art {
+    display: var(--face-sym);
+  }
+
+  .crown {
+    display: var(--crown);
+    width: 1.15em;
+    fill: var(--crown-fill);
+    stroke: var(--crown-stroke);
+    stroke-width: 1.6;
+    stroke-linejoin: round;
+  }
+
+  /* ----- Court cards in the classic style: a framed letter ----- */
+  .court {
+    display: var(--court);
+    position: absolute;
+    inset: var(--court-inset);
     flex-direction: column;
     align-items: center;
     justify-content: center;
     gap: 1cqi;
-    background:
-      radial-gradient(circle at 50% 30%, rgb(255 255 255 / 0.9), transparent 70%),
-      repeating-linear-gradient(45deg, rgb(0 0 0 / 0.035) 0 2px, transparent 2px 6px);
+    border: var(--court-border);
+    border-radius: var(--court-radius);
+    background: var(--court-bg);
   }
 
   .letter {
-    font-family: var(--font-display);
-    font-weight: 650;
-    font-size: 34cqi;
+    font-family: var(--court-font);
+    font-weight: var(--court-weight);
+    font-size: var(--court-letter);
     line-height: 1;
-    font-variation-settings: 'SOFT' 100, 'opsz' 72;
+    font-variation-settings: var(--court-vars);
   }
 
-  .fsuit {
-    font-size: 20cqi;
-    line-height: 1;
+  .court .sym {
+    font-size: var(--court-sym);
   }
 
   .tag {
     position: absolute;
-    bottom: 4cqi;
-    left: 50%;
+    z-index: 2;
+    bottom: var(--tag-bottom);
+    left: var(--tag-x);
     transform: translateX(-50%);
+    font-family: var(--font-ui);
     font-size: 11cqi;
     font-weight: 800;
     padding: 1.5cqi 5cqi;
     border-radius: 99px;
-    background: #1a1d22;
-    color: #fff;
+    background: var(--tag-bg);
+    color: var(--tag-ink);
     letter-spacing: 0.02em;
     line-height: 1.2;
+    white-space: nowrap;
   }
 
   .tag.good {
-    background: linear-gradient(180deg, #f7d58e, #e2a93f);
-    color: #3b2604;
+    background: var(--tag-good-bg);
+    color: var(--tag-good-ink);
   }
 
   /* ----- Compact cards (side panels, playtest rows): just a giant index ----- */
@@ -242,45 +328,46 @@
     font-size: 40cqi;
   }
 
-  .compact .index i {
-    font-size: 40cqi;
-    margin-top: 2cqi;
+  .compact .index .sym {
+    font-size: 30cqi;
+    margin-top: 3cqi;
   }
 
   .big-suit {
     position: absolute;
-    right: 6cqi;
-    bottom: 2cqi;
-    font-size: 54cqi;
-    line-height: 1;
+    right: 7cqi;
+    bottom: 7cqi;
+    font-size: 42cqi;
     opacity: 0.9;
   }
 
   /* ----- Card back ----- */
   .back {
-    background:
-      radial-gradient(circle at 50% 50%, rgb(255 255 255 / 0.12), transparent 55%),
-      repeating-linear-gradient(45deg, rgb(255 255 255 / 0.07) 0 2px, transparent 2px 9px),
-      repeating-linear-gradient(-45deg, rgb(255 255 255 / 0.07) 0 2px, transparent 2px 9px),
-      linear-gradient(160deg, #c8344a, #8e1830);
-    border: 1px solid rgb(0 0 0 / 0.3);
+    background: var(--back-edge);
+    border: var(--back-border);
+    box-shadow: var(--back-shadow);
+    --suit-mask: var(--back-emblem);
   }
 
   .back::before {
     content: '';
     position: absolute;
-    inset: 6cqi;
-    border-radius: calc(var(--w) * 0.07);
-    border: 1.5px solid rgb(255 255 255 / 0.55);
+    inset: var(--back-inset);
+    border-radius: calc(var(--w) * var(--card-radius) * 0.7);
+    background: var(--back-panel);
+    border: var(--back-frame);
   }
 
   .emblem {
     position: absolute;
-    inset: 0;
-    display: grid;
-    place-items: center;
-    color: rgb(255 255 255 / 0.9);
-    font-size: 34cqi;
+    left: 50%;
+    top: 50%;
+    width: var(--back-emblem-size);
+    height: var(--back-emblem-size);
+    transform: translate(-50%, -50%);
+    background: var(--back-emblem-ink);
+    -webkit-mask: var(--suit-mask) center / contain no-repeat;
+    mask: var(--suit-mask) center / contain no-repeat;
   }
 
   /* ----- States ----- */
@@ -297,17 +384,16 @@
     content: '';
     position: absolute;
     inset: -1px;
-    z-index: 2;
+    z-index: 3;
     border-radius: inherit;
-    background: rgb(12 16 14 / 0.5);
+    background: var(--card-dim);
   }
 
   .selected {
     transform: translateY(-18%);
     box-shadow:
-      0 0 0 3px var(--gold),
-      0 1px 0 rgb(255 255 255 / 0.9) inset,
-      0 14px 24px -10px rgb(0 0 0 / 0.6);
+      0 0 0 3px var(--card-ring),
+      var(--card-lift-shadow);
   }
 
   .fresh::after {
@@ -315,9 +401,10 @@
     position: absolute;
     top: -10px;
     left: 2px;
-    z-index: 3;
+    z-index: 4;
     padding: 1px 6px;
     border-radius: 99px;
+    font-family: var(--font-ui);
     font-size: 10px;
     font-weight: 700;
     letter-spacing: 0.04em;
@@ -331,9 +418,8 @@
     .interactive:not(:disabled):not(.selected):hover {
       transform: translateY(-10%);
       box-shadow:
-        0 0 0 2px rgb(242 196 109 / 0.7),
-        0 1px 0 rgb(255 255 255 / 0.9) inset,
-        0 12px 22px -10px rgb(0 0 0 / 0.6);
+        0 0 0 2px color-mix(in srgb, var(--card-ring) 70%, transparent),
+        var(--card-lift-shadow);
     }
   }
 </style>

@@ -138,7 +138,7 @@
 
 <style>
   .chart {
-    --chart-surface: #131b18;
+    --chart-surface: var(--surface);
     position: relative;
     width: 100%;
   }
@@ -184,13 +184,13 @@
   }
 
   .grid {
-    stroke: #232d29;
+    stroke: rgb(var(--hi) / 0.08);
     stroke-width: 1;
     shape-rendering: crispEdges;
   }
 
   .grid.zero {
-    stroke: #3a4540;
+    stroke: rgb(var(--hi) / 0.2);
   }
 
   .tick {
@@ -200,7 +200,7 @@
   }
 
   .crosshair {
-    stroke: rgb(255 255 255 / 0.3);
+    stroke: rgb(var(--hi) / 0.3);
     stroke-width: 1;
     shape-rendering: crispEdges;
   }
@@ -212,7 +212,7 @@
     min-width: 170px;
     padding: 10px 12px;
     border-radius: 10px;
-    background: rgb(12 17 15 / 0.96);
+    background: color-mix(in srgb, var(--surface-2) 96%, transparent);
     border: 1px solid var(--border-strong);
     box-shadow: var(--shadow-lg);
     pointer-events: none;

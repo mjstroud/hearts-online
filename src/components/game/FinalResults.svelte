@@ -99,7 +99,7 @@
     align-items: center;
     padding: 10px 14px;
     border-radius: 14px;
-    background: rgb(255 255 255 / 0.03);
+    background: rgb(var(--hi) / 0.03);
     border: 1px solid var(--border);
     text-align: left;
   }

@@ -1,5 +1,7 @@
 ---
 import '../styles/global.css';
+import '../styles/themes.css';
+import { THEMES, THEME_COOKIE, themeById, themeFontsHref } from '../lib/themes';
 import { DECK_COOKIE, SITE_NAME, avatarColor, initials } from '../lib/ui';
 
 interface Props {
@@ -23,15 +25,17 @@ const nav = user
 const active = (href: string) => path === href || path.startsWith(href + '/');
 // Card colour preference lives in a cookie so the server renders the right deck (no flash).
 const deck = Astro.cookies.get(DECK_COOKIE)?.value === 'four' ? 'four' : 'two';
+const theme = themeById(Astro.cookies.get(THEME_COOKIE)?.value);
+const themeFonts = themeFontsHref(theme);
 ---
 
 <!doctype html>
-<html lang="en" data-deck={deck}>
+<html lang="en" data-deck={deck} data-theme={theme.id}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="description" content={description} />
-    <meta name="theme-color" content="#090d0c" />
+    <meta name="theme-color" content={theme.bg} />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -39,6 +43,7 @@ const deck = Astro.cookies.get(DECK_COOKIE)?.value === 'four' ? 'four' : 'two';
       href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT@9..144,400..700,0..100&family=Geist:wght@400..700&family=Geist+Mono:wght@500&display=swap"
       rel="stylesheet"
     />
+    {themeFonts && <link id="theme-fonts" rel="stylesheet" href={themeFonts} />}
     <title>{pageTitle}</title>
   </head>
   <body class:list={{ full }}>
@@ -52,6 +57,34 @@ const deck = Astro.cookies.get(DECK_COOKIE)?.value === 'four' ? 'four' : 'two';
           {nav.map((item) => <a href={item.href} class:list={{ active: active(item.href) }}>{item.label}</a>)}
         </nav>
         <div class="header-actions">
+          <details class="theme-menu">
+            <summary aria-label="Theme" title="Try a theme">
+              <span class="theme-dot" aria-hidden="true"></span>
+              <span class="theme-label">Theme</span>
+            </summary>
+            <div class="menu panel theme-list">
+              <div class="menu-head">
+                <strong>Theme</strong>
+                <span class="faint">Just for testing. Only you see your pick.</span>
+              </div>
+              {
+                THEMES.map((t) => (
+                  <button type="button" data-theme-pick={t.id} aria-pressed={t.id === theme.id ? 'true' : 'false'}>
+                    <span class="swatch" aria-hidden="true" style={`--a: ${t.swatch[0]}; --b: ${t.swatch[1]}; --c: ${t.swatch[2]}`}>
+                      <i />
+                      <i />
+                      <i />
+                    </span>
+                    <span class="theme-text">
+                      <strong>{t.name}</strong>
+                      <small>{t.blurb}</small>
+                    </span>
+                  </button>
+                ))
+              }
+              <a class="theme-lab" href="/themes">Open the theme lab →</a>
+            </div>
+          </details>
           {
             user ? (
               <details class="user-menu">
@@ -100,13 +133,30 @@ const deck = Astro.cookies.get(DECK_COOKIE)?.value === 'four' ? 'four' : 'two';
   </body>
 </html>
 
+<script>
+  import { setTheme } from '../lib/themes';
+
+  const menu = document.querySelector<HTMLDetailsElement>('.theme-menu');
+  const picks = document.querySelectorAll<HTMLButtonElement>('[data-theme-pick]');
+  function pick(id: string) {
+    setTheme(id);
+    for (const b of picks) b.setAttribute('aria-pressed', String(b.dataset.themePick === id));
+    document.dispatchEvent(new CustomEvent('themechange', { detail: id }));
+  }
+  for (const b of picks) b.addEventListener('click', () => pick(b.dataset.themePick!));
+  // Close the menu on an outside click, like a native dropdown.
+  document.addEventListener('click', (e) => {
+    if (menu?.open && !menu.contains(e.target as Node)) menu.open = false;
+  });
+</script>
+
 <style>
   .site-header {
     position: sticky;
     top: 0;
     z-index: 50;
     /* Solid rather than backdrop-blurred: a live blur repaints on every scroll frame. */
-    background: rgb(10 15 13 / 0.96);
+    background: var(--header-bg);
     border-bottom: 1px solid var(--border);
   }
 
@@ -167,12 +217,12 @@ const deck = Astro.cookies.get(DECK_COOKIE)?.value === 'four' ? 'four' : 'two';
 
   .nav a:hover {
     color: var(--text);
-    background: rgb(255 255 255 / 0.04);
+    background: rgb(var(--hi) / 0.04);
   }
 
   .nav a.active {
     color: var(--text);
-    background: rgb(255 255 255 / 0.07);
+    background: rgb(var(--hi) / 0.07);
   }
 
   .header-actions {
@@ -205,7 +255,7 @@ const deck = Astro.cookies.get(DECK_COOKIE)?.value === 'four' ? 'four' : 'two';
 
   .user-menu summary:hover,
   .user-menu[open] summary {
-    background: rgb(255 255 255 / 0.05);
+    background: rgb(var(--hi) / 0.05);
     border-color: var(--border);
   }
 
@@ -245,7 +295,127 @@ const deck = Astro.cookies.get(DECK_COOKIE)?.value === 'four' ? 'four' : 'two';
 
   .menu a:hover,
   .menu button:hover {
-    background: rgb(255 255 255 / 0.06);
+    background: rgb(var(--hi) / 0.06);
+  }
+
+  .theme-menu {
+    position: relative;
+  }
+
+  .theme-menu summary {
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 34px;
+    padding: 0 12px 0 8px;
+    border-radius: 99px;
+    border: 1px solid var(--border);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+  }
+
+  .theme-menu summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .theme-menu summary:hover,
+  .theme-menu[open] summary {
+    color: var(--text);
+    background: rgb(var(--hi) / 0.05);
+  }
+
+  .theme-dot {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: conic-gradient(var(--heart) 0 25%, var(--gold) 0 50%, var(--felt-1) 0 75%, var(--sky) 0);
+    box-shadow: 0 0 0 1.5px rgb(var(--hi) / 0.2);
+  }
+
+  .theme-list {
+    min-width: 290px;
+    gap: 2px;
+  }
+
+  .theme-list button {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .theme-list button[aria-pressed='true'] {
+    background: rgb(var(--hi) / 0.08);
+    box-shadow: inset 0 0 0 1px var(--border-strong);
+  }
+
+  .swatch {
+    flex: none;
+    position: relative;
+    width: 44px;
+    height: 32px;
+    border-radius: 8px;
+    background: var(--a);
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.12);
+  }
+
+  .swatch i:nth-child(1) {
+    position: absolute;
+    left: 9px;
+    top: 6px;
+    width: 14px;
+    height: 20px;
+    border-radius: 3px;
+    background: var(--b);
+    border: 1.5px solid rgb(255 255 255 / 0.85);
+    transform: rotate(-8deg);
+  }
+
+  .swatch i:nth-child(2) {
+    position: absolute;
+    left: 21px;
+    top: 5px;
+    width: 14px;
+    height: 20px;
+    border-radius: 3px;
+    background: #fbf8f2;
+    transform: rotate(7deg);
+  }
+
+  .swatch i:nth-child(3) {
+    position: absolute;
+    right: -3px;
+    bottom: -3px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--c);
+    box-shadow: 0 0 0 2px var(--surface);
+  }
+
+  .theme-text {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.3;
+  }
+
+  .theme-text strong {
+    font-size: 14px;
+  }
+
+  .theme-text small {
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .theme-lab {
+    margin-top: 4px;
+    border-top: 1px solid var(--border);
+    border-radius: 0 0 8px 8px !important;
+    font-size: 13px !important;
+    color: var(--muted);
   }
 
   .site-footer {
@@ -260,13 +430,21 @@ const deck = Astro.cookies.get(DECK_COOKIE)?.value === 'four' ? 'four' : 'two';
     }
 
     .brand-name,
+    .theme-label,
     .user-name {
       display: none;
     }
 
     .nav a {
-      padding: 7px 9px;
+      padding: 7px;
       font-size: 13.5px;
+      white-space: nowrap;
+    }
+
+    .theme-menu summary {
+      width: 34px;
+      padding: 0;
+      justify-content: center;
     }
   }
 </style>

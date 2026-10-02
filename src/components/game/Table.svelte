@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { fade, fly, scale } from 'svelte/transition';
   import { type Card, SUIT_SYMBOL, cardLabel, suitOf } from '../../lib/engine/cards';
   import type { Trick } from '../../lib/engine/hand';
@@ -101,18 +102,39 @@
   const shown = $derived(t.current && t.current.plays.length > 0 ? t.current : held);
   const showingWinner = $derived(!!shown && shown.winner !== null);
 
+  // ----- Card shape and hand spread come from the theme (CSS tokens on <html>)
+  let look = $state({ aspect: 1.4, step: 0.74, arc: 1 });
+  function readLook() {
+    const css = getComputedStyle(document.documentElement);
+    const num = (name: string, fallback: number) => {
+      const v = parseFloat(css.getPropertyValue(name));
+      return Number.isFinite(v) ? v : fallback;
+    };
+    look = { aspect: num('--card-aspect', 1.4), step: num('--hand-step', 0.74), arc: num('--hand-arc', 1) };
+  }
+  onMount(() => {
+    readLook();
+    document.addEventListener('themechange', readLook);
+    return () => document.removeEventListener('themechange', readLook);
+  });
+
   // ----- Responsive sizing
   let arenaW = $state(900);
+  let arenaH = $state(470);
   let handW = $state(900);
-  const trickW = $derived(arenaW < 520 ? 56 : arenaW < 760 ? 70 : 84);
+  // Trick cards grow with the table so the middle of the felt doesn't feel empty.
+  const trickW = $derived(Math.round(Math.max(56, Math.min(124, arenaW * 0.11, (arenaH * 0.34) / look.aspect))));
   const cardW = $derived(handW < 520 ? 62 : handW < 760 ? 78 : 96);
   const handCount = $derived(t.myHand.length);
-  const step = $derived(Math.max(14, Math.min(cardW * 0.74, (handW - cardW - 8) / Math.max(1, handCount - 1))));
+  const step = $derived(Math.max(14, Math.min(cardW * look.step, (handW - cardW - 8) / Math.max(1, handCount - 1))));
   const handOffset = $derived((handW - (cardW + step * Math.max(0, handCount - 1))) / 2);
   const mid = $derived((handCount - 1) / 2);
-  const spread = $derived(Math.min(2.4, 24 / Math.max(handCount, 1)));
-  const ARC = 0.5;
-  const arcDrop = $derived(mid ** 2 * ARC);
+  const spread = $derived(Math.min(2.4, 24 / Math.max(handCount, 1)) * look.arc);
+  const arc = $derived(0.5 * look.arc);
+  const arcDrop = $derived(mid ** 2 * arc);
+
+  // Everyone holds the same number of cards, so one counter covers the whole table.
+  const tricksLeft = $derived(t.phase === 'playing' ? t.totalTricks - t.trickNumber + 1 : t.totalTricks);
 
   // You sit at the bottom, so "left" is screen-left.
   function passArrow(label: string): string {
@@ -169,15 +191,15 @@
         <span class="badge num">Hand {t.handNumber}</span>
         <span class="badge" class:gold={t.phase === 'passing'}>⇄ {t.passLabel}</span>
         {#if t.phase === 'playing'}
-          <span class="badge num">Trick {t.trickNumber}/{t.totalTricks}</span>
           <span class="badge" class:heart={t.heartsBroken}>{t.heartsBroken ? '♥ Broken' : '♡ Not broken'}</span>
         {/if}
       </div>
     </div>
 
-    <div class="arena" bind:clientWidth={arenaW} class:five={n === 5} style={`--tw: ${trickW}px`}>
+    <div class="arena" bind:clientWidth={arenaW} bind:clientHeight={arenaH} class:five={n === 5} style={`--tw: ${trickW}px`}>
+      <div class="rail">
       <div class="felt">
-        <div class="felt-logo" aria-hidden="true">♥</div>
+        <div class="felt-mark" aria-hidden="true"></div>
 
         <div class="center">
           {#if shown}
@@ -224,26 +246,40 @@
           {/if}
         </div>
       </div>
+      </div>
+
+      <div class="counter" title={t.phase === 'passing' ? 'Cards in each hand' : 'Tricks left in this hand, including this one'}>
+        <strong class="num">{tricksLeft}</strong>
+        <span class="counter-text">
+          <span>{t.phase === 'passing' ? 'cards each' : tricksLeft === 1 ? 'trick left' : 'tricks left'}</span>
+          <span class="dots" aria-hidden="true">
+            {#each Array(t.totalTricks) as _, i (i)}<i class:on={i < tricksLeft}></i>{/each}
+          </span>
+        </span>
+      </div>
 
       {#each view.players as p (p.userId)}
         {@const pos = posOf(p.seat)}
         {@const acting = view.toAct.includes(p.seat)}
         <div class={`seat at-${pos}`} class:acting class:me={p.seat === me}>
-          <div class="seat-avatar">
-            <span class="avatar" style={`--size: ${arenaW < 520 ? 38 : 46}px; --avatar: ${avatarColor(p.username)}`}>
-              {p.isBot ? BOT_AVATAR : initials(p.name)}
-            </span>
-            {#if !p.isBot}<span class="presence" class:on={p.online}></span>{/if}
-            {#if p.seat !== me}<span class="cards-left num" title="Cards in hand">{t.handSizes[p.seat]}</span>{/if}
-          </div>
-          <div class="seat-name">{p.seat === me ? 'You' : p.name}</div>
-          <div class="seat-score num">
-            <strong>{p.score}</strong>
-            {#if t.phase === 'playing'}
-              <span class:pos={t.pointsTaken[p.seat] > 0} class:neg={t.pointsTaken[p.seat] < 0}>
-                {t.pointsTaken[p.seat] === 0 ? '·' : signed(t.pointsTaken[p.seat])}
+          <div class="plaque">
+            <span class="seat-avatar">
+              <span class="avatar" style={`--size: ${arenaW < 520 ? 34 : 38}px; --avatar: ${avatarColor(p.username)}`}>
+                {p.isBot ? BOT_AVATAR : initials(p.name)}
               </span>
-            {/if}
+              {#if !p.isBot}<span class="presence" class:on={p.online}></span>{/if}
+            </span>
+            <span class="plaque-text">
+              <span class="seat-name">{p.seat === me ? 'You' : p.name}</span>
+              <span class="seat-score num">
+                <strong>{p.score}</strong>
+                {#if t.phase === 'playing'}
+                  <span class:pos={t.pointsTaken[p.seat] > 0} class:neg={t.pointsTaken[p.seat] < 0}>
+                    {t.pointsTaken[p.seat] === 0 ? '·' : signed(t.pointsTaken[p.seat])}
+                  </span>
+                {/if}
+              </span>
+            </span>
           </div>
           <div class="seat-tags">
             {#if t.phase === 'passing'}
@@ -269,12 +305,12 @@
         {/if}
       </div>
 
-      <div class="hand" bind:clientWidth={handW} style={`height: ${cardW * 1.4 + 34 + arcDrop}px`}>
+      <div class="hand" bind:clientWidth={handW} style={`height: ${cardW * look.aspect + 34 + arcDrop}px; --rack-w: ${cardW + step * Math.max(0, handCount - 1) + 28}px`}>
         {#each t.myHand as card, i (card)}
           {@const playable = needPass || (myTurn && t.legal.includes(card))}
           <div
             class="slot"
-            style={`transform: translate(${handOffset + i * step}px, ${(i - mid) ** 2 * ARC}px) rotate(${(i - mid) * spread}deg); z-index: ${i}`}
+            style={`transform: translate(${handOffset + i * step}px, ${(i - mid) ** 2 * arc}px) rotate(${(i - mid) * spread}deg); z-index: ${i}`}
             out:fly={{ y: -60, duration: 200 }}
           >
             <PlayingCard
@@ -415,38 +451,55 @@
   /* ---------- Arena ---------- */
   .arena {
     position: relative;
-    height: clamp(330px, 50vh, 500px);
+    height: clamp(340px, calc(100dvh - 420px), 580px);
+  }
+
+  .rail {
+    position: absolute;
+    inset: 34px 64px 30px;
+    padding: var(--rail);
+    border-radius: var(--felt-radius);
+    background: var(--rail-bg);
+    box-shadow: var(--rail-shadow);
   }
 
   .felt {
-    position: absolute;
-    inset: 34px 64px 30px;
-    border-radius: 999px;
-    background:
-      radial-gradient(ellipse at 50% 40%, rgb(255 255 255 / 0.08), transparent 60%),
-      radial-gradient(ellipse at center, var(--felt-1) 0%, var(--felt-2) 55%, var(--felt-3) 100%);
-    box-shadow:
-      inset 0 0 0 1px rgb(255 255 255 / 0.06),
-      inset 0 0 0 10px rgb(0 0 0 / 0.22),
-      inset 0 0 0 11px rgb(255 255 255 / 0.05),
-      inset 0 20px 60px rgb(0 0 0 / 0.45),
-      0 30px 70px -20px rgb(0 0 0 / 0.7);
+    position: relative;
+    height: 100%;
+    border-radius: max(0px, calc(var(--felt-radius) - var(--rail)));
+    background: var(--felt-bg);
+    box-shadow: var(--felt-shadow);
     overflow: hidden;
   }
 
-  .felt-logo {
+  .felt::after {
+    content: '';
     position: absolute;
-    inset: 0;
-    display: grid;
-    place-items: center;
-    font-size: 140px;
-    color: rgb(0 0 0 / 0.07);
+    inset: var(--inlay-inset);
+    border: var(--inlay);
+    outline: var(--inlay-2);
+    outline-offset: 3px;
+    border-radius: max(0px, calc(var(--felt-radius) - var(--rail) - var(--inlay-inset)));
     pointer-events: none;
   }
 
+  .felt-mark {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: var(--felt-mark-size);
+    height: var(--felt-mark-size);
+    transform: translate(-50%, -50%);
+    background-color: var(--felt-mark-color);
+    -webkit-mask: var(--felt-mark) center / contain no-repeat;
+    mask: var(--felt-mark) center / contain no-repeat;
+    pointer-events: none;
+  }
+
+  /* Nudged down a touch: the top seat's plaque and fan take more room than yours. */
   .center {
     position: absolute;
-    inset: 0;
+    inset: 16px 0 0;
     display: grid;
     place-items: center;
   }
@@ -454,7 +507,7 @@
   .trick {
     position: relative;
     width: var(--tw);
-    height: calc(var(--tw) * 1.4);
+    height: calc(var(--tw) * var(--card-aspect));
   }
 
   .played {
@@ -530,7 +583,7 @@
     flex-direction: column;
     align-items: center;
     gap: 2px;
-    color: rgb(255 255 255 / 0.8);
+    color: var(--felt-ink);
     text-align: center;
     font-size: 13px;
   }
@@ -539,7 +592,7 @@
     font-family: var(--font-display);
     font-size: 22px;
     font-weight: 560;
-    color: #fff;
+    color: var(--felt-strong);
   }
 
   .big-arrow {
@@ -558,7 +611,7 @@
   .crib-stack {
     position: relative;
     width: calc(var(--tw) * 0.72 + 18px);
-    height: calc(var(--tw) * 0.72 * 1.4 + 8px);
+    height: calc(var(--tw) * 0.72 * var(--card-aspect) + 8px);
   }
 
   .crib-stack span {
@@ -578,7 +631,7 @@
     font-weight: 600;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: rgb(255 255 255 / 0.75);
+    color: var(--felt-ink);
   }
 
   /* ---------- Seats ---------- */
@@ -588,48 +641,130 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 3px;
-    width: 116px;
-    text-align: center;
+    gap: 4px;
   }
 
+  /* Each plaque centres on the felt's edge; tags hang off the far side. */
   .seat.at-top {
-    top: 0;
+    top: 12px;
     left: 50%;
-    transform: translate(-50%, -6px);
+    transform: translateX(-50%);
   }
   .seat.at-bottom {
-    bottom: 0;
+    top: calc(100% - 54px);
     left: 50%;
-    transform: translate(-50%, 18px);
+    transform: translateX(-50%);
   }
   .seat.at-left {
     left: 0;
-    top: 50%;
-    transform: translate(-6px, -50%);
+    top: calc(50% - 23px);
+    align-items: flex-start;
   }
   .seat.at-right {
     right: 0;
-    top: 50%;
-    transform: translate(6px, -50%);
+    top: calc(50% - 23px);
+    align-items: flex-end;
   }
   .seat.at-top-left {
-    top: 0;
-    left: 22%;
-    transform: translate(-50%, -2px);
+    top: 12px;
+    left: 24%;
+    transform: translateX(-50%);
   }
   .seat.at-top-right {
-    top: 0;
-    right: 22%;
-    transform: translate(50%, -2px);
+    top: 12px;
+    right: 24%;
+    transform: translateX(50%);
+  }
+
+  .plaque {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    max-width: 190px;
+    padding: 3px 14px 3px 3px;
+    border-radius: var(--plaque-radius);
+    background: var(--plaque-bg);
+    border: 1px solid var(--plaque-border);
+    color: var(--plaque-ink);
+    box-shadow: var(--plaque-shadow);
+    transition:
+      border-color 0.2s,
+      box-shadow 0.2s;
+  }
+
+  .acting .plaque {
+    border-color: var(--gold);
+    box-shadow:
+      0 0 0 1px var(--gold),
+      0 0 22px -4px var(--gold),
+      var(--plaque-shadow);
+  }
+
+  .plaque-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    line-height: 1.2;
+  }
+
+  /* ----- The table's one counter: tricks left this hand (or cards each while passing) ----- */
+  .counter {
+    position: absolute;
+    z-index: 2;
+    left: 12%;
+    bottom: 22%;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 6px 12px 6px 10px;
+    border-radius: 12px;
+    background: var(--counter-bg);
+    color: var(--counter-ink);
+    pointer-events: auto;
+  }
+
+  .counter strong {
+    font-size: 26px;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: -0.02em;
+  }
+
+  .counter-text {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    line-height: 1;
+    opacity: 0.9;
+  }
+
+  .dots {
+    display: flex;
+    gap: 3px;
+  }
+
+  .dots i {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: color-mix(in srgb, currentColor 22%, transparent);
+  }
+
+  .dots i.on {
+    background: var(--counter-dot);
   }
 
   .seat-avatar {
     position: relative;
+    flex: none;
     border-radius: 50%;
-    padding: 3px;
-    background: rgb(9 13 12 / 0.75);
-    box-shadow: 0 6px 16px rgb(0 0 0 / 0.4);
+    padding: 2px;
   }
 
   .seat-avatar .avatar {
@@ -655,47 +790,26 @@
 
   .presence {
     position: absolute;
-    right: 2px;
-    bottom: 2px;
+    right: 1px;
+    bottom: 1px;
     width: 11px;
     height: 11px;
     border-radius: 50%;
     background: var(--faint);
-    border: 2px solid #0b120f;
+    border: 2px solid var(--bg);
   }
 
   .presence.on {
     background: var(--mint);
   }
 
-  .cards-left {
-    position: absolute;
-    top: -2px;
-    right: -8px;
-    min-width: 22px;
-    height: 20px;
-    padding: 0 5px;
-    border-radius: 6px;
-    display: grid;
-    place-items: center;
-    font-size: 11px;
-    font-weight: 700;
-    color: #fff;
-    background: linear-gradient(160deg, #c8344a, #8e1830);
-    border: 1px solid rgb(255 255 255 / 0.4);
-    box-shadow: 0 2px 6px rgb(0 0 0 / 0.4);
-  }
-
   .seat-name {
-    max-width: 100%;
-    padding: 1px 8px;
-    border-radius: 6px;
-    font-size: 13px;
-    font-weight: 600;
+    max-width: 130px;
+    font-size: 13.5px;
+    font-weight: 650;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    background: rgb(9 13 12 / 0.6);
   }
 
   .acting .seat-name {
@@ -707,13 +821,10 @@
     gap: 6px;
     align-items: baseline;
     font-size: 12px;
-    padding: 1px 8px;
-    border-radius: 6px;
-    background: rgb(9 13 12 / 0.6);
   }
 
   .seat-score strong {
-    font-size: 14px;
+    font-size: 13.5px;
   }
 
   .seat-score span {
@@ -721,7 +832,7 @@
   }
 
   .seat-score .pos {
-    color: #ff98a4;
+    color: var(--heart-ink);
   }
 
   .seat-score .neg {
@@ -729,6 +840,8 @@
   }
 
   .seat-tags {
+    position: relative;
+    z-index: 2;
     display: flex;
     gap: 3px;
     flex-wrap: wrap;
@@ -740,7 +853,7 @@
     font-weight: 700;
     padding: 1px 6px;
     border-radius: 5px;
-    background: rgb(0 0 0 / 0.5);
+    background: rgb(var(--lo) / 0.5);
     color: var(--muted);
     white-space: nowrap;
   }
@@ -794,6 +907,23 @@
     margin-top: 10px;
   }
 
+  /* Optional ledge your hand stands on, for tile themes. */
+  .hand::after {
+    content: '';
+    display: var(--rack);
+    position: absolute;
+    z-index: 40;
+    left: 50%;
+    bottom: 0;
+    width: min(100%, var(--rack-w));
+    height: 18px;
+    transform: translateX(-50%);
+    border-radius: 9px;
+    background: var(--rack-bg);
+    box-shadow: var(--rack-shadow);
+    pointer-events: none;
+  }
+
   .slot {
     position: absolute;
     top: 26px;
@@ -841,7 +971,7 @@
 
   .side-links a:hover {
     color: var(--text);
-    background: rgb(255 255 255 / 0.05);
+    background: rgb(var(--hi) / 0.05);
   }
 
   .small {
@@ -921,36 +1051,76 @@
       height: 330px;
     }
 
-    .felt {
+    .rail {
       inset: 30px 34px 26px;
     }
 
-    .felt-logo {
-      font-size: 90px;
+    .counter {
+      left: -2px;
+      bottom: auto;
+      top: -2px;
+      padding: 5px 9px 5px 8px;
     }
 
-    .seat {
-      width: 84px;
+    .counter strong {
+      font-size: 20px;
     }
 
-    .seat.at-left {
-      transform: translate(-14px, -50%);
+    .dots {
+      display: none;
     }
 
-    .seat.at-right {
-      transform: translate(14px, -50%);
+    .felt-mark {
+      width: calc(var(--felt-mark-size) * 0.65);
+      height: calc(var(--felt-mark-size) * 0.65);
     }
 
-    .seat.at-top-left {
-      left: 20%;
+    /* Narrow tables stack each plaque: avatar over name and score. */
+    .plaque {
+      flex-direction: column;
+      gap: 1px;
+      padding: 3px 8px 4px;
+      max-width: 92px;
     }
 
-    .seat.at-top-right {
-      right: 20%;
+    .plaque-text {
+      align-items: center;
     }
 
     .seat-name {
+      max-width: 76px;
       font-size: 12px;
+    }
+
+    .seat.at-top,
+    .seat.at-top-left,
+    .seat.at-top-right {
+      top: -6px;
+    }
+
+    .seat.at-bottom {
+      top: calc(100% - 64px);
+    }
+
+    .seat.at-left,
+    .seat.at-right {
+      top: calc(50% - 40px);
+    }
+
+    .seat.at-left {
+      left: -4px;
+    }
+
+    .seat.at-right {
+      right: -4px;
+    }
+
+    .seat.at-top-left {
+      left: 22%;
+    }
+
+    .seat.at-top-right {
+      right: 22%;
     }
 
     .game-name {

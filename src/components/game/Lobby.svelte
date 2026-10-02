@@ -166,7 +166,7 @@
     font-family: var(--font-mono);
     font-size: 26px;
     font-weight: 500;
-    background: rgb(0 0 0 / 0.3);
+    background: rgb(var(--lo) / 0.3);
     border: 1px solid var(--border-strong);
     color: var(--gold);
   }
@@ -190,7 +190,7 @@
     gap: 12px;
     padding: 10px 12px;
     border-radius: 14px;
-    background: rgb(255 255 255 / 0.025);
+    background: rgb(var(--hi) / 0.025);
     border: 1px solid var(--border);
     min-height: 60px;
   }

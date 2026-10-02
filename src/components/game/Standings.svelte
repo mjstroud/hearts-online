@@ -59,7 +59,7 @@
   }
 
   li.me {
-    background: rgb(255 255 255 / 0.04);
+    background: rgb(var(--hi) / 0.04);
   }
 
   .rank {
@@ -90,7 +90,7 @@
     display: block;
     height: 3px;
     border-radius: 2px;
-    background: rgb(255 255 255 / 0.07);
+    background: rgb(var(--hi) / 0.07);
     overflow: hidden;
   }
 

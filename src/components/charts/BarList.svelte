@@ -104,7 +104,7 @@
     bottom: calc(100% + 6px);
     padding: 6px 10px;
     border-radius: 8px;
-    background: rgb(12 17 15 / 0.96);
+    background: color-mix(in srgb, var(--surface-2) 96%, transparent);
     border: 1px solid var(--border-strong);
     box-shadow: var(--shadow-lg);
     font-size: 12.5px;

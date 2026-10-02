@@ -306,7 +306,7 @@
     padding: 2px;
     gap: 2px;
     border-radius: 9px;
-    background: rgb(0 0 0 / 0.3);
+    background: rgb(var(--lo) / 0.3);
     border: 1px solid var(--border);
   }
 

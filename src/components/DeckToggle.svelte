@@ -31,7 +31,7 @@
     padding: 8px 12px;
     border-radius: 12px;
     border: 1px solid var(--border);
-    background: rgb(0 0 0 / 0.15);
+    background: rgb(var(--lo) / 0.15);
     cursor: pointer;
     font-size: 13.5px;
     font-weight: 600;

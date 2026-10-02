@@ -1,13 +1,20 @@
 :root {
   color-scheme: dark;
 
+  /*
+   * Overlay channels: --hi lifts things off a surface (hovers, hairlines) and --lo
+   * sinks them in (inputs, wells). A light theme swaps them.
+   */
+  --hi: 255 255 255;
+  --lo: 0 0 0;
+
   --bg: #090d0c;
   --bg-2: #0d1311;
   --surface: #111916;
   --surface-2: #16201c;
   --surface-3: #1c2823;
-  --border: rgb(255 255 255 / 0.07);
-  --border-strong: rgb(255 255 255 / 0.13);
+  --border: rgb(var(--hi) / 0.07);
+  --border-strong: rgb(var(--hi) / 0.13);
   --text: #edf3ef;
   --muted: #9aaba3;
   --faint: #66766e;
@@ -20,20 +27,18 @@
   --mint: #4fd1a1;
   --mint-soft: rgb(79 209 161 / 0.14);
   --sky: #7cb4ff;
+  /* Text tints that need to stay readable on the page background. */
+  --heart-ink: #ff98a4;
+  --alert-ink: #ffb3bc;
+  --ok-ink: #a6f0d4;
 
-  --felt-1: #1f7253;
-  --felt-2: #155a40;
-  --felt-3: #0b3627;
-
-  --card-face: #fbf8f2;
-  --card-red: #d42a3f;
-  --card-black: #1a1d22;
-
-  /* Suit ink. The classic deck is two-colour; data-deck="four" switches to a four-colour deck. */
-  --suit-s: var(--card-black);
-  --suit-c: var(--card-black);
-  --suit-h: var(--card-red);
-  --suit-d: var(--card-red);
+  --header-bg: rgb(10 15 13 / 0.96);
+  --glow-1: rgb(240 71 91 / 0.09);
+  --glow-2: rgb(79 209 161 / 0.07);
+  --btn-primary: linear-gradient(180deg, #f6596b, #e23a50);
+  --btn-primary-hover: linear-gradient(180deg, #ff6a7b, #ea4459);
+  --btn-primary-ink: #fff;
+  --btn-primary-glow: rgb(240 71 91 / 0.6);
 
   --radius-sm: 8px;
   --radius: 14px;
@@ -46,11 +51,156 @@
   --font-mono: 'Geist Mono', ui-monospace, 'SFMono-Regular', Consolas, monospace;
 
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  /* ---------- Table ---------- */
+  --felt-1: #1f7253;
+  --felt-2: #155a40;
+  --felt-3: #0b3627;
+  --felt-bg:
+    radial-gradient(ellipse at 50% 40%, rgb(255 255 255 / 0.08), transparent 60%),
+    radial-gradient(ellipse at center, var(--felt-1) 0%, var(--felt-2) 55%, var(--felt-3) 100%);
+  --felt-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 0.06), inset 0 0 0 10px rgb(0 0 0 / 0.22), inset 0 0 0 11px rgb(255 255 255 / 0.05),
+    inset 0 20px 60px rgb(0 0 0 / 0.45);
+  --felt-radius: 999px;
+  /* Optional inlaid line(s) just inside the felt edge. */
+  --inlay: none;
+  --inlay-2: none;
+  --inlay-inset: 12px;
+  --felt-ink: rgb(255 255 255 / 0.8);
+  --felt-strong: #fff;
+  --felt-mark: var(--mask-h);
+  --felt-mark-color: rgb(0 0 0 / 0.07);
+  --felt-mark-size: 150px;
+  /* Optional rail (the padded edge around the playing surface). */
+  --rail: 0px;
+  --rail-bg: none;
+  --rail-shadow: 0 30px 70px -20px rgb(0 0 0 / 0.7);
+  /* Name and score plates for each seat. */
+  --plaque-bg: rgb(9 13 12 / 0.72);
+  --plaque-border: rgb(255 255 255 / 0.08);
+  --plaque-ink: var(--text);
+  --plaque-radius: 14px;
+  --plaque-shadow: 0 10px 24px -10px rgb(0 0 0 / 0.7);
+  /* The table's one "tricks left" counter. */
+  --counter-bg: rgb(0 0 0 / 0.26);
+  --counter-ink: var(--felt-strong);
+  --counter-dot: var(--gold);
+
+  /* ---------- Cards ---------- */
+  --card-aspect: 1.4;
+  --card-face: #fbf8f2;
+  --card-red: #d42a3f;
+  --card-black: #1a1d22;
+  /*
+   * Optional per-suit extras, each falling back to the plain card: face tints
+   * (--card-tint-s/h/d/c), symbol paints such as gradients (--paint-s/h/d/c), and
+   * one ink for every suit (--card-ink) for white-on-colour cards.
+   */
+  --card-sheen: linear-gradient(165deg, rgb(255 255 255 / 0.75) 0%, transparent 65%, rgb(90 70 30 / 0.06) 100%);
+  --card-border: 1px solid rgb(0 0 0 / 0.2);
+  --card-radius: 0.1;
+  --card-shadow: 0 1px 0 rgb(255 255 255 / 0.9) inset, 0 1px 2px rgb(0 0 0 / 0.3), 0 6px 14px -6px rgb(0 0 0 / 0.55);
+  --card-lift-shadow: 0 1px 0 rgb(255 255 255 / 0.9) inset, 0 14px 24px -10px rgb(0 0 0 / 0.6);
+  --card-ring: var(--gold);
+  --card-dim: rgb(12 16 14 / 0.5);
+  /* A thin printed frame inside the card edge. */
+  --card-frame: none;
+  --card-frame-line: 1px solid currentColor;
+  --card-frame-inset: 4cqi;
+  /* Corner index. Sizes are in cqi: hundredths of the card's width. */
+  --index-font: var(--font-ui);
+  --index-weight: 800;
+  --index-vars: normal;
+  --index-tracking: -0.04em;
+  --index-rank: 30cqi;
+  --index-suit: 19cqi;
+  --index-gap: 1.5cqi;
+  --index-width: 30cqi;
+  --index-top: 5cqi;
+  --index-left: 3cqi;
+  --index-br: flex;
+  --index-align: center;
+  /* The one big symbol. --art-* picks filled (--mask-*) or outline (--line-*) shapes. */
+  --card-solo: grid;
+  --solo-size: 34cqi;
+  --solo-ace: 50cqi;
+  --solo-place: center;
+  --solo-pad: 0;
+  --solo-shift: 0 0;
+  --solo-opacity: 1;
+  --art-s: var(--mask-s);
+  --art-h: var(--mask-h);
+  --art-d: var(--mask-d);
+  --art-c: var(--mask-c);
+  /* Face cards: the classic framed letter (--court), or the big symbol and/or a crown. */
+  --court: flex;
+  --face-solo: none;
+  --face-sym: block;
+  --crown: none;
+  --crown-fill: currentColor;
+  --crown-stroke: none;
+  --court-inset: 35cqi 28cqi;
+  --court-bg:
+    radial-gradient(circle at 50% 30%, rgb(255 255 255 / 0.9), transparent 70%),
+    repeating-linear-gradient(45deg, rgb(0 0 0 / 0.035) 0 2px, transparent 2px 6px);
+  --court-border: 1.5px solid currentColor;
+  --court-radius: 5cqi;
+  --court-font: var(--font-display);
+  --court-weight: 650;
+  --court-vars: 'SOFT' 100, 'opsz' 72;
+  --court-letter: 34cqi;
+  --court-sym: 15cqi;
+  /* Card back: an edge colour, then an inset patterned panel with an emblem. */
+  --back-edge:
+    radial-gradient(circle at 50% 50%, rgb(255 255 255 / 0.12), transparent 55%),
+    repeating-linear-gradient(45deg, rgb(255 255 255 / 0.07) 0 2px, transparent 2px 9px),
+    repeating-linear-gradient(-45deg, rgb(255 255 255 / 0.07) 0 2px, transparent 2px 9px), linear-gradient(160deg, #c8344a, #8e1830);
+  --back-border: 1px solid rgb(0 0 0 / 0.3);
+  --back-shadow: var(--card-shadow);
+  --back-inset: 6cqi;
+  --back-panel: none;
+  --back-frame: 1.5px solid rgb(255 255 255 / 0.55);
+  --back-emblem: var(--mask-h);
+  --back-emblem-ink: rgb(255 255 255 / 0.9);
+  --back-emblem-size: 26cqi;
+  /* The +13 / −10 value tags on the Queen of Spades and Jack of Diamonds. */
+  --tag-bg: #1a1d22;
+  --tag-ink: #fff;
+  --tag-good-bg: linear-gradient(180deg, #f7d58e, #e2a93f);
+  --tag-good-ink: #3b2604;
+  --tag-x: 50%;
+  --tag-bottom: 4cqi;
+  /* Your hand, read by the table: the widest gap between cards (as a fraction of a card's width) and how much it fans. */
+  --hand-step: 0.74;
+  --hand-arc: 1;
+  --rack: none;
+  --rack-bg: none;
+  --rack-shadow: none;
+
+  /* Suit ink. The classic deck is two-colour; data-deck="four" switches to a four-colour deck. */
+  --suit-s: var(--card-black);
+  --suit-c: var(--card-black);
+  --suit-h: var(--card-red);
+  --suit-d: var(--card-red);
+  --four-d: #1f63cc;
+  --four-c: #138a4b;
+
+  /* Suit shapes, drawn once and used as masks so every symbol is crisp at any size. */
+  --mask-h: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M50 93C46 87 7 63 5 36 4 18 17 6 31 6c9 0 16 5 19 13 3-8 10-13 19-13 14 0 27 12 26 30-2 27-41 51-45 57z'/%3E%3C/svg%3E");
+  --mask-d: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M50 3C59 21 71 37 88 50 71 63 59 79 50 97 41 79 29 63 12 50 29 37 41 21 50 3z'/%3E%3C/svg%3E");
+  --mask-s: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M50 4C56 18 94 36 94 60 94 74 83 82 72 82 64 82 57 78 54 73 55 83 58 90 66 96H34C42 90 45 83 46 73 43 78 36 82 28 82 17 82 6 74 6 60 6 36 44 18 50 4z'/%3E%3C/svg%3E");
+  --mask-c: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='27' r='20'/%3E%3Ccircle cx='27' cy='57' r='20'/%3E%3Ccircle cx='73' cy='57' r='20'/%3E%3Ccircle cx='50' cy='50' r='12'/%3E%3Cpath d='M47 58C47 78 43 88 33 96H67C57 88 53 78 53 58z'/%3E%3C/svg%3E");
+  /* The same shapes as outlines, for line-art themes. */
+  --line-h: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M50 93C46 87 7 63 5 36 4 18 17 6 31 6c9 0 16 5 19 13 3-8 10-13 19-13 14 0 27 12 26 30-2 27-41 51-45 57z' fill='none' stroke='%23000' stroke-width='5' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --line-d: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M50 3C59 21 71 37 88 50 71 63 59 79 50 97 41 79 29 63 12 50 29 37 41 21 50 3z' fill='none' stroke='%23000' stroke-width='5' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --line-s: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M50 4C56 18 94 36 94 60 94 74 83 82 72 82 64 82 57 78 54 73 55 83 58 90 66 96H34C42 90 45 83 46 73 43 78 36 82 28 82 17 82 6 74 6 60 6 36 44 18 50 4z' fill='none' stroke='%23000' stroke-width='5' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --line-c: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M33.3 38A20 20 0 1 1 66.7 38 20 20 0 1 1 56 67.5C56 80 59 90 67 96H33C41 90 44 80 44 67.5A20 20 0 1 1 33.3 38z' fill='none' stroke='%23000' stroke-width='5' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 
 :root[data-deck='four'] {
-  --suit-d: #1f63cc;
-  --suit-c: #138a4b;
+  --suit-d: var(--four-d);
+  --suit-c: var(--four-c);
 }
 
 *,
@@ -87,8 +237,8 @@ body::before {
   z-index: -1;
   pointer-events: none;
   background:
-    radial-gradient(1200px 600px at 10% -10%, rgb(240 71 91 / 0.09), transparent 60%),
-    radial-gradient(900px 600px at 110% 10%, rgb(79 209 161 / 0.07), transparent 60%);
+    radial-gradient(1200px 600px at 10% -10%, var(--glow-1), transparent 60%),
+    radial-gradient(900px 600px at 110% 10%, var(--glow-2), transparent 60%);
   will-change: transform;
 }
 
@@ -115,7 +265,7 @@ p {
 
 a {
   color: inherit;
-  text-decoration-color: rgb(255 255 255 / 0.25);
+  text-decoration-color: rgb(var(--hi) / 0.25);
   text-underline-offset: 3px;
 }
 
@@ -244,8 +394,8 @@ a:hover {
 }
 
 .btn:hover {
-  border-color: rgb(255 255 255 / 0.22);
-  background: color-mix(in srgb, var(--btn-bg) 85%, white 6%);
+  border-color: rgb(var(--hi) / 0.22);
+  background: color-mix(in srgb, var(--btn-bg) 90%, rgb(var(--hi)));
 }
 
 .btn:active {
@@ -260,17 +410,17 @@ a:hover {
 }
 
 .btn-primary {
-  --btn-bg: linear-gradient(180deg, #f6596b, #e23a50);
-  --btn-fg: #fff;
+  --btn-bg: var(--btn-primary);
+  --btn-fg: var(--btn-primary-ink);
   --btn-border: rgb(255 255 255 / 0.12);
   background: var(--btn-bg);
   box-shadow:
     0 1px 0 rgb(255 255 255 / 0.25) inset,
-    0 8px 24px -8px rgb(240 71 91 / 0.6);
+    0 8px 24px -8px var(--btn-primary-glow);
 }
 
 .btn-primary:hover {
-  background: linear-gradient(180deg, #ff6a7b, #ea4459);
+  background: var(--btn-primary-hover);
 }
 
 .btn-gold {
@@ -295,12 +445,12 @@ a:hover {
 
 .btn-ghost:hover {
   color: var(--text);
-  background: rgb(255 255 255 / 0.05);
+  background: rgb(var(--hi) / 0.05);
 }
 
 .btn-danger {
   --btn-bg: rgb(240 71 91 / 0.1);
-  --btn-fg: #ff8b98;
+  --btn-fg: var(--heart-ink);
   --btn-border: rgb(240 71 91 / 0.3);
 }
 
@@ -349,7 +499,7 @@ select.input {
   padding: 0 14px;
   border-radius: 11px;
   border: 1px solid var(--border-strong);
-  background: rgb(0 0 0 / 0.25);
+  background: rgb(var(--lo) / 0.25);
   color: var(--text);
   font: inherit;
   font-size: 15px;
@@ -381,7 +531,7 @@ select.input {
   padding: 14px 16px;
   border-radius: 13px;
   border: 1px solid var(--border);
-  background: rgb(0 0 0 / 0.15);
+  background: rgb(var(--lo) / 0.15);
   cursor: pointer;
   transition:
     border-color 0.15s,
@@ -451,7 +601,7 @@ select.input {
   padding: 3px;
   gap: 3px;
   border-radius: 12px;
-  background: rgb(0 0 0 / 0.25);
+  background: rgb(var(--lo) / 0.25);
   border: 1px solid var(--border);
 }
 
@@ -479,7 +629,7 @@ select.input {
 .segmented input:checked + span {
   background: var(--surface-3);
   color: var(--text);
-  box-shadow: 0 1px 0 rgb(255 255 255 / 0.06) inset;
+  box-shadow: 0 1px 0 rgb(var(--hi) / 0.06) inset;
 }
 
 .segmented input:focus-visible + span {
@@ -492,13 +642,13 @@ select.input {
   font-size: 14px;
   border: 1px solid rgb(240 71 91 / 0.35);
   background: rgb(240 71 91 / 0.1);
-  color: #ffb3bc;
+  color: var(--alert-ink);
 }
 
 .alert.ok {
   border-color: rgb(79 209 161 / 0.35);
   background: rgb(79 209 161 / 0.1);
-  color: #a6f0d4;
+  color: var(--ok-ink);
 }
 
 /* ---------- Badges & avatars ---------- */
@@ -512,7 +662,7 @@ select.input {
   border-radius: 99px;
   font-size: 12px;
   font-weight: 600;
-  background: rgb(255 255 255 / 0.06);
+  background: rgb(var(--hi) / 0.06);
   color: var(--muted);
   border: 1px solid var(--border);
   white-space: nowrap;
@@ -520,7 +670,7 @@ select.input {
 
 .badge.heart {
   background: var(--heart-soft);
-  color: #ff98a4;
+  color: var(--heart-ink);
   border-color: rgb(240 71 91 / 0.25);
 }
 
@@ -567,7 +717,7 @@ select.input {
   overflow-x: auto;
   border-radius: var(--radius);
   border: 1px solid var(--border);
-  background: rgb(0 0 0 / 0.12);
+  background: rgb(var(--lo) / 0.12);
 }
 
 table.data {
@@ -596,7 +746,7 @@ table.data thead th {
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--faint);
-  background: rgb(255 255 255 / 0.02);
+  background: rgb(var(--hi) / 0.02);
   position: sticky;
   top: 0;
 }
@@ -606,7 +756,7 @@ table.data tbody tr:last-child td {
 }
 
 table.data tbody tr:hover td {
-  background: rgb(255 255 255 / 0.02);
+  background: rgb(var(--hi) / 0.02);
 }
 
 /* ---------- Page chrome ---------- */
