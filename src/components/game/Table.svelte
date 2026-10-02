@@ -1,11 +1,11 @@
 <script lang="ts">
-  import { flip } from 'svelte/animate';
   import { fade, fly, scale } from 'svelte/transition';
   import { type Card, SUIT_SYMBOL, cardLabel, suitOf } from '../../lib/engine/cards';
   import type { Trick } from '../../lib/engine/hand';
   import type { GameAction, GameView } from '../../lib/types';
-  import { avatarColor, initials, signed } from '../../lib/ui';
+  import { BOT_AVATAR, avatarColor, initials, signed } from '../../lib/ui';
   import PlayingCard from '../PlayingCard.svelte';
+  import DeckToggle from '../DeckToggle.svelte';
   import DevPanel from './DevPanel.svelte';
   import Standings from './Standings.svelte';
 
@@ -104,8 +104,8 @@
   // ----- Responsive sizing
   let arenaW = $state(900);
   let handW = $state(900);
-  const trickW = $derived(arenaW < 520 ? 52 : arenaW < 760 ? 66 : 80);
-  const cardW = $derived(handW < 520 ? 58 : handW < 760 ? 74 : 92);
+  const trickW = $derived(arenaW < 520 ? 56 : arenaW < 760 ? 70 : 84);
+  const cardW = $derived(handW < 520 ? 62 : handW < 760 ? 78 : 96);
   const handCount = $derived(t.myHand.length);
   const step = $derived(Math.max(14, Math.min(cardW * 0.74, (handW - cardW - 8) / Math.max(1, handCount - 1))));
   const handOffset = $derived((handW - (cardW + step * Math.max(0, handCount - 1))) / 2);
@@ -231,7 +231,7 @@
         <div class={`seat at-${pos}`} class:acting class:me={p.seat === me}>
           <div class="seat-avatar">
             <span class="avatar" style={`--size: ${arenaW < 520 ? 38 : 46}px; --avatar: ${avatarColor(p.username)}`}>
-              {p.isBot ? '🤖' : initials(p.name)}
+              {p.isBot ? BOT_AVATAR : initials(p.name)}
             </span>
             {#if !p.isBot}<span class="presence" class:on={p.online}></span>{/if}
             {#if p.seat !== me}<span class="cards-left num" title="Cards in hand">{t.handSizes[p.seat]}</span>{/if}
@@ -274,8 +274,7 @@
           {@const playable = needPass || (myTurn && t.legal.includes(card))}
           <div
             class="slot"
-            style={`left: ${handOffset + i * step}px; transform: translateY(${(i - mid) ** 2 * ARC}px) rotate(${(i - mid) * spread}deg); z-index: ${i}`}
-            animate:flip={{ duration: 260 }}
+            style={`transform: translate(${handOffset + i * step}px, ${(i - mid) ** 2 * ARC}px) rotate(${(i - mid) * spread}deg); z-index: ${i}`}
             out:fly={{ y: -60, duration: 200 }}
           >
             <PlayingCard
@@ -364,9 +363,12 @@
       </section>
     {/if}
 
-    <button class="btn btn-ghost btn-sm notify" onclick={toggleNotify}>
-      {notify ? '🔔 Turn alerts on' : '🔕 Alert me when it’s my turn'}
-    </button>
+    <div class="prefs">
+      <DeckToggle compact />
+      <button class="btn btn-ghost btn-sm" onclick={toggleNotify}>
+        {notify ? '🔔 Turn alerts on' : '🔕 Alert me when it’s my turn'}
+      </button>
+    </div>
   </aside>
 </div>
 
@@ -432,16 +434,6 @@
     overflow: hidden;
   }
 
-  .felt::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    opacity: 0.35;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.35 0'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E");
-    mix-blend-mode: overlay;
-    pointer-events: none;
-  }
-
   .felt-logo {
     position: absolute;
     inset: 0;
@@ -450,7 +442,6 @@
     font-size: 140px;
     color: rgb(0 0 0 / 0.07);
     pointer-events: none;
-    filter: blur(0.3px);
   }
 
   .center {
@@ -471,7 +462,6 @@
     inset: 0;
     transition:
       transform 0.3s var(--ease),
-      filter 0.3s,
       opacity 0.3s;
   }
 
@@ -509,13 +499,19 @@
     transform: translate(0, 46%) rotate(-2deg);
   }
 
+  /* Glow and fade with box-shadow/opacity rather than CSS filters, which are costly to repaint. */
   .played.winner {
     z-index: 5;
-    filter: drop-shadow(0 0 14px rgb(242 196 109 / 0.75));
+  }
+
+  .played.winner :global(.pc) {
+    box-shadow:
+      0 0 0 2px var(--gold),
+      0 0 22px rgb(242 196 109 / 0.6);
   }
 
   .played.loser {
-    filter: brightness(0.75);
+    opacity: 0.75;
   }
 
   .takes {
@@ -523,11 +519,10 @@
     bottom: 14%;
     padding: 5px 12px;
     border-radius: 99px;
-    background: rgb(0 0 0 / 0.45);
+    background: rgb(0 0 0 / 0.6);
     color: var(--gold);
     font-size: 13px;
     font-weight: 600;
-    backdrop-filter: blur(6px);
   }
 
   .center-note {
@@ -649,6 +644,7 @@
     border-radius: 50%;
     background: conic-gradient(from 0deg, var(--gold), var(--heart), var(--gold));
     animation: spin 2.6s linear infinite;
+    will-change: transform;
   }
 
   @keyframes spin {
@@ -801,10 +797,11 @@
   .slot {
     position: absolute;
     top: 26px;
+    left: 0;
     transform-origin: 50% 120%;
-    transition:
-      left 0.25s var(--ease),
-      transform 0.25s var(--ease);
+    /* Positioned with transform only, so re-fanning the hand never triggers layout. */
+    transition: transform 0.25s var(--ease);
+    will-change: transform;
   }
 
   /* ---------- Side ---------- */
@@ -893,8 +890,12 @@
     color: var(--gold);
   }
 
-  .notify {
-    align-self: center;
+  .prefs {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
   }
 
   @media (max-width: 1080px) {

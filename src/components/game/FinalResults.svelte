@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { GameAction, GameView } from '../../lib/types';
-  import { avatarColor, initials, ordinal } from '../../lib/ui';
+  import { BOT_AVATAR, avatarColor, initials, ordinal } from '../../lib/ui';
 
   let { view, act, busy }: { view: GameView; act: (a: GameAction) => Promise<boolean>; busy: boolean } = $props();
 
@@ -30,7 +30,7 @@
       {#each ranked as p (p.userId)}
         <li class:first={p.rank === 1}>
           <span class="place">{ordinal(p.rank)}</span>
-          <span class="avatar" style={`--size: 34px; --avatar: ${avatarColor(p.username)}`}>{p.isBot ? '🤖' : initials(p.name)}</span>
+          <span class="avatar" style={`--size: 34px; --avatar: ${avatarColor(p.username)}`}>{p.isBot ? BOT_AVATAR : initials(p.name)}</span>
           <span class="name">{p.name}{p.userId === view.me.userId ? ' (you)' : ''}</span>
           <strong class="num">{p.score}</strong>
         </li>

@@ -84,6 +84,23 @@ describe('dealing', () => {
     expect(legalPlays(hand, hand.turn!, S)).toEqual(['3C']);
   });
 
+  it('leads with the lowest club anyone holds, however many low clubs are in the crib', () => {
+    const four = dealHand(4, 4, seeded(21), { spec: { crib: ['2C', '3C', '4C', '5C'] } });
+    expect(four.openingCard).toBe('6C');
+    expect(four.turn).toBe(four.hands.findIndex((h) => h.includes('6C')));
+    expect(legalPlays(four, four.turn!, S)).toEqual(['6C']);
+
+    const five = dealHand(5, 5, seeded(22), { spec: { crib: ['3C', '4C', '5C', '6C'] } });
+    expect(five.openingCard).toBe('7C');
+    expect(legalPlays(five, five.turn!, S)).toEqual(['7C']);
+
+    // After a pass the lowest club may have changed hands; the new holder leads.
+    const passed = dealHand(1, 4, seeded(23), { spec: { hands: [['2C']], crib: [] } });
+    passed.hands.forEach((h, seat) => submitPass(passed, seat, seat === 0 ? ['2C', h[1], h[2]] : h.slice(-3)));
+    expect(passed.openingCard).toBe('2C');
+    expect(passed.turn).toBe(1); // seat 0 passed the 2♣ to its left
+  });
+
   it('opens five-player hands with the 3 of clubs, or the next club up if it is in the crib', () => {
     const normal = dealHand(5, 5, seeded(3), { spec: { crib: ['QD'] } });
     const holder = normal.hands.findIndex((h) => h.includes('3C'));
@@ -338,6 +355,45 @@ describe('scoring', () => {
       expect(moon.moon).toBe(1);
       expect(moon.scores).toEqual([26, -10, 26, 26]);
     }
+  });
+});
+
+describe('crib secrecy', () => {
+  it.each([4, 5])('only the crib winner can see the crib or its points until the hand ends (%i players)', (players) => {
+    const rng = seeded(77 + players);
+    const game = newGame(players, rng);
+    let checked = 0;
+    for (let step = 0; step < 4000 && game.handsPlayed < 40; step++) {
+      const hand = game.hand!;
+      const crib = hand.crib;
+      // Points everyone can see from face-up tricks.
+      const visible = Array.from({ length: players }, () => 0);
+      for (const t of hand.tricks) visible[t.winner!] += penaltyPoints(t.plays.map((p) => p.card));
+      const jackInTricks = hand.tricks.find((t) => t.plays.some((p) => p.card === 'JD'))?.winner ?? null;
+      if (jackInTricks !== null) visible[jackInTricks] -= 10;
+
+      for (let seat = 0; seat < players; seat++) {
+        const view = tableViewFor(game, seat, S)!;
+        const isWinner = hand.cribWinner === seat;
+        if (!isWinner) {
+          expect(view.myCrib).toBeNull();
+          // No crib card appears anywhere in this seat's view of the current hand.
+          const json = JSON.stringify({ ...view, lastTrick: null });
+          for (const c of crib) expect(json).not.toContain(`"${c}"`);
+          // The running points tracker only counts face-up tricks, for every seat.
+          expect(view.pointsTaken).toEqual(visible);
+          if (crib.includes('QS')) expect(view.queenTakenBy).toBeNull();
+          if (crib.includes('JD')) expect(view.jackTakenBy).toBeNull();
+          checked++;
+        } else {
+          expect(view.myCrib).toEqual(crib);
+        }
+      }
+      const result = aiStep(game, S, () => true, rng);
+      // Once the hand is over, the crib is revealed to everyone in the summary.
+      if (result?.completedHand) expect(result.completedHand.crib).toEqual(crib);
+    }
+    expect(checked).toBeGreaterThan(1000);
   });
 });
 

@@ -59,6 +59,14 @@ const MIGRATIONS: string[] = [
   ALTER TABLE games ADD COLUMN mode TEXT NOT NULL DEFAULT 'normal';
   ALTER TABLE games ADD COLUMN dev TEXT;
   `,
+  // v3: the computer players are the family cats.
+  `
+  UPDATE users SET display_name = CASE username
+    WHEN 'bot-1' THEN 'Rosie' WHEN 'bot-2' THEN 'Raul' WHEN 'bot-3' THEN 'Pippi'
+    WHEN 'bot-4' THEN 'Dash' WHEN 'bot-5' THEN 'Carlito' WHEN 'bot-6' THEN 'Serena'
+    WHEN 'bot-7' THEN 'Cali' ELSE display_name END
+  WHERE is_bot = 1;
+  `,
 ];
 
 function migrate(db: DatabaseSync) {

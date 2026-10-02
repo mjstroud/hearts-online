@@ -1,4 +1,6 @@
 ---
+import DeckToggle from '../components/DeckToggle.svelte';
+import PlayingCard from '../components/PlayingCard.svelte';
 import Layout from '../layouts/Layout.astro';
 import { SESSION_COOKIE, changePassword, deleteOtherSessions, takeAttempt, updateDisplayName } from '../lib/server/auth';
 import { readForm } from '../lib/server/http';
@@ -56,6 +58,19 @@ if (Astro.request.method === 'POST') {
         <div><button class="btn" type="submit">Save name</button></div>
       </form>
 
+      <section class="panel panel-pad stack">
+        <h2 class="panel-title">Cards</h2>
+        <p class="muted small">A four-color deck makes diamonds blue and clubs green, so suits are easier to tell apart at a glance.</p>
+        <div><DeckToggle client:load /></div>
+        <div class="preview">
+          <PlayingCard card="QS" width={64} />
+          <PlayingCard card="AH" width={64} />
+          <PlayingCard card="JD" width={64} />
+          <PlayingCard card="TC" width={64} />
+        </div>
+        <p class="hint">Saved on this device.</p>
+      </section>
+
       <form method="post" class="panel panel-pad stack">
         <input type="hidden" name="intent" value="password" />
         <h2 class="panel-title">Change password</h2>
@@ -77,3 +92,15 @@ if (Astro.request.method === 'POST') {
     </div>
   </div>
 </Layout>
+
+<style>
+  .small {
+    font-size: 14px;
+  }
+
+  .preview {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+</style>

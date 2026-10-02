@@ -39,3 +39,15 @@ export function ordinal(n: number): string {
   const v = n % 100;
   return n + (s[(v - 20) % 10] || s[v] || s[0]);
 }
+
+/** Computer players are the family cats. */
+export const BOT_AVATAR = '🐱';
+
+/** Cookie holding the card colour preference: 'four' for a four-colour deck. */
+export const DECK_COOKIE = 'hearts_deck';
+
+/** Switch deck colours instantly in the browser and remember the choice for a year. */
+export function setDeckPreference(four: boolean) {
+  document.documentElement.dataset.deck = four ? 'four' : 'two';
+  document.cookie = `${DECK_COOKIE}=${four ? 'four' : 'two'}; path=/; max-age=31536000; samesite=lax`;
+}

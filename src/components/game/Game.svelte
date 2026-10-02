@@ -32,8 +32,46 @@
     if (next && next.version >= view.version) view = next;
   }
 
+  /**
+   * Predict the result of your own pass or play so the table reacts instantly.
+   * The server's response (or the next live update) replaces the guess.
+   */
+  function predict(action: GameAction): GameView | null {
+    const t = view.table;
+    const seat = view.me.seat;
+    if (!t || seat === null) return null;
+    const n = view.players.length;
+    if (action.type === 'play' && t.phase === 'playing' && t.turn === seat && t.current && t.legal.includes(action.card)) {
+      const plays = [...t.current.plays, { seat, card: action.card }];
+      const next = plays.length === n ? null : (seat + 1) % n;
+      return {
+        ...view,
+        table: {
+          ...t,
+          myHand: t.myHand.filter((c) => c !== action.card),
+          legal: [],
+          current: { ...t.current, plays },
+          turn: next,
+          handSizes: t.handSizes.map((count, s) => (s === seat ? count - 1 : count)),
+          heartsBroken: t.heartsBroken || action.card[1] === 'H',
+        },
+        toAct: next === null ? [] : [next],
+      };
+    }
+    if (action.type === 'pass' && t.phase === 'passing' && !t.myPass) {
+      return {
+        ...view,
+        table: { ...t, myPass: action.cards, passed: t.passed.map((p, s) => p || s === seat) },
+        toAct: view.toAct.filter((s) => s !== seat),
+      };
+    }
+    return null;
+  }
+
   async function act(action: GameAction): Promise<boolean> {
     busy = true;
+    const guess = predict(action);
+    if (guess) view = guess;
     try {
       const res = await fetch(`/api/games/${view.id}/action`, {
         method: 'POST',
@@ -43,12 +81,14 @@
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         showToast(data.error ?? 'Something went wrong.');
+        if (guess) refresh();
         return false;
       }
       apply(data);
       return true;
     } catch {
       showToast('Network hiccup — please try again.');
+      if (guess) refresh();
       return false;
     } finally {
       busy = false;
@@ -202,6 +242,5 @@
     background: var(--gold-soft);
     color: var(--gold);
     border: 1px solid rgb(242 196 109 / 0.3);
-    backdrop-filter: blur(8px);
   }
 </style>

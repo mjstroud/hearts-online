@@ -1,7 +1,7 @@
 <script lang="ts">
   import { CRIB_SIZE, MAX_PLAYERS, MIN_PLAYERS, cardsPerPlayer, passCycle, passLabel } from '../../lib/engine/rules';
   import type { GameAction, GameView } from '../../lib/types';
-  import { avatarColor, initials } from '../../lib/ui';
+  import { BOT_AVATAR, avatarColor, initials } from '../../lib/ui';
 
   interface Props {
     view: GameView;
@@ -67,11 +67,11 @@
         {#each view.players as p (p.userId)}
           <li>
             <span class="seat-no num">{p.seat + 1}</span>
-            <span class="avatar" style={`--avatar: ${avatarColor(p.username)}`}>{p.isBot ? '🤖' : initials(p.name)}</span>
+            <span class="avatar" style={`--avatar: ${avatarColor(p.username)}`}>{p.isBot ? BOT_AVATAR : initials(p.name)}</span>
             <span class="who">
               <strong>{p.name}</strong>
               <small class="faint">
-                {#if p.isBot}Computer player{:else}@{p.username}{/if}
+                {#if p.isBot}Computer player 🐾{:else}@{p.username}{/if}
                 {#if p.userId === view.ownerId} · Host{/if}
                 {#if p.userId === view.me.userId} · You{/if}
               </small>
@@ -90,7 +90,7 @@
 
       {#if isOwner}
         <div class="row actions">
-          <button class="btn" disabled={busy || count >= MAX_PLAYERS} onclick={() => act({ type: 'addBot' })}>+ Computer player</button>
+          <button class="btn" disabled={busy || count >= MAX_PLAYERS} onclick={() => act({ type: 'addBot' })} title="Seats one of the cats">+ Computer player</button>
           <button class="btn btn-primary" disabled={busy || !canStart} onclick={() => act({ type: 'start' })}>
             Deal the first hand →
           </button>

@@ -153,7 +153,7 @@ export function createPlaytest(ownerId: number, name: string, settings: GameSett
   const count = playerCount === 5 ? 5 : 4;
   return transaction(() => {
     const id = insertGame(ownerId, name, settings, 'playtest');
-    botUserIds()
+    availableCats([])
       .slice(0, count - 1)
       .forEach((botId, i) => sql('INSERT INTO game_players (game_id, user_id, seat, joined_at) VALUES (?, ?, ?, ?)').run(id, botId, i + 1, now()));
     const game = loadGame(id)!;
@@ -191,12 +191,13 @@ function reseat(gameId: string, userIds: number[]) {
   userIds.forEach((uid, seat) => sql('UPDATE game_players SET seat = ? WHERE game_id = ? AND user_id = ?').run(seat, gameId, uid));
 }
 
-const BOT_NAMES = ['Robo Rosie', 'Captain Clubs', 'Duchess Diamond', 'Sir Spade', 'Hal of Hearts'];
+/** The computer players are the family cats. Each has its own account so their stats add up over the year. */
+const CAT_NAMES = ['Rosie', 'Raul', 'Pippi', 'Dash', 'Carlito', 'Serena', 'Cali'];
 
 function botUserIds(): number[] {
   const existing = sql('SELECT id FROM users WHERE is_bot = 1 ORDER BY id').all() as { id: number }[];
-  if (existing.length >= BOT_NAMES.length) return existing.map((r) => r.id);
-  BOT_NAMES.forEach((name, i) => {
+  if (existing.length >= CAT_NAMES.length) return existing.map((r) => r.id);
+  CAT_NAMES.forEach((name, i) => {
     sql('INSERT OR IGNORE INTO users (username, display_name, password_hash, is_bot, created_at) VALUES (?, ?, NULL, 1, ?)').run(
       `bot-${i + 1}`,
       name,
@@ -204,6 +205,16 @@ function botUserIds(): number[] {
     );
   });
   return (sql('SELECT id FROM users WHERE is_bot = 1 ORDER BY id').all() as { id: number }[]).map((r) => r.id);
+}
+
+/** Cats not already at this table, in random order. */
+function availableCats(players: SeatedPlayer[]): number[] {
+  const ids = botUserIds().filter((id) => !players.some((p) => p.userId === id));
+  for (let i = ids.length - 1; i > 0; i--) {
+    const j = secureRng(i + 1);
+    [ids[i], ids[j]] = [ids[j], ids[i]];
+  }
+  return ids;
 }
 
 // ---------------------------------------------------------------------------
@@ -434,8 +445,8 @@ export function performAction(gameId: string, userId: number, action: GameAction
         ownerOnly();
         lobbyOnly();
         if (players.length >= MAX_PLAYERS) throw new GameError('The table is full.');
-        const botId = botUserIds().find((id) => !players.some((p) => p.userId === id));
-        if (botId === undefined) throw new GameError('No more computer players available.');
+        const botId = availableCats(players)[0];
+        if (botId === undefined) throw new GameError('All the cats are already at the table.');
         sql('INSERT INTO game_players (game_id, user_id, seat, joined_at) VALUES (?, ?, ?, ?)').run(gameId, botId, players.length, now());
         break;
       }

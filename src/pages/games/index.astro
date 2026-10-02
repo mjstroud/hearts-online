@@ -212,13 +212,27 @@ const groups: { title: string; items: GameListItem[] }[] = [
     color: var(--gold);
   }
 
+  /* Pulse an opacity ring (composited) instead of animating box-shadow (repaints every frame). */
   .pulse {
+    position: relative;
+    z-index: 0;
+  }
+
+  .pulse::after {
+    content: '';
+    position: absolute;
+    z-index: -1;
+    inset: -5px;
+    border-radius: inherit;
+    background: rgb(240 71 91 / 0.14);
+    opacity: 0;
     animation: pulse 2s ease-in-out infinite;
+    pointer-events: none;
   }
 
   @keyframes pulse {
     50% {
-      box-shadow: 0 0 0 5px rgb(240 71 91 / 0.12);
+      opacity: 1;
     }
   }
 

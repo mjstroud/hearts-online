@@ -64,7 +64,11 @@ const sections = [
                 stays in, so there are still 26 penalty points.
               </li>
               <li>Whoever <strong>wins the first trick wins the crib</strong>. Its cards count toward their score.</li>
-              <li>Only the crib winner gets to see what was in it. Everyone else finds out at the end of the hand.</li>
+              <li>
+                Only the crib winner gets to see what was in it. For everyone else it stays secret for the whole hand, and the
+                points-so-far counter only shows what’s been won in face-up tricks. The crib is revealed to everyone in the
+                end-of-hand results.
+              </li>
             </ul>
           </div>
           <p class="muted">
@@ -91,8 +95,9 @@ const sections = [
           <h2>Playing a hand</h2>
           <ol class="steps">
             <li>
-              The player holding the <strong>lowest club</strong> leads it to start the first trick: normally the 2♣, or the 3♣
-              with five players. If that card is hiding in the crib, the next-lowest club leads instead.
+              The player holding the <strong>lowest club in anyone’s hand</strong> leads it to start the first trick. That’s
+              normally the 2♣ (the 3♣ with five players). Any clubs hiding in the crib are skipped: if the 2♣ through 5♣ are all in
+              the crib, the 6♣ leads.
             </li>
             <li>
               Play goes clockwise (to the left). You must <strong>follow suit</strong> if you can. If you can’t, play anything.

@@ -1,6 +1,6 @@
 ---
 import '../styles/global.css';
-import { SITE_NAME, avatarColor, initials } from '../lib/ui';
+import { DECK_COOKIE, SITE_NAME, avatarColor, initials } from '../lib/ui';
 
 interface Props {
   title?: string;
@@ -21,10 +21,12 @@ const nav = user
     ]
   : [{ href: '/rules', label: 'How to play' }];
 const active = (href: string) => path === href || path.startsWith(href + '/');
+// Card colour preference lives in a cookie so the server renders the right deck (no flash).
+const deck = Astro.cookies.get(DECK_COOKIE)?.value === 'four' ? 'four' : 'two';
 ---
 
 <!doctype html>
-<html lang="en">
+<html lang="en" data-deck={deck}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
@@ -103,9 +105,8 @@ const active = (href: string) => path === href || path.startsWith(href + '/');
     position: sticky;
     top: 0;
     z-index: 50;
-    backdrop-filter: saturate(1.4) blur(14px);
-    -webkit-backdrop-filter: saturate(1.4) blur(14px);
-    background: rgb(9 13 12 / 0.72);
+    /* Solid rather than backdrop-blurred: a live blur repaints on every scroll frame. */
+    background: rgb(10 15 13 / 0.96);
     border-bottom: 1px solid var(--border);
   }
 

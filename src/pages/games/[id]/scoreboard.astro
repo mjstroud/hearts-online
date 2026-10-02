@@ -6,7 +6,7 @@ import Layout from '../../../layouts/Layout.astro';
 import { passLabel } from '../../../lib/engine/rules';
 import { isMember, loadGame } from '../../../lib/server/games';
 import { avg, gameStats } from '../../../lib/server/stats';
-import { avatarColor, fmtAvg, initials, signed } from '../../../lib/ui';
+import { BOT_AVATAR, avatarColor, fmtAvg, initials, signed } from '../../../lib/ui';
 
 const user = Astro.locals.user!;
 const game = loadGame(Astro.params.id!);
@@ -44,7 +44,7 @@ const newestFirst = hands.slice().reverse();
                       <span class="who">
                         <span class:list={['rank', { lead: p.rank === 1 && hands.length > 0 }]}>{p.rank}</span>
                         <span class="avatar" style={`--size: 26px; --avatar: ${avatarColor(p.username)}`}>
-                          {p.isBot ? '🤖' : initials(p.displayName)}
+                          {p.isBot ? BOT_AVATAR : initials(p.displayName)}
                         </span>
                         {p.displayName}
                       </span>

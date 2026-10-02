@@ -33,19 +33,23 @@
 
   const rank = $derived(card ? RANK_LABEL[rankOf(card)] : '');
   const suit = $derived(card ? SUIT_SYMBOL[suitOf(card)] : '');
-  const red = $derived(card ? suitOf(card) === 'H' || suitOf(card) === 'D' : false);
   const face = $derived(card ? ['J', 'Q', 'K'].includes(rankOf(card)) : false);
   const ace = $derived(card ? rankOf(card) === 'A' : false);
+  /** Small cards drop the centre art and show a big index instead. */
+  const compact = $derived(width < 56);
   const tag = $derived(card === 'QS' ? '+13' : card === 'JD' && jackScored ? '−10' : null);
-  const name = $derived(card ? `${rank === 'J' ? 'Jack' : rank === 'Q' ? 'Queen' : rank === 'K' ? 'King' : rank === 'A' ? 'Ace' : rank} of ${SUIT_NAME[suitOf(card)]}` : 'Face-down card');
+  const name = $derived(
+    card
+      ? `${rank === 'J' ? 'Jack' : rank === 'Q' ? 'Queen' : rank === 'K' ? 'King' : rank === 'A' ? 'Ace' : rank} of ${SUIT_NAME[suitOf(card)]}`
+      : 'Face-down card',
+  );
 </script>
 
 <svelte:element
   this={onclick ? 'button' : 'div'}
   type={onclick ? 'button' : undefined}
-  class="pc"
-  class:back={!card}
-  class:red
+  class={`pc ${card ? `suit-${suitOf(card)}` : 'back'}`}
+  class:compact
   class:selected
   class:dimmed
   class:fresh
@@ -59,17 +63,21 @@
   role={onclick ? undefined : 'img'}
 >
   {#if card}
-    <span class="corner tl" aria-hidden="true"><b>{rank}</b><i>{suit}</i></span>
-    <span class="center" aria-hidden="true">
-      {#if face}
-        <span class="frame"><span class="letter">{rank}</span><span class="fsuit">{suit}</span></span>
-      {:else}
-        <span class="pip" class:ace>{suit}</span>
+    <span class="index tl" aria-hidden="true"><b class:ten={rank === '10'}>{rank}</b><i>{suit}</i></span>
+    {#if compact}
+      <span class="big-suit" aria-hidden="true">{suit}</span>
+    {:else}
+      <span class="center" aria-hidden="true">
+        {#if face}
+          <span class="frame"><span class="letter">{rank}</span><span class="fsuit">{suit}</span></span>
+        {:else}
+          <span class="pip" class:ace>{suit}</span>
+        {/if}
+      </span>
+      <span class="index br" aria-hidden="true"><b class:ten={rank === '10'}>{rank}</b><i>{suit}</i></span>
+      {#if showValue && tag}
+        <span class="tag" class:good={card === 'JD'} aria-hidden="true">{tag}</span>
       {/if}
-    </span>
-    <span class="corner br" aria-hidden="true"><b>{rank}</b><i>{suit}</i></span>
-    {#if showValue && tag}
-      <span class="tag" class:good={card === 'JD'} aria-hidden="true">{tag}</span>
     {/if}
   {:else}
     <span class="emblem" aria-hidden="true">♥</span>
@@ -85,57 +93,72 @@
     width: var(--w);
     height: var(--h);
     padding: 0;
-    border-radius: calc(var(--w) * 0.11);
-    background: linear-gradient(160deg, #fffdf9 0%, var(--card-face) 60%, #f1ece2 100%);
-    color: var(--card-black);
-    border: 1px solid rgb(0 0 0 / 0.18);
+    border-radius: calc(var(--w) * 0.1);
+    background: linear-gradient(165deg, #fffefb 0%, var(--card-face) 65%, #f1ece2 100%);
+    color: var(--suit-s);
+    border: 1px solid rgb(0 0 0 / 0.2);
     box-shadow:
       0 1px 0 rgb(255 255 255 / 0.9) inset,
-      0 2px 4px rgb(0 0 0 / 0.25),
-      0 10px 24px -10px rgb(0 0 0 / 0.55);
+      0 1px 2px rgb(0 0 0 / 0.3),
+      0 6px 14px -6px rgb(0 0 0 / 0.55);
     font-family: var(--font-ui);
     user-select: none;
     -webkit-user-select: none;
     container-type: inline-size;
     transition:
       transform 0.18s var(--ease),
-      box-shadow 0.18s var(--ease),
-      filter 0.18s,
-      opacity 0.18s;
+      box-shadow 0.18s var(--ease);
   }
 
-  .pc.red {
-    color: var(--card-red);
+  .suit-S {
+    color: var(--suit-s);
+  }
+  .suit-H {
+    color: var(--suit-h);
+  }
+  .suit-D {
+    color: var(--suit-d);
+  }
+  .suit-C {
+    color: var(--suit-c);
   }
 
-  .corner {
+  /* ----- Corner index: big and bold so a fanned hand reads at a glance ----- */
+  .index {
     position: absolute;
     display: flex;
     flex-direction: column;
     align-items: center;
-    line-height: 0.9;
-    gap: 1cqi;
+    line-height: 0.86;
+    width: 30cqi;
   }
 
-  .corner b {
-    font-weight: 700;
-    font-size: 19cqi;
-    letter-spacing: -0.06em;
+  .index b {
+    font-weight: 800;
+    font-size: 30cqi;
+    letter-spacing: -0.04em;
   }
 
-  .corner i {
+  .index b.ten {
+    letter-spacing: -0.11em;
+    margin-left: -0.11em;
+    font-size: 27cqi;
+  }
+
+  .index i {
     font-style: normal;
-    font-size: 16cqi;
+    font-size: 25cqi;
+    margin-top: 1cqi;
   }
 
   .tl {
-    top: 6cqi;
-    left: 6cqi;
+    top: 5cqi;
+    left: 3cqi;
   }
 
   .br {
-    bottom: 6cqi;
-    right: 6cqi;
+    bottom: 5cqi;
+    right: 3cqi;
     transform: rotate(180deg);
   }
 
@@ -147,26 +170,24 @@
   }
 
   .pip {
-    font-size: 44cqi;
+    font-size: 46cqi;
     line-height: 1;
-    filter: drop-shadow(0 1px 0 rgb(0 0 0 / 0.08));
   }
 
   .pip.ace {
-    font-size: 62cqi;
+    font-size: 66cqi;
   }
 
   .frame {
-    width: 52cqi;
-    height: 78cqi;
+    width: 44cqi;
+    height: 70cqi;
     border-radius: 5cqi;
     border: 1.5px solid currentColor;
-    opacity: 0.95;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 2cqi;
+    gap: 1cqi;
     background:
       radial-gradient(circle at 50% 30%, rgb(255 255 255 / 0.9), transparent 70%),
       repeating-linear-gradient(45deg, rgb(0 0 0 / 0.035) 0 2px, transparent 2px 6px);
@@ -174,7 +195,7 @@
 
   .letter {
     font-family: var(--font-display);
-    font-weight: 600;
+    font-weight: 650;
     font-size: 34cqi;
     line-height: 1;
     font-variation-settings: 'SOFT' 100, 'opsz' 72;
@@ -187,11 +208,11 @@
 
   .tag {
     position: absolute;
-    bottom: 5cqi;
+    bottom: 4cqi;
     left: 50%;
     transform: translateX(-50%);
-    font-size: 10.5cqi;
-    font-weight: 700;
+    font-size: 11cqi;
+    font-weight: 800;
     padding: 1.5cqi 5cqi;
     border-radius: 99px;
     background: #1a1d22;
@@ -205,7 +226,37 @@
     color: #3b2604;
   }
 
-  /* Card back */
+  /* ----- Compact cards (side panels, playtest rows): just a giant index ----- */
+  .compact .index {
+    width: auto;
+    top: 6cqi;
+    left: 8cqi;
+    align-items: flex-start;
+  }
+
+  .compact .index b {
+    font-size: 46cqi;
+  }
+
+  .compact .index b.ten {
+    font-size: 40cqi;
+  }
+
+  .compact .index i {
+    font-size: 40cqi;
+    margin-top: 2cqi;
+  }
+
+  .big-suit {
+    position: absolute;
+    right: 6cqi;
+    bottom: 2cqi;
+    font-size: 54cqi;
+    line-height: 1;
+    opacity: 0.9;
+  }
+
+  /* ----- Card back ----- */
   .back {
     background:
       radial-gradient(circle at 50% 50%, rgb(255 255 255 / 0.12), transparent 55%),
@@ -230,10 +281,9 @@
     place-items: center;
     color: rgb(255 255 255 / 0.9);
     font-size: 34cqi;
-    text-shadow: 0 2px 8px rgb(0 0 0 / 0.3);
   }
 
-  /* States */
+  /* ----- States ----- */
   .interactive {
     cursor: pointer;
   }
@@ -242,8 +292,14 @@
     cursor: not-allowed;
   }
 
-  .dimmed {
-    filter: brightness(0.55) saturate(0.6);
+  /* A translucent shade is far cheaper to draw than a CSS filter. */
+  .dimmed::before {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    z-index: 2;
+    border-radius: inherit;
+    background: rgb(12 16 14 / 0.5);
   }
 
   .selected {
@@ -251,7 +307,7 @@
     box-shadow:
       0 0 0 3px var(--gold),
       0 1px 0 rgb(255 255 255 / 0.9) inset,
-      0 18px 30px -10px rgb(0 0 0 / 0.6);
+      0 14px 24px -10px rgb(0 0 0 / 0.6);
   }
 
   .fresh::after {
@@ -259,6 +315,7 @@
     position: absolute;
     top: -10px;
     left: 2px;
+    z-index: 3;
     padding: 1px 6px;
     border-radius: 99px;
     font-size: 10px;
@@ -274,9 +331,9 @@
     .interactive:not(:disabled):not(.selected):hover {
       transform: translateY(-10%);
       box-shadow:
-        0 0 0 2px rgb(242 196 109 / 0.6),
+        0 0 0 2px rgb(242 196 109 / 0.7),
         0 1px 0 rgb(255 255 255 / 0.9) inset,
-        0 16px 28px -10px rgb(0 0 0 / 0.6);
+        0 12px 22px -10px rgb(0 0 0 / 0.6);
     }
   }
 </style>
