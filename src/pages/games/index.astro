@@ -14,11 +14,13 @@ const notices: Record<string, string> = {
 };
 const notice = notices[Astro.url.searchParams.get('notice') ?? ''];
 
+const real = games.filter((g) => g.mode === 'normal');
 const groups: { title: string; items: GameListItem[] }[] = [
-  { title: 'Your move', items: games.filter((g) => g.status === 'active' && g.yourTurn) },
-  { title: 'In progress', items: games.filter((g) => g.status === 'active' && !g.yourTurn) },
-  { title: 'Waiting rooms', items: games.filter((g) => g.status === 'lobby') },
-  { title: 'Finished', items: games.filter((g) => g.status === 'finished') },
+  { title: 'Your move', items: real.filter((g) => g.status === 'active' && g.yourTurn) },
+  { title: 'In progress', items: real.filter((g) => g.status === 'active' && !g.yourTurn) },
+  { title: 'Waiting rooms', items: real.filter((g) => g.status === 'lobby') },
+  { title: 'Finished', items: real.filter((g) => g.status === 'finished') },
+  { title: '⚗ Playtest tables', items: games.filter((g) => g.mode === 'playtest') },
 ].filter((g) => g.items.length);
 ---
 
@@ -34,6 +36,7 @@ const groups: { title: string; items: GameListItem[] }[] = [
           <input class="input code" name="code" placeholder="CODE" maxlength="6" aria-label="Join code" required autocomplete="off" />
           <button class="btn" type="submit">Join</button>
         </form>
+        <a class="btn btn-ghost" href="/playtest" title="A solo sandbox with face-up cards and bots you control">⚗ Playtest</a>
         <a class="btn btn-primary" href="/games/new">+ New game</a>
       </div>
     </div>
@@ -62,10 +65,10 @@ const groups: { title: string; items: GameListItem[] }[] = [
                 {group.items.map((g) => {
                   const sorted = g.players.slice().sort((a, b) => a.score - b.score);
                   return (
-                    <a class:list={['panel', 'game', { turn: g.yourTurn && g.status === 'active' }]} href={`/games/${g.id}`}>
+                    <a class:list={['panel', 'game', { turn: g.yourTurn && g.status === 'active' && g.mode === 'normal' }]} href={`/games/${g.id}`}>
                       <div class="spread">
                         <h3>{g.name}</h3>
-                        {g.status === 'active' && g.yourTurn && <span class="badge heart pulse">Your turn</span>}
+                        {g.mode === 'playtest' ? <span class="badge sky">Playtest</span> : g.status === 'active' && g.yourTurn && <span class="badge heart pulse">Your turn</span>}
                         {g.status === 'lobby' && <span class="badge gold">{g.players.length}/5 seated</span>}
                         {g.status === 'finished' && <span class="badge">Final</span>}
                       </div>

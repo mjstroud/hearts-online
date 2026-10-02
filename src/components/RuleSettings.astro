@@ -32,22 +32,10 @@ const toggles: { name: keyof GameSettings; title: string; body: string }[] = [
       </label>
     ))
   }
-  <div class="toggle static">
-    <span>
-      <strong>Five-player crib</strong>
-      <small>Four players always use a 4-card crib with 12 cards each. With five players:</small>
-      <span class="segmented" role="radiogroup" aria-label="Five-player crib size">
-        <label>
-          <input type="radio" name="fivePlayerCribSize" value="2" checked={settings.fivePlayerCribSize === 2} />
-          <span>2-card crib · 10 each</span>
-        </label>
-        <label>
-          <input type="radio" name="fivePlayerCribSize" value="7" checked={settings.fivePlayerCribSize === 7} />
-          <span>7-card crib · 9 each</span>
-        </label>
-      </span>
-    </span>
-  </div>
+  <p class="hint deal-note">
+    Every game uses a 4-card crib. Four players get 12 cards each. With five players the 2♣, 2♦ and 2♠ come out of the
+    deck, so everyone gets 9.
+  </p>
 </fieldset>
 <input type="hidden" name="rulesForm" value="1" />
 
@@ -69,12 +57,7 @@ const toggles: { name: keyof GameSettings; title: string; body: string }[] = [
     cursor: not-allowed;
   }
 
-  .static {
-    cursor: default;
-  }
-
-  .segmented {
-    margin-top: 10px;
-    flex-wrap: wrap;
+  .deal-note {
+    padding: 0 4px;
   }
 </style>

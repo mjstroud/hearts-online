@@ -17,6 +17,8 @@
 
 <ul class="bars">
   {#each items as item, i}
+    <!-- Focusable so keyboard users get the same tooltip as on hover. -->
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
     <li
       class:hovered={hovered === i}
       onpointerenter={() => (hovered = i)}

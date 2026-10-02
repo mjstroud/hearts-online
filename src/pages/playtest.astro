@@ -1,0 +1,98 @@
+---
+import RuleSettings from '../components/RuleSettings.astro';
+import Layout from '../layouts/Layout.astro';
+import { DEFAULT_SETTINGS, normalizeSettings } from '../lib/engine/rules';
+import { settingsFromForm } from '../lib/server/forms';
+import { createPlaytest } from '../lib/server/games';
+import { readForm } from '../lib/server/http';
+
+const user = Astro.locals.user!;
+let settings = DEFAULT_SETTINGS;
+let players = 4;
+
+if (Astro.request.method === 'POST') {
+  const form = await readForm(Astro.request);
+  settings = normalizeSettings(settingsFromForm(form));
+  players = form.players === '5' ? 5 : 4;
+  const name = (form.name ?? '').slice(0, 60) || 'Playtest';
+  const id = createPlaytest(user.id, name, settings, players);
+  return Astro.redirect(`/games/${id}`, 303);
+}
+---
+
+<Layout title="Playtest">
+  <div class="container page" style="max-width: 760px">
+    <div class="page-head">
+      <div class="stack" style="--gap: 6px">
+        <a class="faint back" href="/games">← Games</a>
+        <span class="eyebrow">⚗ Playtest table</span>
+        <h1 class="display">Try the rules yourself</h1>
+        <p class="muted">
+          A private sandbox with just you and computer players. Nobody else can join, and it doesn’t count toward your lifetime
+          stats.
+        </p>
+      </div>
+    </div>
+
+    <div class="panel panel-pad features">
+      <div><strong>See everything</strong><span class="muted">Every hand and the crib face up, each one switchable.</span></div>
+      <div><strong>Drive the bots</strong><span class="muted">Let them play on their own at any speed, or play their cards yourself.</span></div>
+      <div><strong>Step and undo</strong><span class="muted">AI one move, finish a trick or a whole hand, and take back mistakes.</span></div>
+      <div>
+        <strong>Stack the deck</strong><span class="muted">Moon and Sun setups, the Q♠, J♦ or lowest club in the crib, or deal your own cards.</span>
+      </div>
+    </div>
+
+    <form method="post" class="panel panel-pad stack" style="--gap: 22px; margin-top: 18px">
+      <div class="row" style="--gap: 16px; align-items: flex-end">
+        <label class="field" style="flex: 1; min-width: 200px">
+          <span>Table name</span>
+          <input class="input" name="name" maxlength="60" value="Playtest" />
+        </label>
+        <div class="field">
+          <span>Players</span>
+          <span class="segmented" role="radiogroup" aria-label="Players">
+            <label><input type="radio" name="players" value="4" checked={players === 4} /><span>4 players</span></label>
+            <label><input type="radio" name="players" value="5" checked={players === 5} /><span>5 players</span></label>
+          </span>
+        </div>
+      </div>
+      <label class="field">
+        <span>Score limit <span class="faint">(optional)</span></span>
+        <input class="input" name="scoreLimit" type="number" min="1" inputmode="numeric" placeholder="No limit" style="max-width: 220px" />
+        <small class="hint">Set something low, like 30, to test how the game ends.</small>
+      </label>
+      <RuleSettings settings={settings} />
+      <div class="row" style="justify-content: flex-end">
+        <a class="btn btn-ghost" href="/games">Cancel</a>
+        <button class="btn btn-primary btn-lg" type="submit">Deal me in</button>
+      </div>
+    </form>
+  </div>
+</Layout>
+
+<style>
+  .back {
+    font-size: 14px;
+    text-decoration: none;
+  }
+
+  .features {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px 24px;
+  }
+
+  .features div {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 14px;
+  }
+
+  @media (max-width: 640px) {
+    .features {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

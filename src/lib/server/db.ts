@@ -54,6 +54,11 @@ const MIGRATIONS: string[] = [
     PRIMARY KEY (game_id, number)
   );
   `,
+  // v2: solo playtest tables and their dev-tool settings.
+  `
+  ALTER TABLE games ADD COLUMN mode TEXT NOT NULL DEFAULT 'normal';
+  ALTER TABLE games ADD COLUMN dev TEXT;
+  `,
 ];
 
 function migrate(db: DatabaseSync) {

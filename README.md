@@ -10,12 +10,20 @@ Built with [Astro](https://astro.build) (server-rendered), [Svelte](https://svel
 - **Live or at your own pace.** Moves sync instantly over Server-Sent Events. A game can also sit idle for days and resume where it left off. Optional browser alerts tell you when it's your turn.
 - **House rules** (configurable per game):
   - Jack of Diamonds is **−10**.
-  - A face-down **crib** goes to whoever wins the first trick. Only they get to see it, and its cards count toward their score.
+  - A 4-card face-down **crib** goes to whoever wins the first trick. Only they get to see it, and its cards count toward their score.
   - **Shooting the Moon** (all hearts and the Q♠): everyone else +26.
   - **Shooting the Sun** (win every trick): everyone else +52.
-  - Passing rotates left → right → across → keep. With 5 players it's left → right → 2 left → 2 right → keep.
-  - **No score limit** by default; the host ends the game when the season's over. A limit can be set at any time.
-  - **5-player games** with a 2-card crib (10 cards each) or a 7-card crib (9 cards each).
+  - The **lowest club in play** leads the first trick.
+  - Passing rotates left → right → across → keep. With 5 players it's left → right → left across → right across → keep.
+  - **5-player games** take out the 2♣, 2♦ and 2♠, so the 4-card crib still works and everyone gets 9 cards.
+  - Games only end on a **completed hand**. By default there's no score limit, and the host marks a final hand when the season's over. If a limit is set, the game ends after the first hand in which someone reaches it.
+- **Playtest tables.** A solo sandbox for trying out rules:
+  - every hand and the crib face up (each can be toggled)
+  - computer players on auto at a chosen speed, or on manual so you play their cards yourself
+  - AI-step one move, finish a trick or a hand, and undo
+  - stacked deals: Moon and Sun setups, the Q♠, J♦ or lowest club in the crib, or your own custom deck, with a choice of pass direction
+
+  Playtest games don't count toward lifetime stats.
 - **Scoreboard.** Standings, a running-total chart, and a hand-by-hand score sheet marking who took the Q♠, the J♦, the crib, or shot the moon or sun.
 - **Advanced stats**, per game and lifetime:
   - average points per hand
@@ -38,7 +46,7 @@ npm install
 npm run dev        # http://localhost:4321
 ```
 
-The database is created at `./data/hearts.db` on first run. To try a game by yourself, create one and add three computer players.
+The database is created at `./data/hearts.db` on first run. To try things out by yourself, sign up and open **⚗ Playtest** on the Games page.
 
 Other scripts:
 

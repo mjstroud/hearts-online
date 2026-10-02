@@ -9,7 +9,6 @@ export function settingsFromForm(form: Record<string, string>): Partial<Record<k
     out.shootTheMoon = form.shootTheMoon === 'on';
     out.shootTheSun = form.shootTheSun === 'on';
     out.noPointsOnFirstTrick = form.noPointsOnFirstTrick === 'on';
-    if (form.fivePlayerCribSize) out.fivePlayerCribSize = form.fivePlayerCribSize;
   }
   return out;
 }

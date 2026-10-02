@@ -6,6 +6,7 @@
   import type { GameAction, GameView } from '../../lib/types';
   import { avatarColor, initials, signed } from '../../lib/ui';
   import PlayingCard from '../PlayingCard.svelte';
+  import DevPanel from './DevPanel.svelte';
   import Standings from './Standings.svelte';
 
   interface Props {
@@ -118,8 +119,15 @@
     if (label === 'Left') return '←';
     if (label === 'Right') return '→';
     if (label === 'Across') return '↑';
-    return label.includes('left') ? '↖' : '↗';
+    if (label === 'Left across') return '↖';
+    if (label === 'Right across') return '↗';
+    return '·';
   }
+
+  // Playtest-only visibility toggles (the dev panel owns the switches).
+  let showHands = $state(true);
+  let showCrib = $state(true);
+  const manualBots = $derived(view.dev?.botMode === 'manual');
 
   const fresh = (card: Card) => t.received.includes(card) && t.myHand.length === t.totalTricks;
 
@@ -131,6 +139,7 @@
         return `Pick ${t.passCount} cards to pass ${dir} to ${nameOf(t.passTarget)}.`;
       }
       const waiting = t.passed.flatMap((p, s) => (p ? [] : [nameOf(s)]));
+      if (manualBots) return `Waiting for ${list(waiting)} to pass. Pass for them in the playtest panel, or press AI move.`;
       return `Waiting for ${list(waiting)} to pass…`;
     }
     if (myTurn) {
@@ -145,6 +154,7 @@
         return `You’re out of ${SUIT_SYMBOL[leadSuit]}. No points on the first trick.`;
       return `You’re out of ${leadSuit ? SUIT_SYMBOL[leadSuit] : 'that suit'}. Play anything.`;
     }
+    if (manualBots) return `${nameOf(t.turn)} is up. Play a card for them in the playtest panel, or press AI move.`;
     return `Waiting for ${nameOf(t.turn)} to play…`;
   });
 </script>
@@ -154,6 +164,8 @@
     <div class="statusbar">
       <h1 class="game-name">{view.name}</h1>
       <div class="chips">
+        {#if view.mode === 'playtest'}<span class="badge sky">⚗ Playtest</span>{/if}
+        {#if view.endAfterHand}<span class="badge gold" title="The host is ending the game when this hand is finished">⚑ Final hand</span>{/if}
         <span class="badge num">Hand {t.handNumber}</span>
         <span class="badge" class:gold={t.phase === 'passing'}>⇄ {t.passLabel}</span>
         {#if t.phase === 'playing'}
@@ -194,11 +206,17 @@
             </div>
           {:else if t.cribWinner === null}
             <div class="crib" in:fade title="The crib goes to whoever wins the first trick">
-              <div class="crib-stack">
-                {#each Array(Math.min(t.cribSize, 4)) as _, i}
-                  <span style={`--i: ${i}`}><PlayingCard width={trickW * 0.72} /></span>
-                {/each}
-              </div>
+              {#if view.dev && showCrib}
+                <div class="crib-open">
+                  {#each view.dev.crib as c (c)}<PlayingCard card={c} width={trickW * 0.62} jackScored={view.settings.jackOfDiamonds} />{/each}
+                </div>
+              {:else}
+                <div class="crib-stack">
+                  {#each Array(Math.min(t.cribSize, 4)) as _, i}
+                    <span style={`--i: ${i}`}><PlayingCard width={trickW * 0.72} /></span>
+                  {/each}
+                </div>
+              {/if}
               <span class="crib-label">Crib · {t.cribSize} cards</span>
             </div>
           {:else if myTurn}
@@ -274,6 +292,10 @@
         {/each}
       </div>
     </div>
+
+    {#if view.dev}
+      <DevPanel {view} {act} {busy} bind:showHands bind:showCrib />
+    {/if}
   </div>
 
   <aside class="side">
@@ -551,6 +573,11 @@
     transform: rotate(calc((var(--i) - 1.5) * 4deg));
   }
 
+  .crib-open {
+    display: flex;
+    gap: 4px;
+  }
+
   .crib-label {
     font-size: 12px;
     font-weight: 600;
@@ -610,13 +637,18 @@
     box-shadow: 0 6px 16px rgb(0 0 0 / 0.4);
   }
 
-  .acting .seat-avatar {
-    background: conic-gradient(from 0deg, var(--gold), var(--heart), var(--gold));
-    animation: spin 2.6s linear infinite;
+  .seat-avatar .avatar {
+    position: relative;
   }
 
-  .acting .seat-avatar .avatar {
-    animation: spin 2.6s linear infinite reverse;
+  /* Spinning ring on a pseudo-element so the badges on the avatar stay upright. */
+  .acting .seat-avatar::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: conic-gradient(from 0deg, var(--gold), var(--heart), var(--gold));
+    animation: spin 2.6s linear infinite;
   }
 
   @keyframes spin {

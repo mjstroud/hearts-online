@@ -1,6 +1,8 @@
+import { type Card, newDeck } from './cards';
+
 /** House rules a room owner can tune. Defaults match the family's game. */
 export interface GameSettings {
-  /** Game ends once anyone reaches this total. `null` = no limit (owner ends the game). */
+  /** Game ends after a hand in which anyone reaches this total. `null` = no limit (owner ends the game). */
   scoreLimit: number | null;
   /** Taking the Jack of Diamonds is worth -10. */
   jackOfDiamonds: boolean;
@@ -10,8 +12,6 @@ export interface GameSettings {
   shootTheSun: boolean;
   /** Hearts and the Queen of Spades can't be dumped on the first trick (unless that's all you have). */
   noPointsOnFirstTrick: boolean;
-  /** Crib size in a 5-player game: 2 (10 cards each) or 7 (9 cards each). 4-player games always use 4. */
-  fivePlayerCribSize: 2 | 7;
 }
 
 export const DEFAULT_SETTINGS: GameSettings = {
@@ -20,15 +20,18 @@ export const DEFAULT_SETTINGS: GameSettings = {
   shootTheMoon: true,
   shootTheSun: true,
   noPointsOnFirstTrick: true,
-  fivePlayerCribSize: 2,
 };
 
 export const MIN_PLAYERS = 4;
 export const MAX_PLAYERS = 5;
 export const PASS_COUNT = 3;
+export const CRIB_SIZE = 4;
 export const JACK_VALUE = -10;
 export const MOON_VALUE = 26;
 export const SUN_VALUE = 52;
+
+/** Five-player games drop the three non-heart twos so 49 cards split into a 4-card crib and 9 each. */
+export const FIVE_PLAYER_REMOVED: readonly Card[] = ['2C', '2D', '2S'];
 
 /** Merge untrusted input onto defaults, keeping only valid values. */
 export function normalizeSettings(input: Partial<Record<keyof GameSettings, unknown>> | null | undefined): GameSettings {
@@ -43,23 +46,24 @@ export function normalizeSettings(input: Partial<Record<keyof GameSettings, unkn
   for (const key of ['jackOfDiamonds', 'shootTheMoon', 'shootTheSun', 'noPointsOnFirstTrick'] as const) {
     if (typeof input[key] === 'boolean') s[key] = input[key] as boolean;
   }
-  if (Number(input.fivePlayerCribSize) === 7) s.fivePlayerCribSize = 7;
-  else if (Number(input.fivePlayerCribSize) === 2) s.fivePlayerCribSize = 2;
   return s;
 }
 
-export function cribSize(numPlayers: number, settings: GameSettings): number {
-  return numPlayers === 5 ? settings.fivePlayerCribSize : 4;
+/** The cards in play for a table size. */
+export function deckFor(numPlayers: number): Card[] {
+  const deck = newDeck();
+  return numPlayers === 5 ? deck.filter((c) => !FIVE_PLAYER_REMOVED.includes(c)) : deck;
 }
 
-export function cardsPerPlayer(numPlayers: number, settings: GameSettings): number {
-  return (52 - cribSize(numPlayers, settings)) / numPlayers;
+/** 12 cards each with four players, 9 with five. */
+export function cardsPerPlayer(numPlayers: number): number {
+  return (deckFor(numPlayers).length - CRIB_SIZE) / numPlayers;
 }
 
 /**
  * Pass offsets cycle hand to hand. An offset is how many seats to the left the cards travel.
  * 4 players: left, right, across, keep.
- * 5 players: left, right, two-left, two-right, keep.
+ * 5 players: left, right, left across, right across, keep.
  */
 export function passCycle(numPlayers: number): number[] {
   const offsets: number[] = [];
@@ -80,5 +84,5 @@ export function passLabel(offset: number, numPlayers: number): string {
   if (offset === 1) return 'Left';
   if (offset === numPlayers - 1) return 'Right';
   if (numPlayers === 4 && offset === 2) return 'Across';
-  return offset <= numPlayers / 2 ? `${offset} to the left` : `${numPlayers - offset} to the right`;
+  return offset < numPlayers / 2 ? 'Left across' : 'Right across';
 }

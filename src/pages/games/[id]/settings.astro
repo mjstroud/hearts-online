@@ -19,9 +19,15 @@ if (Astro.request.method === 'POST') {
     if (form.intent === 'save') {
       updateSettings(game.id, user.id, form.name ?? '', settingsFromForm(form));
       saved = 'Settings saved.';
-    } else if (form.intent === 'end') {
-      if (form.confirm !== 'on') throw new GameError('Tick the box to confirm ending the game.');
-      endGame(game.id, user.id);
+    } else if (form.intent === 'end-after') {
+      endGame(game.id, user.id, 'after-hand');
+      saved = 'The game will end as soon as the current hand is finished.';
+    } else if (form.intent === 'end-cancel') {
+      endGame(game.id, user.id, 'cancel');
+      saved = 'The game will keep going.';
+    } else if (form.intent === 'end-now') {
+      if (form.confirm !== 'on') throw new GameError('Tick the box to confirm throwing away the current hand.');
+      endGame(game.id, user.id, 'now');
       return Astro.redirect(`/games/${game.id}`, 303);
     } else if (form.intent === 'delete') {
       if (form.confirmName !== game.name) throw new GameError('Type the game’s exact name to delete it.');
@@ -34,9 +40,11 @@ if (Astro.request.method === 'POST') {
   }
   game = loadGame(game.id)!;
 }
-const locked = game.status !== 'lobby';
+const locked = game.status !== 'lobby' && game.mode !== 'playtest';
 const finished = game.status === 'finished';
 const maxScore = game.state ? Math.max(...game.state.scores) : 0;
+const ending = !!game.state?.endAfterHand;
+const handNumber = game.state?.hand?.number;
 ---
 
 <Layout title={`Settings · ${game.name}`}>
@@ -81,24 +89,66 @@ const maxScore = game.state ? Math.max(...game.state.scores) : 0;
       )
     }
 
+    {
+      game.status === 'active' && (
+        <section class="ending stack">
+          <h2 class="panel-title">Ending the game</h2>
+          <form method="post" class="panel panel-pad stack" style="--gap: 12px">
+            {ending ? (
+              <>
+                <input type="hidden" name="intent" value="end-cancel" />
+                <div>
+                  <strong>This is the final hand</strong>
+                  <p class="muted small">
+                    The game ends as soon as hand {handNumber} is finished. Everyone can see a “final hand” notice at the table.
+                  </p>
+                </div>
+                <div>
+                  <button class="btn" type="submit">
+                    Keep playing instead
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <input type="hidden" name="intent" value="end-after" />
+                <div>
+                  <strong>End after this hand</strong>
+                  <p class="muted small">
+                    Hand {handNumber} is played to the end and scored, then the game is over and the lowest total wins. You can
+                    change your mind until the last card is played.
+                  </p>
+                </div>
+                <div>
+                  <button class="btn btn-gold" type="submit">
+                    Make this the final hand
+                  </button>
+                </div>
+              </>
+            )}
+          </form>
+        </section>
+      )
+    }
+
     <section class="danger stack">
       <h2 class="panel-title">Danger zone</h2>
       {
         game.status === 'active' && (
           <form method="post" class="panel panel-pad stack" style="--gap: 12px">
-            <input type="hidden" name="intent" value="end" />
+            <input type="hidden" name="intent" value="end-now" />
             <div>
-              <strong>End the game now</strong>
+              <strong>End immediately</strong>
               <p class="muted small">
-                Final standings are taken from the last completed hand. The hand in progress is thrown out. Everyone keeps the
-                scoreboard and stats.
+                For emergencies only, like when someone can’t finish the hand. The unfinished hand is thrown out and final
+                standings come from the last completed hand.
               </p>
             </div>
             <label class="row small" style="--gap: 8px">
-              <input type="checkbox" name="confirm" /> Yes, end “{game.name}” for everyone
+              <input type="checkbox" name="confirm" /> Yes, throw away hand {handNumber} and end “{game.name}” now
             </label>
             <div>
-              <button class="btn btn-gold" type="submit">End game</button>
+              <button class="btn btn-danger" type="submit">End now</button>
             </div>
           </form>
         )
@@ -122,6 +172,7 @@ const maxScore = game.state ? Math.max(...game.state.scores) : 0;
 </Layout>
 
 <style>
+  .ending,
   .danger {
     margin-top: 36px;
     --gap: 12px;

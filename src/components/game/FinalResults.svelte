@@ -1,8 +1,8 @@
 <script lang="ts">
-  import type { GameView } from '../../lib/types';
+  import type { GameAction, GameView } from '../../lib/types';
   import { avatarColor, initials, ordinal } from '../../lib/ui';
 
-  let { view }: { view: GameView } = $props();
+  let { view, act, busy }: { view: GameView; act: (a: GameAction) => Promise<boolean>; busy: boolean } = $props();
 
   const ranked = $derived(
     view.players
@@ -40,7 +40,12 @@
     <div class="row center">
       <a class="btn btn-gold" href={`/games/${view.id}/scoreboard`}>Full scoreboard</a>
       <a class="btn" href={`/games/${view.id}/stats`}>Game stats</a>
-      <a class="btn btn-ghost" href="/games/new">Start a new game</a>
+      {#if view.dev}
+        <button class="btn" disabled={busy || !view.dev.canUndo} onclick={() => act({ type: 'dev:undo' })}>↶ Undo last move</button>
+        <a class="btn btn-ghost" href="/playtest">New playtest</a>
+      {:else}
+        <a class="btn btn-ghost" href="/games/new">Start a new game</a>
+      {/if}
     </div>
   </div>
 </div>

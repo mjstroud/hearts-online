@@ -39,7 +39,10 @@ const sections = [
             lot, and the Jack of Diamonds helps you. The <strong>lowest score wins</strong>. Our game runs over many hands, often
             the whole year, so the running total is what matters.
           </p>
-          <p>It’s played with <strong>4 or 5 players</strong> and a standard 52-card deck. Aces are high.</p>
+          <p>
+            It’s played with <strong>4 or 5 players</strong> and a standard 52-card deck (minus three twos with five players).
+            Aces are high.
+          </p>
         </section>
 
         <section id="deal" class="panel panel-pad">
@@ -55,9 +58,10 @@ const sections = [
               <PlayingCard width={56} />
             </div>
             <ul>
-              <li><strong>4 players:</strong> a 4-card crib, 12 cards each.</li>
+              <li><strong>4 players:</strong> the full deck, a 4-card crib and 12 cards each.</li>
               <li>
-                <strong>5 players:</strong> the host picks either a 2-card crib (10 cards each) or a 7-card crib (9 cards each).
+                <strong>5 players:</strong> take out the 2♣, 2♦ and 2♠, leaving 49 cards: a 4-card crib and 9 cards each. The 2♥
+                stays in, so there are still 26 penalty points.
               </li>
               <li>Whoever <strong>wins the first trick wins the crib</strong>. Its cards count toward their score.</li>
               <li>Only the crib winner gets to see what was in it. Everyone else finds out at the end of the hand.</li>
@@ -78,8 +82,8 @@ const sections = [
             <div><span>4</span>Keep</div>
           </div>
           <p class="muted">
-            With five players there’s no “across”, so the rotation is left, right, two to the left, two to the right, then keep.
-            On a keep hand nobody passes. Passed cards arrive marked <span class="new-chip">new</span> so you can spot them.
+            With five players there are two “across” seats, so the rotation is left, right, <strong>left across</strong> (two
+            seats to your left), <strong>right across</strong> (two seats to your right), then keep. On a keep hand nobody passes. Passed cards arrive marked <span class="new-chip">new</span> so you can spot them.
           </p>
         </section>
 
@@ -87,8 +91,8 @@ const sections = [
           <h2>Playing a hand</h2>
           <ol class="steps">
             <li>
-              The player holding the <strong>2♣</strong> leads it to start the first trick. If the 2♣ is hiding in the crib, the
-              lowest club in anyone’s hand leads instead.
+              The player holding the <strong>lowest club</strong> leads it to start the first trick: normally the 2♣, or the 3♣
+              with five players. If that card is hiding in the crib, the next-lowest club leads instead.
             </li>
             <li>
               Play goes clockwise (to the left). You must <strong>follow suit</strong> if you can. If you can’t, play anything.
@@ -155,10 +159,18 @@ const sections = [
         <section id="ending" class="panel panel-pad">
           <h2>Ending the game</h2>
           <p>
-            By default there’s <strong>no score limit</strong>. Scores keep climbing for as long as the family keeps playing, and the
-            game’s host ends it when the season is over. The host can also set a limit at any time. In that case, the game ends
-            after the first hand where someone reaches it. Lowest total wins.
+            The game always ends on a <strong>finished hand</strong>, never partway through one. Lowest total wins.
           </p>
+          <ul class="tips">
+            <li>
+              By default there’s <strong>no score limit</strong>. Scores keep climbing for as long as the family keeps playing.
+              When the season’s over, the host marks the current hand as the final one, and the game ends once it’s scored.
+            </li>
+            <li>
+              The host can also set a <strong>score limit</strong> at any time. Crossing it mid-hand doesn’t end anything. The game
+              ends after the first completed hand in which someone is at or over the limit.
+            </li>
+          </ul>
         </section>
 
         <section id="online" class="panel panel-pad">
@@ -168,6 +180,10 @@ const sections = [
             <li><strong>It updates live.</strong> When others are at the table, you’ll see their cards land as they play.</li>
             <li><strong>Turn alerts.</strong> Switch on “Alert me when it’s my turn” at the table to get a notification while the tab is open.</li>
             <li><strong>Short a player?</strong> The host can fill empty seats with computer players before starting.</li>
+            <li>
+              <strong>Want to practice?</strong> A <a href="/playtest">playtest table</a> is a solo sandbox. You can see every
+              hand, drive the computer players and stack the deck, and it doesn’t count toward your stats.
+            </li>
             <li><strong>On a phone?</strong> Tap a card to lift it, then tap again (or press Play) to play it.</li>
           </ul>
         </section>

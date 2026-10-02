@@ -36,7 +36,7 @@
     </li>
   {/each}
 </ol>
-{#if scoreLimit}<p class="limit faint">Game ends at {scoreLimit} points</p>{/if}
+{#if scoreLimit}<p class="limit faint">Game ends after a hand where someone reaches {scoreLimit}</p>{/if}
 
 <style>
   .standings {

@@ -4,14 +4,13 @@ import {
   cardLabel,
   isHeart,
   isPenaltyCard,
-  newDeck,
   rankValue,
   secureRng,
   shuffle,
   sortCards,
   suitOf,
 } from './cards';
-import { type GameSettings, PASS_COUNT, cardsPerPlayer, cribSize, passOffsetForHand } from './rules';
+import { CRIB_SIZE, type GameSettings, PASS_COUNT, cardsPerPlayer, deckFor, passOffsetForHand } from './rules';
 
 export interface TrickPlay {
   seat: number;
@@ -55,19 +54,57 @@ export interface HandState {
 
 export class RuleError extends Error {}
 
-export function dealHand(handNumber: number, numPlayers: number, settings: GameSettings, rng: Rng = secureRng): HandState {
-  const per = cardsPerPlayer(numPlayers, settings);
-  const deck = shuffle(newDeck(), rng);
-  const hands: Card[][] = [];
-  for (let s = 0; s < numPlayers; s++) hands.push(sortCards(deck.slice(s * per, (s + 1) * per)));
-  const crib = deck.slice(numPlayers * per);
-  if (crib.length !== cribSize(numPlayers, settings)) throw new Error('Bad deal');
-  return startHand(handNumber, numPlayers, hands, crib);
+/** Cards to place before the rest of the deck is dealt at random (playtest scenarios). */
+export interface DealSpec {
+  hands?: (Card[] | undefined)[];
+  crib?: Card[];
+}
+
+export interface DealOptions {
+  spec?: DealSpec;
+  /** Force a pass direction instead of the usual rotation (playtest only). */
+  passOffset?: number;
+}
+
+/** Place any specified cards, then deal the rest of the deck at random. */
+export function stackDeck(numPlayers: number, spec: DealSpec = {}, rng: Rng = secureRng): { hands: Card[][]; crib: Card[] } {
+  const per = cardsPerPlayer(numPlayers);
+  const deck = deckFor(numPlayers);
+  const used = new Set<Card>();
+  const place = (cards: Card[] | undefined, max: number, where: string): Card[] => {
+    const list = cards ?? [];
+    if (list.length > max) throw new RuleError(`${where} can hold at most ${max} cards.`);
+    for (const c of list) {
+      if (!deck.includes(c)) throw new RuleError(`${cardLabel(c)} isn’t in a ${numPlayers}-player deck.`);
+      if (used.has(c)) throw new RuleError(`${cardLabel(c)} is placed twice.`);
+      used.add(c);
+    }
+    return list.slice();
+  };
+  const hands = Array.from({ length: numPlayers }, (_, s) => place(spec.hands?.[s], per, `Seat ${s + 1}`));
+  const crib = place(spec.crib, CRIB_SIZE, 'The crib');
+  const rest = shuffle(
+    deck.filter((c) => !used.has(c)),
+    rng,
+  );
+  for (const h of hands) while (h.length < per) h.push(rest.pop()!);
+  while (crib.length < CRIB_SIZE) crib.push(rest.pop()!);
+  return { hands, crib };
+}
+
+export function dealHand(handNumber: number, numPlayers: number, rng: Rng = secureRng, opts: DealOptions = {}): HandState {
+  const { hands, crib } = stackDeck(numPlayers, opts.spec, rng);
+  return startHand(handNumber, numPlayers, hands, crib, opts.passOffset);
 }
 
 /** Build a hand from a known deal (used by dealHand and tests). */
-export function startHand(handNumber: number, numPlayers: number, hands: Card[][], crib: Card[]): HandState {
-  const passOffset = passOffsetForHand(handNumber, numPlayers);
+export function startHand(
+  handNumber: number,
+  numPlayers: number,
+  hands: Card[][],
+  crib: Card[],
+  passOffset: number = passOffsetForHand(handNumber, numPlayers),
+): HandState {
   const sorted = hands.map((h) => sortCards(h));
   const state: HandState = {
     number: handNumber,
@@ -95,7 +132,7 @@ function lowestClub(hands: Card[][]): Card {
   for (const hand of hands) {
     for (const c of hand) if (suitOf(c) === 'C' && (!best || rankValue(c) < rankValue(best))) best = c;
   }
-  if (!best) throw new Error('No clubs dealt'); // impossible: crib holds at most 7 of 13 clubs
+  if (!best) throw new Error('No clubs dealt'); // impossible: the crib holds only 4 of the 12+ clubs
   return best;
 }
 

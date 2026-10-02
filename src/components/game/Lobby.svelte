@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { MAX_PLAYERS, MIN_PLAYERS, cardsPerPlayer, cribSize, passCycle, passLabel } from '../../lib/engine/rules';
+  import { CRIB_SIZE, MAX_PLAYERS, MIN_PLAYERS, cardsPerPlayer, passCycle, passLabel } from '../../lib/engine/rules';
   import type { GameAction, GameView } from '../../lib/types';
   import { avatarColor, initials } from '../../lib/ui';
 
@@ -112,14 +112,15 @@
         <li>
           <span class="pip">▣</span>
           <span>
-            {cribSize(previewPlayers, s)}-card face-down crib ({cardsPerPlayer(previewPlayers, s)} cards each with {previewPlayers} players)
-            goes to whoever wins the first trick.
+            A {CRIB_SIZE}-card face-down crib goes to whoever wins the first trick ({cardsPerPlayer(previewPlayers)} cards each with
+            {previewPlayers} players{previewPlayers === 5 ? ', after removing the 2♣, 2♦ and 2♠' : ''}).
           </span>
         </li>
+        <li><span class="pip">♣</span><span>The lowest club in play leads the first trick.</span></li>
         {#if s.shootTheMoon}<li><span class="pip">☾</span><span>Shoot the Moon: everyone else <strong>+26</strong>.</span></li>{/if}
         {#if s.shootTheSun}<li><span class="pip gold">☀</span><span>Shoot the Sun (win every trick): everyone else <strong>+52</strong>.</span></li>{/if}
         <li><span class="pip">⇄</span><span>Passing: {passCycle(previewPlayers).map((o) => passLabel(o, previewPlayers)).join(' → ')}.</span></li>
-        <li><span class="pip">⚑</span><span>{s.scoreLimit ? `Game ends when someone reaches ${s.scoreLimit}.` : 'No score limit, so the host ends the game.'}</span></li>
+        <li><span class="pip">⚑</span><span>{s.scoreLimit ? `The game ends after the hand in which someone reaches ${s.scoreLimit}.` : 'No score limit. The host ends the game after a finished hand.'}</span></li>
         {#if !s.noPointsOnFirstTrick}<li><span class="pip">!</span><span>Points may be dumped on the first trick.</span></li>{/if}
       </ul>
       <a class="muted small" href="/rules">Full rules →</a>

@@ -507,6 +507,12 @@ select.input {
   border-color: rgb(242 196 109 / 0.25);
 }
 
+.badge.sky {
+  background: rgb(124 180 255 / 0.14);
+  color: var(--sky);
+  border-color: rgb(124 180 255 / 0.28);
+}
+
 .badge.mint {
   background: var(--mint-soft);
   color: var(--mint);

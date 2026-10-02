@@ -158,7 +158,7 @@
 {:else if view.status === 'active' && view.table}
   <Table {view} {act} {busy} {notify} {toggleNotify} onShowResult={() => (resultOpen = true)} />
 {:else}
-  <FinalResults {view} />
+  <FinalResults {view} {act} {busy} />
 {/if}
 
 {#if resultOpen && view.lastHand}

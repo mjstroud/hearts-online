@@ -77,6 +77,8 @@
     <div class="empty" style={`height: ${height}px`}>The chart fills in after the first hand is scored.</div>
   {:else}
     <div class="plot">
+      <!-- Focusable with arrow-key navigation so keyboard users get the same readout as on hover. -->
+      <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
       <svg
         {width}
         {height}

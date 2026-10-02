@@ -148,7 +148,7 @@ export function userOverview(userId: number, displayName: string): UserOverview 
   const rows = sql(
     `SELECT g.id, g.name, g.status, g.state, g.updated_at FROM games g
      JOIN game_players gp ON gp.game_id = g.id
-     WHERE gp.user_id = ? AND g.status != 'lobby' ORDER BY g.updated_at DESC`,
+     WHERE gp.user_id = ? AND g.status != 'lobby' AND g.mode = 'normal' ORDER BY g.updated_at DESC`,
   ).all(userId) as { id: string; name: string; status: GameStatus; state: string | null; updated_at: number }[];
 
   const stats = new Map<number, PlayerStats>();
