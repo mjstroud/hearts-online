@@ -5,7 +5,7 @@ import { isSecure } from './lib/server/http';
 
 const g = globalThis as typeof globalThis & { __heartsBooted?: boolean };
 
-const PROTECTED = ['/games', '/stats', '/join', '/account', '/api/'];
+const PROTECTED = ['/games', '/stats', '/join', '/account', '/playtest', '/api/'];
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 function sameOrigin(request: Request): boolean {
