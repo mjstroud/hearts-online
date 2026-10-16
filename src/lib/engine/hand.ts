@@ -2,7 +2,6 @@ import {
   type Card,
   type Rng,
   cardLabel,
-  isHeart,
   isPenaltyCard,
   rankValue,
   secureRng,
@@ -180,7 +179,8 @@ export function legalPlays(state: HandState, seat: number, settings: GameSetting
   if (plays.length === 0) {
     if (isFirstTrick(state)) return [state.openingCard];
     if (!state.heartsBroken) {
-      const nonHearts = hand.filter((c) => !isHeart(c));
+      // The Q♠ counts as a heart here: it can't be led until hearts are broken.
+      const nonHearts = hand.filter((c) => !isPenaltyCard(c));
       if (nonHearts.length) return nonHearts;
     }
     return hand.slice();
@@ -220,7 +220,7 @@ export function playCard(state: HandState, seat: number, card: Card, settings: G
 
   state.hands[seat] = state.hands[seat].filter((c) => c !== card);
   state.current.plays.push({ seat, card });
-  if (isHeart(card)) state.heartsBroken = true;
+  if (isPenaltyCard(card)) state.heartsBroken = true;
 
   if (state.current.plays.length < state.numPlayers) {
     state.turn = (seat + 1) % state.numPlayers;

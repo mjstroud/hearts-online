@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { fly } from 'svelte/transition';
+  import { isPenaltyCard } from '../../lib/engine/cards';
   import type { GameAction, GameView } from '../../lib/types';
   import FinalResults from './FinalResults.svelte';
   import HandResult from './HandResult.svelte';
@@ -53,7 +54,7 @@
           current: { ...t.current, plays },
           turn: next,
           handSizes: t.handSizes.map((count, s) => (s === seat ? count - 1 : count)),
-          heartsBroken: t.heartsBroken || action.card[1] === 'H',
+          heartsBroken: t.heartsBroken || isPenaltyCard(action.card),
         },
         toAct: next === null ? [] : [next],
       };

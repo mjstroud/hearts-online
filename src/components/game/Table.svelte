@@ -1,6 +1,6 @@
 <script lang="ts">
   import { fade, fly, scale } from 'svelte/transition';
-  import { type Card, SUIT_SYMBOL, cardLabel, suitOf } from '../../lib/engine/cards';
+  import { type Card, SUIT_SYMBOL, cardLabel, isPenaltyCard, suitOf } from '../../lib/engine/cards';
   import type { Trick } from '../../lib/engine/hand';
   import type { GameAction, GameView } from '../../lib/types';
   import { BOT_AVATAR, avatarColor, initials, signed } from '../../lib/ui';
@@ -151,7 +151,7 @@
     if (myTurn) {
       if (leading) {
         if (t.trickNumber === 1) return `Lead the ${cardLabel(t.legal[0])} to open the hand.`;
-        if (!t.heartsBroken && t.myHand.some((c) => suitOf(c) === 'H') && t.legal.some((c) => suitOf(c) !== 'H'))
+        if (!t.heartsBroken && t.myHand.some(isPenaltyCard) && t.legal.some((c) => !isPenaltyCard(c)))
           return 'Your lead. Hearts haven’t been broken yet.';
         return 'Your lead.';
       }

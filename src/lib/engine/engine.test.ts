@@ -285,6 +285,28 @@ describe('legal plays', () => {
     expect(legalPlays(hand, 2, S)).not.toContain('6H');
     expect(() => playCard(hand, 2, '6H', S)).toThrow(/broken/);
   });
+
+  it('does not allow leading the queen of spades until hearts are broken', () => {
+    const hand = keepHand(hands, crib);
+    for (const [seat, card] of [[0, '2C'], [1, '4C'], [2, '8C'], [3, 'JS']] as const) playCard(hand, seat, card, S);
+    for (const [seat, card] of [[2, '9S'], [3, 'AS'], [0, '4D'], [1, '8S']] as const) playCard(hand, seat, card, S);
+    expect(hand.turn).toBe(3);
+    expect(hand.heartsBroken).toBe(false);
+    expect(legalPlays(hand, 3, S)).toEqual(['KS']);
+    expect(() => playCard(hand, 3, 'QS', S)).toThrow(/broken/);
+  });
+
+  it('breaks hearts when the queen of spades is played', () => {
+    const hand = keepHand(hands, crib);
+    for (const [seat, card] of [[0, '2C'], [1, '4C'], [2, '8C'], [3, 'JS']] as const) playCard(hand, seat, card, S);
+    playCard(hand, 2, '2D', S);
+    playCard(hand, 3, 'QS', S);
+    expect(hand.heartsBroken).toBe(true);
+    playCard(hand, 0, '4D', S);
+    playCard(hand, 1, '2S', S);
+    expect(hand.turn).toBe(0);
+    expect(legalPlays(hand, 0, S)).toContain('2H');
+  });
 });
 
 describe('scoring', () => {
