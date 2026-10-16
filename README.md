@@ -79,14 +79,17 @@ docker run -p 8080:8080 -v hearts-data:/data -e SIGNUP_CODE=letmein hearts-table
 
 ### Fly.io
 
-A `fly.toml` is included. Change `app` to a unique name first.
+A `fly.toml` is included. GitHub Actions does the deploying, so no machine needs `flyctl` installed.
 
-```bash
-fly launch --no-deploy            # accept the existing fly.toml
-fly volumes create hearts_data --size 1
-fly secrets set SIGNUP_CODE=your-family-code
-fly deploy
-```
+**One-time setup**
+
+1. Pick a unique app name and set `app` in `fly.toml`.
+2. In the Fly dashboard, create an org token for `matthew-stroud`. Add it to the GitHub repo as the secret `FLY_ORG_TOKEN`.
+3. Optional: add a `SIGNUP_CODE` repo secret to keep sign-up family-only.
+4. In GitHub, go to Actions → **Fly launch** → Run workflow. It creates the app, the `hearts_data` volume, and the secret, then deploys.
+5. In the Fly dashboard, create a deploy token for the new app. Add it as the secret `FLY_API_TOKEN`, then delete `FLY_ORG_TOKEN` from GitHub and revoke it in Fly.
+
+**After that:** every push to `main` that passes tests deploys automatically. Logs, secrets, and machine status are in the Fly dashboard. Each deploy restarts the single machine, which causes a few seconds of downtime.
 
 ### Railway / Render
 

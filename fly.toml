@@ -1,4 +1,4 @@
-# Fly.io config. Change `app` to a unique name, then see README → Deploying.
+# Fly.io config. Deployed by GitHub Actions; see README → Deploying.
 app = "hearts-table"
 primary_region = "ord"
 

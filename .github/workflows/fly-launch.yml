@@ -1,0 +1,54 @@
+# One-time setup on Fly.io: creates the app, its volume and secrets, then deploys.
+# Run it by hand from the Actions tab. Safe to re-run; it skips what already exists.
+name: Fly launch
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: fly-deploy
+  cancel-in-progress: false
+
+jobs:
+  launch:
+    runs-on: ubuntu-latest
+    env:
+      FLY_ORG: matthew-stroud
+      # Org-scoped token: the app doesn't exist yet, so an app deploy token can't create it.
+      FLY_API_TOKEN: ${{ secrets.FLY_ORG_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Read app name and region from fly.toml
+        run: |
+          echo "APP=$(sed -nE 's/^app *= *"([^"]+)".*/\1/p' fly.toml)" >> "$GITHUB_ENV"
+          echo "REGION=$(sed -nE 's/^primary_region *= *"([^"]+)".*/\1/p' fly.toml)" >> "$GITHUB_ENV"
+
+      - name: Create the app
+        run: |
+          if flyctl status --app "$APP" > /dev/null 2>&1; then
+            echo "App $APP already exists."
+          else
+            flyctl apps create "$APP" --org "$FLY_ORG"
+          fi
+
+      - name: Create the SQLite volume
+        run: |
+          if [ "$(flyctl volumes list --app "$APP" --json | jq length)" -gt 0 ]; then
+            echo "Volume already exists."
+          else
+            flyctl volumes create hearts_data --app "$APP" --region "$REGION" --size 1 --yes
+          fi
+
+      - name: Set SIGNUP_CODE
+        env:
+          SIGNUP_CODE: ${{ secrets.SIGNUP_CODE }}
+        run: |
+          if [ -n "$SIGNUP_CODE" ]; then
+            flyctl secrets set SIGNUP_CODE="$SIGNUP_CODE" --app "$APP" --stage
+          else
+            echo "No SIGNUP_CODE secret in GitHub; anyone with the link can sign up."
+          fi
+
+      - run: flyctl deploy --remote-only
