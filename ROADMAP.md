@@ -138,7 +138,20 @@ So change `check:budgets` to read each route's `styles` list from the server bui
 
 ### Phase 3: Less waiting
 
-This changes the play loop. Take a Fly snapshot first (migration v8).
+**Status (2026-11-26): built and on the dev site, not yet released.** Migration v8 adds one table, `removed_players`, so take a Fly volume snapshot of the real site before releasing it.
+
+- **Checked:**
+  - A six-lens design review, then a five-lens code review with each finding verified by a skeptic.
+  - The tests (simulations included), the type check, the build and the budgets: game page JS 46.2 of 55 KB, CSS 11.6 of 14 KB.
+  - In the browser: queueing, the stagger, the last trick and auto-finish at 375px and on desktop, and removing a player end to end with a 32-character name.
+- **Decisions made while building:**
+  - **Queued cards live in server memory,** a map beside the playtest undo history, not in the database. Losing one on a deploy just means it isn't queued. Queueing never touches the version, `updated_at`, the move clock or a cat's pause, so the table can't tell. Your own other tabs get a quiet refresh.
+  - **The last trick plays in one go** after the usual trick pause (one save, one update), and the browser slides the cards in 150ms apart.
+  - **Auto-finish never cuts in when only the last trick is left;** that trick always plays out visibly and counts. It also requires the J♦ to be played face up even when the J♦ rule is off, so every stored "who took what" fact comes from a face-up card.
+  - **Auto-finish turns out to be rare.** "A suit every player has shown they're out of" can never hold in legal play: whoever leads a suit for the last time still had it. So the rule fires only once every heart, the Q♠ and the J♦ have been played. In simulation that's about 1 hand in 6,700 with the bots, and around 1% with looser play. Nearly all the time saved comes from the last trick.
+  - **Removing a player** swaps a cat into the seat and never deletes or reseats. Their open streams are told and closed. They can't open the game afterwards: /stats lists it as "Removed", with only their own hands counted. The trick review and the hand result name each hand's own players.
+  - **A JSON `settings` action** mirrors the settings form, so a future app can switch the pace options.
+- **Not checked yet:** a real iPhone, and Firefox on the dev site. Tabs left open from before the release may raise a false "Your turn" alert at the last trick until they're refreshed.
 
 - **M:** one rule for "seats the server is about to play", so no false "Your turn" alerts, /games badges or move-timer hand-offs.
 - **S:** auto-play the final trick after the normal pause. A late tap just succeeds.
@@ -269,7 +282,7 @@ You want an app that shares accounts, data and games with the site. The server a
 
 ## Rollout
 
-- **Try everything on the dev site first** (dev.shootthesun.com, deployed from the `dev` branch), then release `dev` to `main` between play sessions. Take a Fly volume snapshot of the real site before each migration: v7 (terms acceptance, done), v8 (pre-moves), v9 (chat) and v10 (public lobbies).
+- **Try everything on the dev site first** (dev.shootthesun.com, deployed from the `dev` branch), then release `dev` to `main` between play sessions. Take a Fly volume snapshot of the real site before each migration: v7 (terms acceptance, done), v8 (removed players, Phase 3), v9 (chat) and v10 (public lobbies).
 - **The dev site is the https test bed** for service workers, home-screen installs and push on real phones.
 - **Real-iPhone loop:** run `npm run dev -- --host`, then open the PC's network address on an iPhone on the same Wi-Fi. Sign-in works over plain http there. Service workers, home-screen installs and push need https, so test those on the dev site (dev.shootthesun.com).
 - **The GitHub repo is public.** Cat photos go in the database, not the repo.
@@ -293,9 +306,11 @@ Made 2026-11-26.
 - **Last trick:** `lastTrick` is the latest finished trick, or last hand's final trick at the start of a hand ([view.ts:114](src/lib/engine/view.ts:114)). `HandSummary.finalTrick` is sent but [HandResult.svelte](src/components/game/HandResult.svelte) never draws it.
 - **Trick review:** `HandRecord.tricks` ([scoring.ts:15](src/lib/engine/scoring.ts:15)) is written to `hands.record` ([games.ts:414](src/lib/server/games.ts:414)).
 - **Moments:** `heartsBroken` is set for any point card ([hand.ts:223](src/lib/engine/hand.ts:223)). The crib winner's points and tags include the crib ([view.ts:105-111](src/lib/engine/view.ts:105)), so drive moments from trick cards only. The Sun is "one seat won every trick" ([scoring.ts:44](src/lib/engine/scoring.ts:44)). The Moon needs penalty 26, crib included ([hand.ts:261](src/lib/engine/hand.ts:261)).
-- **Server-played seats:** [games.ts:147](src/lib/server/games.ts:147), :798, :818, :863. Bot pauses are 900ms and 1700ms ([games.ts:787](src/lib/server/games.ts:787)). The next hand deals in the same update as the last card ([game.ts:76](src/lib/engine/game.ts:76)).
-- **Pre-moves:** a follower's legal cards depend only on the lead suit, their hand, the first-trick flag and settings ([hand.ts:189](src/lib/engine/hand.ts:189)). The lowest club always leads, so trick 1's suit is known in advance ([hand.ts:138](src/lib/engine/hand.ts:138)). `saveGame` bumps the version and `updated_at` ([games.ts:170](src/lib/server/games.ts:170)), which is why queued cards live elsewhere.
-- **Mid-game host options:** only `scoreLimit` and `moveTimer` can change after the start ([games.ts:665](src/lib/server/games.ts:665)). Grow that list for new toggles. `normalizeSettings` fills in defaults with no migration ([rules.ts:52](src/lib/engine/rules.ts:52)).
+- **Server-played seats:** one rule, `serverPlays` in games.ts (the cats, a cat sitting in while someone's still here, and the last trick). `clocked` is the move timer's side of it. `yourTurn` in the view and on /games comes from the same rule. Bot pauses are 900ms and 1700ms (`BOT_DELAYS`). The next hand deals in the same update as the last card (game.ts `gamePlay`).
+- **Pre-moves:** `queueSuit` and `followPlays` in hand.ts are shared by the server and the browser. Queued cards live in the `premoves` map in games.ts and fire from `applyResult`, after every play. `saveGame` bumps the version and `updated_at`, which is why queued cards never go through it.
+- **Mid-game host options:** `MID_GAME_SETTINGS` in rules.ts. Grow that list for new toggles. `normalizeSettings` fills in defaults with no migration.
+- **Auto-finish:** `canAutoFinish` in autofinish.ts, called from `gamePlay`. Records carry `autoFrom`; `tableTricks` and `tableTricksWon` in scoring.ts leave the played-out tricks out.
+- **Removed players:** the `removed_players` table (v8), and `occupant()` in stats.ts, which gives each hand's player per seat from `record.players`, falling back to that table for older records.
 - **Stats:** seats map to whoever sits there now ([stats.ts:63](src/lib/server/stats.ts:63)). Add player ids to hand records before any mid-game seat change.
 - **Live updates:** `publish` rebuilds a view per player ([games.ts:377](src/lib/server/games.ts:377)) and never unsubscribes removed players ([games.ts:390](src/lib/server/games.ts:390)). People asking to join a public table aren't seated, so they need their own channel.
 - **Public lobbies:** `joinGame` and `removePlayer` work in the lobby only ([games.ts:233](src/lib/server/games.ts:233), [538](src/lib/server/games.ts:538)). The games list is at [games.ts:735](src/lib/server/games.ts:735). Don't parse state blobs per row for an open-tables list.

@@ -27,9 +27,17 @@ export interface HandRecord {
   sun: number | null;
   /** Final score for each seat this hand, after moon/sun adjustments. */
   scores: number[];
+  /**
+   * The first trick (1-based) the server played out at once because nothing left could score.
+   * Those tricks carry no points and the table never saw them. Absent otherwise, and on old records.
+   */
+  autoFrom?: number;
+  /** User ids by seat when the hand was recorded (filled by the server). Absent on records from before seats could change hands. */
+  players?: number[];
 }
 
-export function scoreHand(state: HandState, settings: GameSettings): HandRecord {
+/** `autoFrom` marks where the server played out the rest of the hand. Every field still counts all the tricks. */
+export function scoreHand(state: HandState, settings: GameSettings, autoFrom?: number): HandRecord {
   if (state.phase !== 'done' || state.cribWinner === null) throw new Error('Hand is not finished');
   const n = state.numPlayers;
   const seats = Array.from({ length: n }, (_, s) => s);
@@ -72,5 +80,18 @@ export function scoreHand(state: HandState, settings: GameSettings): HandRecord 
     moon,
     sun,
     scores,
+    ...(autoFrom ? { autoFrom } : {}),
   };
+}
+
+/** The tricks the table actually saw: all of them, unless the server played out the end of the hand. */
+export function tableTricks(r: HandRecord): HandRecord['tricks'] {
+  return r.autoFrom ? r.tricks.slice(0, r.autoFrom - 1) : r.tricks;
+}
+
+/** Tricks each seat won in play, for trick counts and stats (`tricksWon` also counts the played-out ones). */
+export function tableTricksWon(r: HandRecord): number[] {
+  const won = Array.from({ length: r.numPlayers }, () => 0);
+  for (const t of tableTricks(r)) won[t.winner] += 1;
+  return won;
 }

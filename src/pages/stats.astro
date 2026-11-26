@@ -59,26 +59,40 @@ const tiles = [
                   </tr>
                 </thead>
                 <tbody>
-                  {games.map((g) => (
-                    <tr>
-                      <td>
-                        <a href={`/games/${g.id}/stats`}>{g.name}</a>
-                      </td>
-                      <td>
-                        {g.won ? (
-                          <span class="badge gold">Won</span>
-                        ) : (
-                          <span class="badge">{g.status === 'finished' ? 'Final' : 'In progress'}</span>
-                        )}
-                      </td>
-                      <td>{g.handsPlayed}</td>
-                      <td>{g.myScore}</td>
-                      <td>
-                        {g.handsPlayed ? ordinal(g.rank) : '–'} <span class="faint">of {g.playerCount}</span>
-                      </td>
-                      <td class="faint">{timeAgo(g.updatedAt)}</td>
-                    </tr>
-                  ))}
+                  {/* You can't open a game you were removed from, so it has no link, and no place in it. */}
+                  {games.map((g) =>
+                    g.removed ? (
+                      <tr>
+                        <td>{g.name}</td>
+                        <td>
+                          <span class="badge">Removed</span>
+                        </td>
+                        <td>{g.myHands}</td>
+                        <td>{g.myScore}</td>
+                        <td>–</td>
+                        <td class="faint">{timeAgo(g.updatedAt)}</td>
+                      </tr>
+                    ) : (
+                      <tr>
+                        <td>
+                          <a href={`/games/${g.id}/stats`}>{g.name}</a>
+                        </td>
+                        <td>
+                          {g.won ? (
+                            <span class="badge gold">Won</span>
+                          ) : (
+                            <span class="badge">{g.status === 'finished' ? 'Final' : 'In progress'}</span>
+                          )}
+                        </td>
+                        <td>{g.handsPlayed}</td>
+                        <td>{g.myScore}</td>
+                        <td>
+                          {g.handsPlayed ? ordinal(g.rank) : '–'} <span class="faint">of {g.playerCount}</span>
+                        </td>
+                        <td class="faint">{timeAgo(g.updatedAt)}</td>
+                      </tr>
+                    ),
+                  )}
                 </tbody>
               </table>
             </div>

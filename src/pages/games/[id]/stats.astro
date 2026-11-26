@@ -3,13 +3,15 @@ import GameNav from '../../../components/GameNav.astro';
 import StatsTable from '../../../components/StatsTable.astro';
 import BarList from '../../../components/charts/BarList.svelte';
 import Layout from '../../../layouts/Layout.astro';
-import { isMember, loadGame } from '../../../lib/server/games';
+import { isMember, loadGame, wasRemoved } from '../../../lib/server/games';
 import { type PlayerStats, avg, gameStats, pct } from '../../../lib/server/stats';
 import { fmtAvg, fmtPct } from '../../../lib/ui';
 
 const user = Astro.locals.user!;
 const game = loadGame(Astro.params.id!);
-if (!game || !isMember(game.id, user.id)) return Astro.redirect('/games?notice=missing');
+if (!game || !isMember(game.id, user.id)) {
+  return Astro.redirect(game && wasRemoved(game.id, user.id) ? '/games?notice=removed' : '/games?notice=missing');
+}
 
 const { players, hands } = gameStats(game.id);
 const handCount = hands.length;

@@ -19,6 +19,10 @@ export interface GameSettings {
   moveTimer: number | null;
   /** Mark a player who could still shoot the Moon or the Sun (worked out from face-up cards only). */
   showWatches: boolean;
+  /** The final trick plays itself after the usual pause: everyone's last card is forced anyway. */
+  autoPlayLast: boolean;
+  /** End a hand early once nothing left can score, as every player can see from the face-up cards. */
+  autoFinish: boolean;
 }
 
 export const DEFAULT_SETTINGS: GameSettings = {
@@ -29,7 +33,13 @@ export const DEFAULT_SETTINGS: GameSettings = {
   noPointsOnFirstTrick: true,
   moveTimer: null,
   showWatches: true,
+  // On for games already running too: stored settings get them through normalizeSettings.
+  autoPlayLast: true,
+  autoFinish: true,
 };
+
+/** The settings a host may change once cards are dealt. The rest would change the rules of a hand in play. */
+export const MID_GAME_SETTINGS: readonly (keyof GameSettings)[] = ['scoreLimit', 'moveTimer', 'showWatches', 'autoPlayLast', 'autoFinish'];
 
 /** Move-timer choices offered to hosts, in seconds. */
 export const MOVE_TIMER_OPTIONS: readonly number[] = [30, 60, 120, 300];
@@ -63,7 +73,8 @@ export function normalizeSettings(input: Partial<Record<keyof GameSettings, unkn
   }
   const timer = Number(input.moveTimer);
   s.moveTimer = MOVE_TIMER_OPTIONS.includes(timer) ? timer : null;
-  for (const key of ['jackOfDiamonds', 'shootTheMoon', 'shootTheSun', 'noPointsOnFirstTrick', 'showWatches'] as const) {
+  const flags = ['jackOfDiamonds', 'shootTheMoon', 'shootTheSun', 'noPointsOnFirstTrick', 'showWatches', 'autoPlayLast', 'autoFinish'] as const;
+  for (const key of flags) {
     if (typeof input[key] === 'boolean') s[key] = input[key] as boolean;
   }
   return s;

@@ -1,10 +1,31 @@
 import { describe, expect, it } from 'vitest';
 import { chooseBotPass, chooseBotPlay } from './bot';
-import { type Card, type Rng, newDeck, penaltyPoints, rankValue } from './cards';
+import { type Card, type Rng, newDeck, penaltyPoints, rankValue, suitOf } from './cards';
 import { aiStep, continueGame, gamePass, gamePlay, newGame, redealHand, seatsToAct } from './game';
-import { type HandState, cardsWon, dealHand, legalPlays, playCard, stackDeck, startHand, submitPass } from './hand';
+import {
+  type HandState,
+  cardsWon,
+  dealHand,
+  followPlays,
+  isFinalTrick,
+  legalPlays,
+  playCard,
+  queueSuit,
+  stackDeck,
+  startHand,
+  submitPass,
+} from './hand';
 import { parseCardList, presetSpec } from './presets';
-import { DEFAULT_SETTINGS, type GameSettings, deckFor, normalizeSettings, passCycle, passLabel, passOffsetForHand } from './rules';
+import {
+  DEFAULT_SETTINGS,
+  type GameSettings,
+  MID_GAME_SETTINGS,
+  deckFor,
+  normalizeSettings,
+  passCycle,
+  passLabel,
+  passOffsetForHand,
+} from './rules';
 import { scoreHand } from './scoring';
 import { tableViewFor } from './view';
 
@@ -309,6 +330,79 @@ describe('legal plays', () => {
   });
 });
 
+describe('queueing a card', () => {
+  it('lets everyone but the leader queue a club before trick 1 is led', () => {
+    const hand = dealHand(4, 4, seeded(61)); // a keep hand: play starts at once
+    const leader = hand.turn!;
+    for (let seat = 0; seat < 4; seat++) expect(queueSuit(hand.current, true, seat, hand.turn)).toBe(seat === leader ? null : 'C');
+    // The leader has nothing to follow, wherever the turn is.
+    expect(queueSuit(hand.current, true, leader, null)).toBeNull();
+    playCard(hand, leader, hand.openingCard, S);
+    expect(queueSuit(hand.current, true, leader, hand.turn)).toBeNull(); // already played
+    expect(queueSuit(hand.current, true, hand.turn!, hand.turn)).toBeNull(); // on turn: just play
+  });
+
+  it('waits for the lead card on later tricks', () => {
+    const hand = dealHand(4, 4, seeded(62));
+    while (hand.tricks.length === 0) playCard(hand, hand.turn!, legalPlays(hand, hand.turn!, S)[0], S);
+    for (let seat = 0; seat < 4; seat++) expect(queueSuit(hand.current, false, seat, hand.turn)).toBeNull();
+    const leader = hand.turn!;
+    const lead = legalPlays(hand, leader, S)[0];
+    playCard(hand, leader, lead, S);
+    const after = (leader + 1) % 4;
+    for (let seat = 0; seat < 4; seat++) {
+      expect(queueSuit(hand.current, false, seat, hand.turn)).toBe(seat === leader || seat === after ? null : suitOf(lead));
+    }
+  });
+
+  it('keeps points off the first trick for a queued card too', () => {
+    expect(followPlays(['5C', 'QS', '2H'], 'C', true, S)).toEqual(['5C']);
+    expect(followPlays(['QS', '2H', '3D'], 'C', true, S)).toEqual(['3D']);
+    expect(followPlays(['QS', '2H'], 'C', true, S)).toEqual(['QS', '2H']);
+    expect(followPlays(['QS', '2H', '3D'], 'C', true, { ...S, noPointsOnFirstTrick: false })).toEqual(['QS', '2H', '3D']);
+    expect(followPlays(['QS', '2H', '3D'], 'C', false, S)).toEqual(['QS', '2H', '3D']);
+  });
+
+  it.each([4, 5])('offers a follower exactly the cards that are legal once its turn arrives (%i players)', (players) => {
+    const rng = seeded(4040 + players);
+    let checked = 0;
+    const wrong: string[] = [];
+    for (let i = 0; i < 200; i++) {
+      const settings = { ...S, noPointsOnFirstTrick: i % 2 === 0 };
+      const hand = dealHand((i % passCycle(players).length) + 1, players, rng);
+      if (hand.phase === 'passing') hand.hands.forEach((h, seat) => submitPass(hand, seat, chooseBotPass(h)));
+      const total = hand.dealt[0].length;
+      // What each seat could first queue in the trick in progress.
+      let queueable: (Card[] | undefined)[] = [];
+      let trick = -1;
+      while (hand.phase === 'playing') {
+        expect(isFinalTrick(hand)).toBe(hand.tricks.length === total - 1);
+        if (hand.tricks.length !== trick) [trick, queueable] = [hand.tricks.length, []];
+        const first = hand.tricks.length === 0;
+        const cur = hand.current!;
+        for (let seat = 0; seat < players; seat++) {
+          const suit = queueSuit(cur, first, seat, hand.turn);
+          // Nothing for the seat on turn or one that's played; the lead suit once it's down; clubs before trick 1.
+          const done = seat === hand.turn || cur.plays.some((p) => p.seat === seat);
+          const want = done ? null : cur.plays.length ? suitOf(cur.plays[0].card) : first ? 'C' : null;
+          if (suit !== want) wrong.push(`hand ${i} trick ${trick + 1} seat ${seat}: ${suit}, not ${want}`);
+          if (suit) queueable[seat] ??= followPlays(hand.hands[seat], suit, first, settings);
+        }
+        const seat = hand.turn!;
+        const legal = legalPlays(hand, seat, settings);
+        if (queueable[seat]) {
+          expect(queueable[seat]).toEqual(legal);
+          checked++;
+        }
+        playCard(hand, seat, i % 3 ? legal[rng(legal.length)] : chooseBotPlay(hand, seat, settings), settings);
+      }
+      expect(isFinalTrick(hand)).toBe(false);
+    }
+    expect(wrong).toEqual([]);
+    expect(checked).toBeGreaterThan(3000);
+  });
+});
+
 describe('scoring', () => {
   it('scores hearts, the queen, the jack, and the crib', () => {
     const hand = keepHand(
@@ -530,5 +624,19 @@ describe('settings', () => {
       shootTheMoon: true,
     });
     expect(normalizeSettings({ scoreLimit: -5 })).toMatchObject({ scoreLimit: null });
+  });
+
+  it('turns the pace options on by default, for games already running too', () => {
+    expect(DEFAULT_SETTINGS).toMatchObject({ autoPlayLast: true, autoFinish: true });
+    // Settings stored before these options existed.
+    const stored = { scoreLimit: 250, jackOfDiamonds: true, shootTheMoon: true, shootTheSun: true, noPointsOnFirstTrick: true, moveTimer: null, showWatches: false };
+    expect(normalizeSettings(stored)).toEqual({ ...stored, autoPlayLast: true, autoFinish: true });
+    expect(normalizeSettings({ autoPlayLast: false, autoFinish: false })).toMatchObject({ autoPlayLast: false, autoFinish: false });
+    expect(normalizeSettings({ autoPlayLast: 'off', autoFinish: 0 })).toMatchObject({ autoPlayLast: true, autoFinish: true });
+  });
+
+  it('lists the settings a host may change once cards are dealt', () => {
+    expect(MID_GAME_SETTINGS).toEqual(['scoreLimit', 'moveTimer', 'showWatches', 'autoPlayLast', 'autoFinish']);
+    for (const key of MID_GAME_SETTINGS) expect(DEFAULT_SETTINGS).toHaveProperty(key);
   });
 });

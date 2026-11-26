@@ -11,11 +11,15 @@ import {
   FINAL_TRICK_MS,
   MIN_SHOW_MS,
   type Message,
+  STAGGER_MS,
   type Who,
+  arrivalDelays,
   detectMoments,
+  endedLive,
   enqueue,
   finalMoments,
   finalTrickHoldMs,
+  playedOutNote,
   restingMessage,
   takeNext,
 } from './moments';
@@ -269,11 +273,31 @@ describe('the hand-end sequence', () => {
     expect(final(null, summary({ jackScored: false, sun: 0, finalTrick: won(0, '2D', '3D', '4D', '5D') }), { names: NAMES, me: 0, jack: false })).toEqual([]);
   });
 
-  it('holds the final trick long enough for each of its messages', () => {
+  it('holds the final trick long enough for its cards to land and each of its messages', () => {
     const s = summary({});
-    expect(finalTrickHoldMs(null, s.finalTrick!, s, onlooker())).toBe(2 * MIN_SHOW_MS);
+    // Three of its cards already down: the fourth lands at once.
+    const threeDown = tv({ trickNumber: 12, handSizes: [0, 0, 0, 1], current: { ...s.finalTrick!, plays: s.finalTrick!.plays.slice(0, 3), winner: null } });
+    expect(finalTrickHoldMs(threeDown, s.finalTrick!, s, onlooker())).toBe(2 * MIN_SHOW_MS);
+    // All four in one update (the last trick playing itself): they slide in one after another first.
+    expect(finalTrickHoldMs(null, s.finalTrick!, s, onlooker())).toBe(3 * STAGGER_MS + 2 * MIN_SHOW_MS);
     const quiet = summary({ finalTrick: won(0, '2D', '3D', '4D', '5D') });
-    expect(finalTrickHoldMs(null, quiet.finalTrick!, quiet, onlooker())).toBe(FINAL_TRICK_MS);
+    expect(finalTrickHoldMs(null, quiet.finalTrick!, quiet, onlooker())).toBe(3 * STAGGER_MS + FINAL_TRICK_MS);
+  });
+
+  it('says an auto-finished hand is over, and tells watch endings on its last table trick', () => {
+    // The server played out tricks 10-12, so trick 9 was the last the table saw.
+    const s = summary({ autoFrom: 10 });
+    const inPlay = { leader: 1, plays: s.finalTrick!.plays.slice(0, 2), winner: null };
+    const at9 = tv({ trickNumber: 9, handSizes: [4, 3, 3, 4], current: inPlay, sunWatch: 0 });
+    const m = final(at9, s);
+    expect(m[0].kind).toBe('auto');
+    expect(texts(m)).toEqual(['No points left · hand over', 'Bob eats the Queen · +13', 'Bob grabs the Jack · −10', '☀ Sun’s down']);
+    // A view of trick 12 would be a trick the table never saw.
+    expect(texts(final({ ...at9, trickNumber: 12 }, s))).not.toContain('☀ Sun’s down');
+    // Two cards still to land, then four messages.
+    expect(finalTrickHoldMs(at9, s.finalTrick!, s, onlooker())).toBe(STAGGER_MS + 4 * MIN_SHOW_MS);
+    // Without the summary there's no knowing the hand ended early.
+    expect(texts(finalMoments(at9, s.finalTrick!, null, onlooker()))).not.toContain('No points left · hand over');
   });
 
   it('tells a watch ending on the final trick, if this tab saw that trick in progress', () => {
@@ -315,6 +339,92 @@ describe('the hand-end sequence', () => {
     const m = texts(finalMoments(before, s.finalTrick!, s, onlooker()));
     const q = s.finalTrick!.plays.some((p) => p.card === 'QS');
     expect(m.includes(`${NAMES[s.finalTrick!.winner!]} eats the Queen · +13`)).toBe(q);
+  });
+
+  /** Plays hands with bots (and some random cards), keeping each hand's last view before it ended, as Game.svelte holds it. */
+  function playHands(seed: number, hands: number, settings: GameSettings = S) {
+    const rng = seeded(seed);
+    const game = newGame(4, rng);
+    const ends: { before: TableView; after: TableView | null; s: HandSummary; hand: HandState }[] = [];
+    while (ends.length < hands) {
+      const h = game.hand!;
+      if (h.phase === 'passing') for (let s = 0; s < 4; s++) gamePass(game, s, chooseBotPass(h.hands[s]));
+      let before: TableView | null = null;
+      while (game.hand === h) {
+        before = structuredClone(tableViewFor(game, null, settings));
+        const legal = legalPlays(h, h.turn!, settings);
+        gamePlay(game, h.turn!, rng(3) ? chooseBotPlay(h, h.turn!, settings) : legal[rng(legal.length)], settings, rng);
+      }
+      ends.push({ before: before!, after: tableViewFor(game, null, settings), s: summarizeHand(game.lastHand!), hand: h });
+    }
+    return ends;
+  }
+
+  it('works from real auto-finished hands: the last table trick is the one before autoFrom', () => {
+    let finished = 0;
+    for (let seed = 1; seed <= 40 && finished < 3; seed++) {
+      for (const { before, s, hand } of playHands(seed, 4)) {
+        if (!s.autoFrom) continue;
+        finished++;
+        // The tab saw that trick in progress, so the hand-end sequence plays.
+        expect(before.trickNumber).toBe(s.autoFrom - 1);
+        expect(endedLive(before, s)).toBe(true);
+        expect(s.finalTrick).toEqual(hand.tricks[s.autoFrom - 2]);
+        expect(finalMoments(before, s.finalTrick!, s, onlooker())[0].kind).toBe('auto');
+      }
+    }
+    expect(finished).toBeGreaterThan(0);
+  });
+
+  it('knows when this tab watched a hand end, rather than loading in after', () => {
+    let auto = 0;
+    for (let seed = 1; seed <= 12; seed++) {
+      for (const { before, after, s } of playHands(seed, 4)) {
+        // The last view before the hand ended shows its last table trick in progress.
+        expect(endedLive(before, s)).toBe(true);
+        // The next hand's first view (straight into play after a Keep hand) is no stand-in.
+        expect(endedLive(after, s)).toBe(false);
+        expect(endedLive(null, s)).toBe(false);
+        if (!s.autoFrom) continue;
+        auto++;
+        // The hand's last trick, which the server played out on its own, is one the table never saw.
+        expect(endedLive({ ...before, trickNumber: before.totalTricks }, s)).toBe(false);
+      }
+    }
+    expect(auto).toBeGreaterThan(0);
+  });
+
+  it('a hand followed by a Keep hand keeps its watch endings', () => {
+    // 4 players pass left, right, across, then keep: hand 4 starts straight into play.
+    const [, , { before, after, s }] = playHands(3, 3);
+    expect(after?.handNumber).toBe(4);
+    expect(after?.phase).toBe('playing');
+    expect(endedLive(before, s)).toBe(true);
+    expect(endedLive(after, s)).toBe(false);
+    // Say someone other than the final trick's winner was on Sun watch going into it.
+    const watching = (s.finalTrick!.winner! + 1) % 4;
+    expect(texts(finalMoments({ ...before, sunWatch: watching }, s.finalTrick!, s, onlooker()))).toContain('☀ Sun’s down');
+    // The next hand's first view, also mid-play, can't stand in for it.
+    expect(texts(finalMoments({ ...after!, sunWatch: watching }, s.finalTrick!, s, onlooker()))).not.toContain('☀ Sun’s down');
+  });
+});
+
+describe('cards that arrive together', () => {
+  it('slide in one after another, in play order; cards already down don’t wait', () => {
+    const trick = won(1, '2D', 'QS', 'JD', '4D');
+    expect([...arrivalDelays([], trick).values()]).toEqual([0, STAGGER_MS, 2 * STAGGER_MS, 3 * STAGGER_MS]);
+    expect([...arrivalDelays(['2D', 'QS'], trick).values()]).toEqual([0, 0, 0, STAGGER_MS]);
+    expect(arrivalDelays(['2D', 'QS', 'JD', '4D'], trick).get('4D')).toBe(0);
+    expect(arrivalDelays([], null).size).toBe(0);
+  });
+});
+
+describe('played-out note', () => {
+  it('names the tricks the server played on its own', () => {
+    expect(playedOutNote(10, 12)).toBe('Tricks 10–12 played out on their own: no points were left.');
+    expect(playedOutNote(9, 9)).toBe('Trick 9 played out on its own: no points were left.');
+    expect(playedOutNote(null, 12)).toBeNull();
+    expect(playedOutNote(undefined, 12)).toBeNull();
   });
 });
 
