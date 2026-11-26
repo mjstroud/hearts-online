@@ -30,7 +30,7 @@ These are the "build it fast from the start" rules. They answer the performance 
 
 1. **Your own actions show instantly.** Anything you do (play, pass, queue a card) appears on screen in the same frame, and the server's update confirms it a moment later. A dev-only readout in the playtest panel shows tap-to-screen and tap-to-server times.
 2. **Budgets, checked in CI** (`npm run check:budgets` and `view-size.test.ts`):
-   - Game page JS: at most 45 KB gzipped (39.5 KB after Phase 1).
+   - Game page JS: at most 55 KB gzipped (39.5 KB after Phase 1, 44.3 KB after Phase 2; raised from 45 KB with the owner's OK).
    - Any other JS file: at most 15 KB, and aim for 10.
    - All CSS together: at most 14 KB. It was 10.2 KB after Phase 1; the owner OK'd raising the cap from 11 KB for the Phase 2 visuals.
    - One player's live update: at most 4 KB (2.5–2.8 KB with 32-char names).
@@ -113,10 +113,19 @@ All client code plus facts worked out in the view. No rule changes and no migrat
 ### Added 2026-11-26 (owner requests)
 
 - **S: Get the app.** A `/app` page with an Install button when the browser offers one, plus step-by-step instructions for iPhone, Android Chrome, Samsung Internet, Firefox and desktop. It's linked from the account menu and footer, with a dismissible nudge on /games on phones, all hidden inside the app. The service worker is registered on every page so browsers treat the site as installable. Built on `feature/get-the-app`.
-- **M: Finished games: keep playing or rematch** (host only). Built after Phase 2 on the same branch.
-  - **Keep playing** continues the same game: totals carry on, as do hand numbers and the pass rotation. If the game ended on its score limit, the host picks a new limit above the highest total, or none.
-  - **Rematch** opens a waiting room with the same players, seats and settings, with scores reset. Everyone's end screen links to it, and a second click returns the same rematch.
-  - Both go through the game action API and are stored in the existing game state, so no migration is needed. The reviewed spec lives with the build.
+- **M: Finished games: keep playing or rematch** (host only). Built on `feature/finished-games`, branched from `feature/phase-2`.
+  - **Keep playing** continues the same game: totals carry on, as do hand numbers and the pass rotation. If the game ended on its score limit, the host picks a new limit above the highest total, or none. Anyone a cat was sitting in for gets their seat back, and the cats and the move timer start again.
+  - **Rematch** opens a waiting room with the same players, seats and settings, with scores reset. Everyone's end screen links to it, and a second click returns the same rematch. A playtest rematch is dealt straight away.
+  - Both go through the game action API (`extend` and `rematch`) and are stored in the existing game state (`rematchId`, and an `extensions` history of each limit change), so no migration is needed. Views gain one field, `rematchId`.
+  - Decisions: a rematch goes back to the limit the game first finished with. Keep playing is blocked while a rematch exists; deleting the rematch brings it back. An extended game counts as in progress in lifetime stats until it finishes again. Rematch names add a plain " rematch" (then " rematch 2"), which is easy to type when deleting one.
+  - Size: the end-screen choices and the Sun/Moon banner now load with `import()`, and so does the playtest latency timer (ground rule 3). The game page's JS went from 44.3 KB to 44.0 KB.
+  - Follow-up (XS): mark where a game was extended on the scoreboard, from `extensions`.
+
+### Follow-up: measure CSS per page
+
+Astro inlines small stylesheets into each page's HTML. That CSS is re-sent with every page load, and `check:budgets` doesn't count it: about 3 KB gzipped on the game page after Phase 2. Switching to `build.inlineStylesheets: 'never'` makes all CSS cacheable files. But then the "all CSS together" budget sums every page's CSS (23.7 KB) instead of what one page loads.
+
+So change `check:budgets` to read each route's `styles` list from the server build (`dist/server/entry.mjs`) and cap the largest page, then switch. **S.** Check every page's styles in the browser after the switch.
 
 ### Phase 3: Less waiting
 

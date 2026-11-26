@@ -10,6 +10,12 @@ Built with [Astro](https://astro.build) (server-rendered), [Svelte](https://svel
 - **Profile photos.** Upload one from the Account page and it replaces your initials wherever players are shown. The browser crops it to a 256px square before uploading. It's stored in the SQLite file with camera and location metadata stripped. The cats always keep their 🐱.
 - **Live or at your own pace.** Moves sync instantly over Server-Sent Events. A game can also sit idle for days and resume where it left off. Optional browser alerts tell you when it's your turn, through a small service worker so they work on Android too. A tab left open across a deploy shows a "New version, tap to refresh" pill.
 - **Phone-first.** Built for phones: no zooming on text boxes or quick taps, notch-safe padding, an action bar that doesn't move the hand, and full reduced-motion support. Add it to your home screen for an app-style icon and full-screen window. The Get the app page (`/app`, linked from the account menu, the footer and a dismissible card on /games on phones) shows a one-tap Install button when the browser offers one, and step-by-step instructions for iPhone, Android and computers when it doesn't.
+- **An easy-to-read table.**
+  - Trick cards stack by seat, so the led card is never buried. A ring marks the led card and a glow marks the card currently winning.
+  - The finished trick stays on the felt until the next lead, and a Last trick button brings it back. Tap a trick, or hover on a computer, to see who played what.
+  - A corner of the felt shows tricks left, whether hearts are broken, and a ☀ Sun or ☾ Moon watch on anyone who could still shoot. That's worked out from face-up cards only, so the crib stays secret. The host can turn the watches off.
+- **Table moments.** Short messages when hearts break, the Q♠ is played and eaten, or the J♦ is grabbed, and when a Sun or Moon watch starts or ends. When someone shoots the Moon or the Sun, a sunrise or moonrise plays before the results.
+- **Trick review.** Every finished hand's tricks can be replayed from the results screen ("See the tricks") or by tapping a hand number on the scoreboard. They load on demand from `/api/games/:id/hands/:number`.
 - **Terms and privacy.** Short Terms and Privacy pages. New players agree at sign-up, and existing players agree once on their next visit.
 - **Optional move timer** (30 s to 5 min, off by default). When someone runs out of time, a cat sits in for them until they tap "I'm back" or play a card. If every person at the table is away, the table pauses instead of playing itself.
 - **House rules** (configurable per game):
@@ -21,6 +27,11 @@ Built with [Astro](https://astro.build) (server-rendered), [Svelte](https://svel
   - Passing rotates left → right → across → keep. With 5 players it's left → right → left across → right across → keep.
   - **5-player games** take out the 2♣, 2♦ and 2♠, so the 4-card crib still works and everyone gets 9 cards.
   - Games only end on a **completed hand**. By default there's no score limit, and the host marks a final hand when the season's over. If a limit is set, the game ends after the first hand in which someone reaches it.
+- **Keep playing or rematch.** When a game is over, the host can do one of two things from the results screen:
+  - **Keep playing:** the same game deals on. Totals, hand numbers and the pass rotation carry on, and the scoreboard and stats keep counting. If the game ended on its score limit, the host picks a higher limit or no limit.
+  - **Set up a rematch:** a new waiting room with the same players, seats and house rules, scores back to zero. The host can shuffle seats or add and remove players before dealing. Everyone's results screen links to it, and a second click opens the same rematch.
+
+  While a rematch exists, the old game can't be continued; deleting the rematch brings Keep playing back. Both go through the action API (`extend` and `rematch`).
 - **Playtest tables.** A solo sandbox for trying out rules:
   - every hand and the crib face up (each can be toggled)
   - computer players on auto at a chosen speed, or on manual so you play their cards yourself

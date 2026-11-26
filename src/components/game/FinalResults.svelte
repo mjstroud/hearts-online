@@ -1,9 +1,22 @@
+<script module lang="ts">
+  // Keep playing and the rematch only matter once a game is over, so they load on their own, once.
+  let endChoices: Promise<typeof import('./EndChoices.svelte')> | undefined;
+  const loadEndChoices = () => (endChoices ??= import('./EndChoices.svelte'));
+</script>
+
 <script lang="ts">
   import type { GameAction, GameView } from '../../lib/types';
   import { ordinal } from '../../lib/ui';
   import Avatar from '../Avatar.svelte';
 
-  let { view, act, busy }: { view: GameView; act: (a: GameAction) => Promise<boolean>; busy: boolean } = $props();
+  interface Props {
+    view: GameView;
+    act: (a: GameAction) => Promise<boolean>;
+    busy: boolean;
+    /** Reopens the last hand's result, with its final trick and trick review. */
+    onShowResult?: () => void;
+  }
+  let { view, act, busy, onShowResult }: Props = $props();
 
   const ranked = $derived(
     view.players
@@ -38,8 +51,16 @@
       {/each}
     </ol>
 
+    {#await loadEndChoices() then choices}
+      <choices.default {view} {act} {busy} />
+    {:catch}
+      <!-- Say, an old tab whose copy of it went away with a deploy. -->
+      <p class="hint">Refresh the page to see what’s next.</p>
+    {/await}
+
     <div class="row center">
       <a class="btn btn-gold" href={`/games/${view.id}/scoreboard`}>Full scoreboard</a>
+      {#if view.lastHand && onShowResult}<button class="btn" onclick={onShowResult}>Last hand</button>{/if}
       <a class="btn" href={`/games/${view.id}/stats`}>Game stats</a>
       {#if view.dev}
         <button class="btn" disabled={busy || !view.dev.canUndo} onclick={() => act({ type: 'dev:undo' })}>↶ Undo last move</button>

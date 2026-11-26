@@ -1,4 +1,4 @@
-import { type Card, JACK_OF_DIAMONDS, QUEEN_OF_SPADES, penaltyPoints } from './cards';
+import { type Card, JACK_OF_DIAMONDS, QUEEN_OF_SPADES, isHeart, isPenaltyCard, penaltyPoints } from './cards';
 import type { GameState } from './game';
 import { type HandPhase, type Trick, legalPlays } from './hand';
 import { type GameSettings, PASS_COUNT, passLabel } from './rules';
@@ -39,6 +39,14 @@ export interface TableView {
   pointsTaken: number[];
   queenTakenBy: number | null;
   jackTakenBy: number | null;
+  // Public table facts. These come from face-up cards only (never the crib), so every seat,
+  // the crib winner included, gets the same values and they're safe to drive table-wide moments.
+  /** The first point card played this hand (a heart or the Q♠): who played it, and on which trick (1-based). */
+  heartsBrokenBy: { seat: number; card: Card; trick: number } | null;
+  /** The seat that has won every trick so far, once enough tricks are done to matter (4 of 12, 3 of 9). */
+  sunWatch: number | null;
+  /** The seat that has taken every point card played so far, with at least 7 hearts. Not a sure thing: the crib may hold a heart. */
+  moonWatch: number | null;
 }
 
 /** Public end-of-hand summary (no deal details). */
@@ -80,6 +88,43 @@ export function summarizeHand(r: HandRecord): HandSummary {
     moon: r.moon,
     sun: r.sun,
     finalTrick: last ? { leader: last.leader, plays: last.plays, winner: last.winner } : null,
+  };
+}
+
+/** Hearts a seat must have taken, with nobody else taking any point card, before a Moon watch starts. */
+export const MOON_WATCH_HEARTS = 7;
+
+/** Tricks one seat must win from the start before a Sun watch starts: 4 of 12, 3 of 9. */
+export const sunWatchFrom = (totalTricks: number) => Math.ceil(totalTricks / 3);
+
+type PublicFacts = Pick<TableView, 'heartsBrokenBy' | 'sunWatch' | 'moonWatch'>;
+
+/**
+ * The table facts everyone may see. It's handed the face-up cards only (finished tricks and the
+ * trick in progress), never the hand, so the crib can't leak into them.
+ */
+export function publicFacts(tricks: readonly Trick[], current: Trick | null, totalTricks: number, settings: GameSettings): PublicFacts {
+  let heartsBrokenBy: PublicFacts['heartsBrokenBy'] = null;
+  const faceUp = current ? [...tricks, current] : tricks;
+  for (let i = 0; i < faceUp.length && !heartsBrokenBy; i++) {
+    const play = faceUp[i].plays.find((p) => isPenaltyCard(p.card));
+    if (play) heartsBrokenBy = { seat: play.seat, card: play.card, trick: i + 1 };
+  }
+
+  // Watches count finished tricks only: the trick on the felt hasn't been won yet.
+  const leader = tricks[0]?.winner ?? null;
+  const sweeping = leader !== null && tricks.length >= sunWatchFrom(totalTricks) && tricks.every((t) => t.winner === leader);
+
+  // Every trick with a point card in it went to the same seat.
+  const takers = tricks.filter((t) => t.plays.some((p) => isPenaltyCard(p.card))).map((t) => t.winner);
+  const hearts = tricks.reduce((n, t) => n + t.plays.filter((p) => isHeart(p.card)).length, 0);
+  const oneTaker = takers.length > 0 && takers.every((w) => w === takers[0]);
+  const hoarder = oneTaker && hearts >= MOON_WATCH_HEARTS ? takers[0] : null;
+
+  return {
+    heartsBrokenBy,
+    sunWatch: settings.showWatches && settings.shootTheSun && sweeping ? leader : null,
+    moonWatch: settings.showWatches && settings.shootTheMoon ? hoarder : null,
   };
 }
 
@@ -141,5 +186,6 @@ export function tableViewFor(game: GameState, seat: number | null, settings: Gam
     pointsTaken,
     queenTakenBy,
     jackTakenBy,
+    ...publicFacts(h.tricks, h.current, totalTricks, settings),
   };
 }

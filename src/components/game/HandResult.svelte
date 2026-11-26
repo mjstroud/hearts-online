@@ -6,16 +6,24 @@
   import { signed } from '../../lib/ui';
   import Avatar from '../Avatar.svelte';
   import PlayingCard from '../PlayingCard.svelte';
+  import TrickCards from './TrickCards.svelte';
 
   interface Props {
+    gameId: string;
     summary: HandSummary;
     players: PlayerView[];
     onclose: () => void;
   }
-  let { summary, players, onclose }: Props = $props();
+  let { gameId, summary, players, onclose }: Props = $props();
 
   const name = (seat: number) => players[seat]?.name ?? `Seat ${seat + 1}`;
+  const names = $derived(players.map((p) => p.name));
   const best = $derived(Math.min(...summary.scores));
+  const final = $derived(summary.finalTrick);
+
+  // The trick review (its code and its data) loads only when asked. It remembers which hand it was
+  // opened for, so a newer hand closes it but a live update (someone passing) doesn't.
+  let reviewing = $state<number | null>(null);
 
   let dialog: HTMLDivElement;
   onMount(() => {
@@ -80,7 +88,17 @@
     </table>
   </div>
 
-  <div class="crib">
+  {#if final && final.winner !== null}
+    <div class="pile">
+      <div>
+        <span class="label">Final trick</span>
+        <p class="faint small">Won by {name(final.winner)}</p>
+      </div>
+      <TrickCards plays={final.plays} winner={final.winner} {names} />
+    </div>
+  {/if}
+
+  <div class="pile">
     <div>
       <span class="label">The crib</span>
       <p class="faint small">Won by {name(summary.cribWinner)} · worth {summary.cribPoints} {Math.abs(summary.cribPoints) === 1 ? 'point' : 'points'}</p>
@@ -89,6 +107,22 @@
       {#each summary.crib as c}<PlayingCard card={c} width={44} jackScored={summary.jackScored} />{/each}
     </div>
   </div>
+
+  {#if reviewing === summary.number}
+    <section class="stack" aria-label="Every trick">
+      <span class="label">Every trick</span>
+      {#await import('./TrickReview.svelte')}
+        <p class="faint small">Loading the tricks…</p>
+      {:then { default: TrickReview }}
+        <TrickReview {gameId} hand={summary.number} {names} />
+      {:catch}
+        <!-- After a deploy, an old tab can't find the new code. -->
+        <p class="faint small">Couldn’t load the trick review. Refresh the page to try again.</p>
+      {/await}
+    </section>
+  {:else}
+    <button class="btn btn-block" onclick={() => (reviewing = summary.number)}>See the tricks</button>
+  {/if}
 
   <button class="btn btn-primary btn-lg btn-block" onclick={onclose}>Continue</button>
 </div>
@@ -117,6 +151,11 @@
     gap: 18px;
     box-shadow: var(--shadow-lg);
     outline: none;
+  }
+
+  /* When it's taller than the screen the dialog scrolls; nothing in it gets squashed (the score table would). */
+  .dialog > * {
+    flex-shrink: 0;
   }
 
   .head h2 {
@@ -195,7 +234,8 @@
     color: var(--gold);
   }
 
-  .crib {
+  /* The final trick and the crib: a label on the left, cards on the right (below on a phone). */
+  .pile {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -203,11 +243,11 @@
     flex-wrap: wrap;
   }
 
-  .crib > div {
+  .pile > div {
     min-width: 0;
   }
 
-  .crib p {
+  .pile p {
     overflow-wrap: anywhere;
   }
 

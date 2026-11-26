@@ -1,6 +1,20 @@
 <script lang="ts">
+  import { onMount, untrack } from 'svelte';
   import { type Card, SUIT_SYMBOL, cardLabel, isPenaltyCard, suitOf } from '../../lib/engine/cards';
-  import type { Trick } from '../../lib/engine/hand';
+  import { type Trick, trickWinner } from '../../lib/engine/hand';
+  import type { TableView } from '../../lib/engine/view';
+  import {
+    MIN_SHOW_MS,
+    type Message,
+    type Queued,
+    type Wash,
+    type Who,
+    detectMoments,
+    enqueue,
+    finalMoments,
+    restingMessage,
+    takeNext,
+  } from '../../lib/moments';
   import { fade, fly, scale } from '../../lib/motion';
   import type { GameAction, GameView } from '../../lib/types';
   import { signed } from '../../lib/ui';
@@ -23,8 +37,10 @@
     /** When the move timer runs out, on this device's clock (null = no timer running). */
     clockEndsAt: number | null;
     onShowResult: () => void;
+    /** The hand's final trick, while the hand-end sequence holds it on the felt in place of the usual centre. */
+    finalTrick?: Trick | null;
   }
-  let { view, act, busy, notify, toggleNotify, clockEndsAt, onShowResult }: Props = $props();
+  let { view, act, busy, notify, toggleNotify, clockEndsAt, onShowResult, finalTrick = null }: Props = $props();
 
   type Pos = 'bottom' | 'left' | 'top' | 'right' | 'top-left' | 'top-right';
   const POS4: Pos[] = ['bottom', 'left', 'top', 'right'];
@@ -106,26 +122,137 @@
     }
   }
 
-  // ----- Keep a just-finished trick on the felt for a moment
-  let held = $state<Trick | null>(null);
-  let lastKey: string | null = null;
-  let holdTimer: ReturnType<typeof setTimeout> | undefined;
+  // ----- The felt: the trick in progress, else the last finished one until the next lead (on a
+  // cold open too), or the hand's final trick while the hand-end sequence holds it.
+  const lastOfHand = $derived(t.phase === 'playing' && t.cribWinner !== null ? t.lastTrick : null);
+  const shown = $derived(finalTrick ?? (t.current && t.current.plays.length > 0 ? t.current : lastOfHand));
+  const finished = $derived(!!shown && shown.winner !== null);
+  /** Who takes the trick on the felt, or is winning it once two cards are down. */
+  const topSeat = $derived(shown ? (shown.winner ?? (shown.plays.length > 1 ? trickWinner(shown) : null)) : null);
+  const led = $derived(shown?.plays[0] ?? null);
+  // In scoring the Sun replaces the Moon, so a Sun run (both watches on one seat) shows the sun.
+  const watchSeat = $derived(t.phase === 'playing' ? (t.sunWatch ?? t.moonWatch ?? null) : null);
+  const sunWatch = $derived(t.phase === 'playing' && (t.sunWatch ?? null) !== null);
+  // Your own break shows at once (the prediction sets heartsBroken); the server then names the card.
+  const breaker = $derived(t.heartsBrokenBy?.card ?? t.current?.plays.find((p) => isPenaltyCard(p.card))?.card);
+  const trickKey = (tr: Trick | null) => tr?.plays.map((p) => p.card).join('') ?? '';
+
+  // ----- Trick inspector: the cards in play order, who played each, the led card and the winner
+  let inspect = $state<'shown' | 'last' | null>(null);
+  let inspectLead: Card | undefined;
+  const inspected = $derived(inspect === 'last' ? lastOfHand : inspect ? shown : null);
+  const inspNo = $derived(inspected === t.current ? t.trickNumber : t.trickNumber - 1);
+  const inspTop = $derived(inspected?.plays.length ? (inspected.winner ?? trickWinner(inspected)) : null);
+  function toggleInspect(which: 'shown' | 'last') {
+    const tr = which === 'last' ? lastOfHand : shown;
+    inspectLead = tr?.plays[0]?.card;
+    inspect = inspect === which || !inspectLead || finalTrick ? null : which;
+  }
+  // Close it once its trick leaves the felt (the next lead, or another trick finishing).
   $effect(() => {
-    const lt = t.lastTrick;
-    const key = lt ? lt.plays.map((p) => p.card).join('') : '';
-    if (lastKey === null) {
-      lastKey = key;
-      return;
-    }
-    if (key && key !== lastKey) {
-      lastKey = key;
-      held = lt;
-      clearTimeout(holdTimer);
-      holdTimer = setTimeout(() => (held = null), 1600);
-    }
+    if (inspect && inspected?.plays[0]?.card !== inspectLead) inspect = null;
   });
-  const shown = $derived(t.current && t.current.plays.length > 0 ? t.current : held);
-  const showingWinner = $derived(!!shown && shown.winner !== null);
+  const closeOutside = (e: PointerEvent) => {
+    if (inspect && !(e.target as Element).closest?.('[data-insp]')) inspect = null;
+  };
+
+  // ----- One message slot. Moments queue by priority and each stays up at least MIN_SHOW_MS;
+  // with nothing queued it says who took the trick on the felt (and "your lead").
+  const who = (): Who => ({ names: view.players.map((p) => p.name), me, jack: view.settings.jackOfDiamonds });
+  let queue: Queued[] = [];
+  let queued = $state<Message | null>(null);
+  let slotTimer: ReturnType<typeof setTimeout> | undefined;
+  function pump() {
+    clearTimeout(slotTimer);
+    const { next, rest, wait } = takeNext(queue, Date.now());
+    queue = rest;
+    queued = next;
+    if (next?.wash) flash(next.wash);
+    if (next || wait !== null) slotTimer = setTimeout(pump, next ? MIN_SHOW_MS : wait!);
+  }
+  function say(messages: Message[]) {
+    if (!messages.length) return;
+    queue = enqueue(queue, messages, Date.now());
+    if (!queued) pump();
+  }
+  function hush() {
+    clearTimeout(slotTimer);
+    queue = [];
+    queued = null;
+  }
+  const slot = $derived(queued ?? restingMessage(finished ? shown : null, who(), myTurn && leading && !finalTrick));
+
+  // One-shot effects, all on the one fx keyframe below; each sets its own colours and path.
+  // A warm band across the felt for hearts, and a dark ring from the Q♠. (A Sun or Moon shot is Game.svelte's
+  // full-screen celebration, not a felt effect.)
+  const FX: Record<Wash | 'ripple', [string, number]> = {
+    hearts: ['--fx:linear-gradient(100deg,#0000 25%,#ff6b4a4d,#0000 75%);--t0:translateX(-70%);--t1:translateX(70%);--d:.9s', 900],
+    ripple: ['inset:-25%;border-radius:50%;--fx:radial-gradient(#0000 38%,#14121073 52%,#0000 68%);--t0:scale(.3);--t1:scale(1.3);--d:.6s', 600],
+  };
+  let washFx = $state<{ kind: Wash; id: number } | null>(null);
+  let rippleFx = $state<{ card: Card; id: number } | null>(null);
+  let fxId = 0;
+  function flash(kind: Wash) {
+    const id = ++fxId;
+    washFx = { kind, id };
+    setTimeout(() => washFx?.id === id && (washFx = null), FX[kind][1]);
+  }
+  function ripple(card: Card) {
+    const id = ++fxId;
+    rippleFx = { card, id };
+    setTimeout(() => rippleFx?.id === id && (rippleFx = null), FX.ripple[1]);
+  }
+
+  // ----- Table moments, from consecutive views, so only changes the table watched happen. Never
+  // the first view, and not across a gap in versions (a reconnect or refresh catching up: every
+  // game change is one version), while the page is hidden, or just after it comes back into view.
+  let prevT: TableView | null = null;
+  let prevVersion = 0;
+  let endOfHand: TableView | null = null;
+  let finalKey = '';
+  let quietUntil = 0;
+  $effect(() => {
+    const next = t;
+    const ft = finalTrick;
+    untrack(() => {
+      const prev = prevT;
+      const live = !!prev && view.version - prevVersion <= 1 && !document.hidden && Date.now() >= quietUntil;
+      prevVersion = view.version;
+      if (next !== prev) {
+        prevT = next;
+        // The latest view of a final trick in progress, for its watch endings in the hand-end sequence.
+        if (next.phase === 'playing' && next.trickNumber === next.totalTricks) endOfHand = next;
+        if (prev && prev.handNumber !== next.handNumber) {
+          hush();
+          inspect = null;
+        }
+        if (live) {
+          const m = detectMoments(prev, next, who());
+          if (m.ripple) ripple(m.ripple);
+          say(m.messages);
+        }
+      }
+      if (trickKey(ft) !== finalKey) {
+        finalKey = trickKey(ft);
+        hush();
+        inspect = null;
+        // After a game's last hand the felt holds a view from before it ended, whose lastHand is the
+        // hand before, so the summary only counts when its final trick is the one on the felt.
+        const s = view.lastHand && trickKey(view.lastHand.finalTrick) === finalKey ? view.lastHand : null;
+        if (ft && live) say(finalMoments(endOfHand, ft, s, who()));
+      }
+    });
+  });
+  onMount(() => {
+    const quiet = () => {
+      if (!document.hidden) quietUntil = Date.now() + 2500;
+    };
+    document.addEventListener('visibilitychange', quiet);
+    return () => {
+      document.removeEventListener('visibilitychange', quiet);
+      clearTimeout(slotTimer);
+    };
+  });
 
   // ----- Responsive sizing
   let arenaW = $state(900);
@@ -195,6 +322,8 @@
   });
 </script>
 
+<svelte:window onpointerdown={closeOutside} onkeydown={(e) => e.key === 'Escape' && (inspect = null)} />
+
 <div class="container wide layout">
   <div class="main">
     <div class="statusbar">
@@ -204,36 +333,44 @@
         {#if view.endAfterHand}<span class="badge gold" title="The host is ending the game when this hand is finished">⚑ Final hand</span>{/if}
         <span class="badge num">Hand {t.handNumber}</span>
         <span class="badge" class:gold={t.phase === 'passing'}>⇄ {t.passLabel}</span>
-        {#if t.phase === 'playing'}
-          <span class="badge" class:heart={t.heartsBroken}>{t.heartsBroken ? '♥ Broken' : '♡ Not broken'}</span>
-        {/if}
       </div>
     </div>
 
     <div class="arena" bind:clientWidth={arenaW} bind:clientHeight={arenaH} class:five={n === 5} style={`--tw: ${trickW}px`}>
       <div class="felt">
+        {#if washFx}{#key washFx.id}<div class="fx" style={FX[washFx.kind][0]}></div>{/key}{/if}
 
         <div class="center">
           {#if shown}
-            <div class="trick">
-              {#each shown.plays as p (p.card)}
+            <!-- Tap (or click) the trick for who played what. -->
+            <div
+              class="trick"
+              data-insp
+              role="button"
+              tabindex="0"
+              aria-label="Who played each card"
+              onclick={() => toggleInspect('shown')}
+              onkeydown={(e) => {
+                if (e.key !== 'Enter' && e.key !== ' ') return;
+                e.preventDefault(); // Space would scroll the page
+                toggleInspect('shown');
+              }}
+            >
+              {#each shown.plays as p, i (p.card)}
                 {@const pos = posOf(p.seat)}
                 <div
                   class={`played at-${pos}`}
-                  class:winner={showingWinner && shown.winner === p.seat}
-                  class:loser={showingWinner && shown.winner !== p.seat}
+                  class:led={i === 0}
+                  class:winner={topSeat === p.seat}
+                  class:loser={finished && topSeat !== p.seat}
                   in:fly={{ ...FROM[pos], duration: 280, opacity: 0.2 }}
                   out:fade={{ duration: 160 }}
                 >
                   <PlayingCard card={p.card} width={trickW} jackScored={view.settings.jackOfDiamonds} />
+                  {#if rippleFx?.card === p.card}{#key rippleFx.id}<span class="fx" style={FX.ripple[0]}></span>{/key}{/if}
                 </div>
               {/each}
             </div>
-            {#if showingWinner && shown.winner !== null}
-              <div class="takes" in:scale={{ start: 0.9, duration: 180 }}>
-                <span class="takes-name">{nameOf(shown.winner)}</span><span class="takes-rest">&nbsp;{shown.winner === me ? 'take' : 'takes'} it</span>
-              </div>
-            {/if}
           {:else if t.phase === 'passing'}
             <div class="center-note" in:fade>
               <span class="big-arrow" aria-hidden="true">{passArrow(t.passLabel)}</span>
@@ -255,12 +392,16 @@
               {/if}
               <span class="crib-label">Crib · {t.cribSize} cards</span>
             </div>
-          {:else if myTurn}
-            <div class="center-note" in:fade><strong>Your lead</strong></div>
+          {/if}
+          {#if slot}
+            {#key slot.pre + slot.name + slot.post}
+              <div class="msg" role="status" in:scale={{ start: 0.9, duration: 180 }}>{slot.pre}<span class="nm">{slot.name}</span>{slot.post}</div>
+            {/key}
           {/if}
         </div>
       </div>
 
+      <!-- The status cluster: tricks left, whether hearts are broken (and by the Q♠), and any watch. -->
       <div class="counter" title={t.phase === 'passing' ? 'Cards in each hand' : 'Tricks left in this hand, including this one'}>
         <strong class="num">{tricksLeft}</strong>
         <span class="counter-text">
@@ -269,7 +410,25 @@
             {#each Array(t.totalTricks) as _, i (i)}<i class:on={i < tricksLeft}></i>{/each}
           </span>
         </span>
+        {#if t.phase === 'playing'}
+          <span class="facts">
+            <span class:red={!t.heartsBroken || breaker !== 'QS'} title={t.heartsBroken ? 'Hearts are broken' : 'Hearts aren’t broken yet'}
+              >{t.heartsBroken ? (breaker === 'QS' ? 'Q♠\uFE0E' : '♥\uFE0E') : '♡'}</span
+            >
+            {#if watchSeat !== null}
+              <span class="watch" title={sunWatch ? 'Sun watch: has won every trick so far' : 'Moon watch: has taken every point card so far'}
+                >{sunWatch ? '☀\uFE0E' : '☾'}&nbsp;<span class="nm">{nameOf(watchSeat)}</span></span
+              >
+            {/if}
+          </span>
+        {/if}
       </div>
+
+      {#if lastOfHand && !finalTrick}
+        <button class="counter last" data-insp aria-expanded={inspect === 'last'} onclick={() => toggleInspect('last')}>
+          <span class="counter-text"><span>Last trick</span></span>
+        </button>
+      {/if}
 
       {#each view.players as p (p.userId)}
         {@const pos = posOf(p.seat)}
@@ -279,6 +438,13 @@
             <span class="seat-avatar">
               <Avatar name={p.name} seed={p.username} isBot={p.isBot} src={p.avatar} size={arenaW < 520 ? 34 : 38} />
               {#if !p.isBot}<span class="presence" class:on={p.online}></span>{/if}
+              {#if led && led.seat === p.seat}
+                {@const s = suitOf(led.card)}
+                <span class="dot" style={`color: var(--suit-${s.toLowerCase()})`} title="Led this trick">{SUIT_SYMBOL[s]}&#xFE0E;</span>
+              {/if}
+              {#if watchSeat === p.seat}
+                <span class="dot w" title={sunWatch ? 'On Sun watch' : 'On Moon watch'}>{sunWatch ? '☀\uFE0E' : '☾'}</span>
+              {/if}
             </span>
             <span class="plaque-text">
               <span class="seat-name" title={p.name}>{p.seat === me ? 'You' : p.name}</span>
@@ -306,6 +472,30 @@
           </div>
         </div>
       {/each}
+
+      {#if inspected}
+        {@const done = inspected.winner !== null}
+        <div class="insp panel" data-insp role="dialog" aria-label={`Trick ${inspNo}`} transition:fade={{ duration: 120 }}>
+          <p class="head">
+            Trick {inspNo} ·&nbsp;<span class="nm">{nameOf(inspTop)}</span>&nbsp;{inspTop === me
+              ? done
+                ? 'take it'
+                : 'are winning'
+              : done
+                ? 'takes it'
+                : 'is winning'}
+          </p>
+          <div class="plays">
+            {#each inspected.plays as p, i (p.card)}
+              <div class:led={i === 0} class:winner={p.seat === inspTop}>
+                <PlayingCard card={p.card} width={40} jackScored={view.settings.jackOfDiamonds} />
+                <span class="nm">{nameOf(p.seat)}</span>
+                {#if i === 0}<span class="eyebrow">Led</span>{/if}
+              </div>
+            {/each}
+          </div>
+        </div>
+      {/if}
     </div>
 
     <div class="hand-zone">
@@ -508,6 +698,7 @@
     isolation: isolate;
     width: var(--tw);
     height: calc(var(--tw) * 1.4);
+    cursor: pointer;
   }
 
   .played {
@@ -567,24 +758,30 @@
   }
 
   /* Glow and fade with box-shadow/opacity rather than CSS filters, which are costly to repaint.
-     The winner isn't raised: lifting it above the others would cover their ranks again. */
-  .played.winner :global(.pc) {
+     The winning card (so far, or for good) isn't raised: lifting it would cover the others' ranks again. */
+  .winner :global(.pc) {
     box-shadow:
       0 0 0 2px var(--gold),
       0 0 22px rgb(242 196 109 / 0.6);
+  }
+
+  /* The led card, here and in the inspector. A grey that reads on the paper and on the dark strip. */
+  .led :global(.pc) {
+    outline: 2px solid var(--faint);
+    outline-offset: 2px;
   }
 
   .played.loser {
     opacity: 0.75;
   }
 
-  /* Above the whole trick; the plaques and the counter still sit on top of it, as before. */
-  .takes {
+  /* The message slot: above the trick and the plaques. Narrow enough to clear the corner cluster and button. */
+  .msg {
     position: absolute;
-    z-index: 1;
-    bottom: 14%;
+    z-index: 4;
+    bottom: 17%;
     display: flex;
-    max-width: calc(100% - 24px);
+    max-width: min(240px, calc(100% - 24px));
     white-space: nowrap;
     padding: 5px 12px;
     border-radius: 99px;
@@ -594,14 +791,74 @@
     font-weight: 600;
   }
 
-  .takes-name {
+  /* A name that gives way first when a line runs out of room. */
+  .nm {
     min-width: 0;
+    max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
-  .takes-rest {
-    flex: none;
+  /* One overlay keyframe for every effect: a wash across the felt, a sunrise or moonrise, a ripple. */
+  .fx {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: var(--fx);
+    animation: fx var(--d) ease-out both;
+  }
+
+  @keyframes fx {
+    from {
+      opacity: 0;
+      transform: var(--t0);
+    }
+    30% {
+      opacity: 1;
+    }
+    to {
+      opacity: 0;
+      transform: var(--t1);
+    }
+  }
+
+  /* The trick inspector: a strip over the middle of the table (it's a panel, so it may cover plaques). */
+  .insp {
+    position: absolute;
+    z-index: 5;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: min(400px, calc(100% - 16px));
+    padding: 10px;
+    font-size: 12px;
+  }
+
+  .head {
+    display: flex;
+    white-space: nowrap;
+    color: var(--muted);
+  }
+
+  .plays {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    gap: 6px;
+    margin-top: 8px;
+  }
+
+  .plays > div {
+    display: grid;
+    align-content: start;
+    justify-items: center;
+    gap: 4px;
+  }
+
+  .plays .winner {
+    color: var(--gold);
+    font-weight: 700;
   }
 
   .center-note {
@@ -735,15 +992,17 @@
     line-height: 1.2;
   }
 
-  /* ----- The table's one counter: tricks left this hand (or cards each while passing) ----- */
+  /* ----- The status cluster: tricks left this hand (or cards each while passing), with the hearts
+     and watch facts on a row of their own underneath. "Last trick" mirrors it in the other corner. ----- */
   .counter {
     position: absolute;
     z-index: 2;
     left: 12%;
     bottom: 22%;
-    display: flex;
+    display: grid;
+    grid-template-columns: auto auto;
     align-items: center;
-    gap: 9px;
+    gap: 4px 9px;
     padding: 6px 12px 6px 10px;
     border-radius: 12px;
     background: var(--counter-bg);
@@ -786,6 +1045,54 @@
     background: var(--gold);
   }
 
+  .facts {
+    grid-column: 1 / -1;
+    display: flex;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  .watch {
+    display: flex;
+    min-width: 0;
+    color: var(--gold);
+  }
+
+  .watch .nm {
+    max-width: 5em;
+  }
+
+  .last {
+    left: auto;
+    right: 12%;
+    min-height: 34px;
+    border: 0;
+    font: inherit;
+    cursor: pointer;
+  }
+
+  /* On the avatar: the led suit (top left) and a Sun or Moon watch (top right). */
+  .dot {
+    position: absolute;
+    top: -3px;
+    left: -3px;
+    width: 17px;
+    height: 17px;
+    border-radius: 50%;
+    background: #fff;
+    font-size: 11px;
+    line-height: 17px;
+    text-align: center;
+  }
+
+  .dot.w {
+    left: auto;
+    right: -3px;
+    background: var(--gold);
+    color: #3b2604;
+  }
+
   .seat-avatar {
     position: relative;
     flex: none;
@@ -810,12 +1117,18 @@
     }
   }
 
-  /* Reduced motion: no spin, just a solid gold ring to match the gold plaque. */
+  /* Reduced motion: no spin, just a solid gold ring to match the gold plaque. Effects hold still
+     for their moment (the global rule would finish them at once, invisible). */
   @media (prefers-reduced-motion: reduce) {
     .acting .seat-avatar::before {
       animation: none;
       will-change: auto;
       background: var(--gold);
+    }
+
+    .fx {
+      animation: none;
+      opacity: 0.6;
     }
   }
 
@@ -1139,6 +1452,16 @@
       font-size: 20px;
     }
 
+    .last {
+      left: auto;
+      right: -2px;
+    }
+
+    /* Keeps the cluster under 106px wide, clear of a long-name bottom plaque at 360px. */
+    .watch .nm {
+      max-width: 3.5em;
+    }
+
     /* "Tricks / left" on two short lines keeps the counter clear of a long name in the bottom seat. */
     .counter-text > span:first-child {
       width: min-content;
@@ -1223,6 +1546,14 @@
     }
     .five .played.at-right {
       transform: translate(84%, 10%) rotate(6deg);
+    }
+  }
+
+  /* The one raise allowed on the felt: a hovered trick card comes to the front, so all of it shows.
+     Last, so it beats the stacking-by-seat rules above. */
+  @media (hover: hover) {
+    .trick .played:hover {
+      z-index: 5;
     }
   }
 </style>
