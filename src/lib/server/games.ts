@@ -3,6 +3,7 @@ import {
   type ActionResult,
   type GameState,
   aiStep,
+  continueGame,
   gamePass,
   gamePlay,
   leaders,
@@ -325,7 +326,13 @@ function devView(game: GameRecord): DevView {
   };
 }
 
-export function buildView(game: GameRecord, players: SeatedPlayer[], userId: number, online: Set<number>): GameView {
+export function buildView(
+  game: GameRecord,
+  players: SeatedPlayer[],
+  userId: number,
+  online: Set<number>,
+  rematch = rematchFor(game),
+): GameView {
   const me = players.find((p) => p.userId === userId);
   const seat = me?.seat ?? null;
   const state = game.status === 'lobby' ? null : game.state;
@@ -364,6 +371,8 @@ export function buildView(game: GameRecord, players: SeatedPlayer[], userId: num
     dev: game.mode === 'playtest' && isOwner && state ? devView(game) : null,
     version: game.version,
     updatedAt: game.updatedAt,
+    // Someone taken out of the rematch's waiting room no longer gets a link to it.
+    rematchId: rematch?.seated.has(userId) ? rematch.id : null,
   };
 }
 
@@ -385,10 +394,11 @@ export function publish(gameId: string) {
     }
     const players = getPlayers(gameId);
     const online = onlineUsers(gameId);
+    const rematch = rematchFor(game);
     for (const s of subs) {
       try {
         if (!players.some((p) => p.userId === s.userId)) s.send('removed', {});
-        else s.send('state', buildView(game, players, s.userId, online));
+        else s.send('state', buildView(game, players, s.userId, online, rematch));
       } catch (err) {
         console.error('Failed to push update', err);
       }
@@ -406,6 +416,97 @@ export function publishPlayerChange(userId: number): void {
   } catch (err) {
     console.error('Failed to publish player change', err);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Rematches
+
+/**
+ * A finished game's rematch, and who is seated at it. Null if there isn't one, or if it was deleted:
+ * deleting a game removes its seats, and the host can never leave.
+ */
+function rematchFor(game: GameRecord): { id: string; seated: Set<number> } | null {
+  // No query for waiting rooms or games in progress, the season game included.
+  const id = game.status === 'finished' ? game.state?.rematchId : undefined;
+  if (!id) return null;
+  const rows = sql('SELECT user_id FROM game_players WHERE game_id = ?').all(id) as { user_id: number }[];
+  return rows.length ? { id, seated: new Set(rows.map((r) => r.user_id)) } : null;
+}
+
+/**
+ * Someone left a waiting room, or a game was deleted. If it was a rematch, refresh the end screen of
+ * the game it came from, so nobody keeps a link to a rematch they can't open. Never throws.
+ */
+function publishRematchSource(rematchId: string) {
+  try {
+    const row = sql("SELECT id FROM games WHERE status = 'finished' AND json_extract(state, '$.rematchId') = ?").get(rematchId) as
+      | { id: string }
+      | undefined;
+    if (row) publish(row.id);
+  } catch (err) {
+    console.error('Failed to refresh the game a rematch came from', err);
+  }
+}
+
+/** "Sunday", then "Sunday rematch", then "Sunday rematch 2". Plain ASCII: deleting a game means typing its name. */
+export function rematchName(name: string): string {
+  const m = /^(.*\S) rematch(?: (\d+))?$/iu.exec(name);
+  const suffix = m ? ` rematch ${Number(m[2] ?? 1) + 1}` : ' rematch';
+  // A long name is cut short so the suffix always fits.
+  return clipToLength(m ? m[1] : name, GAME_NAME_MAX - suffix.length).trimEnd() + suffix;
+}
+
+/** The rematch's game row and seats. Runs inside rematchGame's transaction, so it can't call createGame (they don't nest). */
+function insertRematch(game: GameRecord, players: SeatedPlayer[]): string {
+  // The limit the game first finished with, from before any "Keep playing". Check the length rather
+  // than using `??`: when the first limit was "no limit", `from` is null.
+  const extensions = game.state?.extensions;
+  const scoreLimit = extensions?.length ? extensions[0].from : game.settings.scoreLimit;
+  const id = insertGame(game.ownerId, rematchName(game.name), { ...game.settings, scoreLimit }, game.mode);
+  const t = now();
+  players
+    .filter((p) => p.userId !== game.ownerId)
+    .forEach((p, i) => sql('INSERT INTO game_players (game_id, user_id, seat, joined_at) VALUES (?, ?, ?, ?)').run(id, p.userId, i + 1, t));
+  // Everyone back in the same seats, even if the host wasn't in seat 0.
+  reseat(id, players.map((p) => p.userId));
+  if (game.mode === 'playtest') {
+    // A playtest has no waiting room, so it's dealt straight away, as createPlaytest does.
+    const rematch = loadGame(id)!;
+    rematch.dev = game.dev;
+    rematch.state = newGame(players.length);
+    rematch.status = 'active';
+    rematch.startedAt = now();
+    saveGame(rematch);
+  }
+  return id;
+}
+
+/**
+ * Host of a finished game: a waiting room with the same players, seats and settings, scores back to
+ * zero. Returns its id. A second click, or a second device, gets the same rematch while it exists.
+ */
+export function rematchGame(gameId: string, userId: number): string {
+  const { id, made } = transaction(() => {
+    const game = loadGame(gameId);
+    if (!game) throw new GameError('That game no longer exists.', 404);
+    const players = getPlayers(gameId);
+    if (!players.some((p) => p.userId === userId)) throw new GameError('You are not in this game.', 403);
+    if (game.ownerId !== userId) throw new GameError('Only the game’s owner can do that.', 403);
+    const state = game.state;
+    if (game.status !== 'finished' || !state) throw new GameError('Only a finished game can have a rematch.');
+    const existing = rematchFor(game);
+    if (existing) return { id: existing.id, made: null };
+    const id = insertRematch(game, players);
+    state.rematchId = id;
+    // Only the link changes: updated_at and finished_at stay put, so the old game keeps its place on /games and /stats.
+    sql('UPDATE games SET state = ?, version = version + 1 WHERE id = ?').run(JSON.stringify(state), gameId);
+    return { id, made: game.mode };
+  });
+  if (made) {
+    publish(gameId);
+    if (made === 'playtest') scheduleBots(id);
+  }
+  return id;
 }
 
 // ---------------------------------------------------------------------------
@@ -472,6 +573,8 @@ function devDeal(game: GameRecord, players: SeatedPlayer[], mySeat: number, acti
 }
 
 export function performAction(gameId: string, userId: number, action: GameAction): void {
+  // A rematch writes a new game as well, so it runs in its own transaction, away from the play path.
+  if (action?.type === 'rematch') return void rematchGame(gameId, userId);
   transaction(() => {
     const game = loadGame(gameId);
     if (!game) throw new GameError('That game no longer exists.', 404);
@@ -559,6 +662,36 @@ export function performAction(gameId: string, userId: number, action: GameAction
         reseat(gameId, ids);
         break;
       }
+      case 'extend': {
+        // "Keep playing": the same game deals on, with the totals, hand numbers and pass rotation carried over.
+        ownerOnly();
+        if (game.status === 'active') throw new GameError('This game is already back in play.');
+        const state = game.state;
+        if (game.status !== 'finished' || !state) throw new GameError('Only a finished game can be continued.');
+        const shown = action.handsPlayed;
+        if (shown !== undefined && !Number.isInteger(shown)) throw new GameError('Invalid request.');
+        if (shown !== undefined && shown !== state.handsPlayed) throw new GameError('This game has moved on. Reload and try again.', 409);
+        if (rematchFor(game)) throw new GameError('This game already has a rematch. Delete the rematch to keep playing this one.', 409);
+        // Hearts ends on the highest total, so a limit at or below it would end the game again at once.
+        // Checked here, not with normalizeSettings, which quietly turns anything odd into "no limit".
+        const top = Math.max(...state.scores);
+        const limit = action.scoreLimit === undefined ? game.settings.scoreLimit : action.scoreLimit;
+        if (limit !== null && !(Number.isInteger(limit) && limit >= Math.max(1, top + 1) && limit <= 1_000_000)) {
+          throw new GameError(`Pick a limit above ${top}, or no limit.`);
+        }
+        state.extensions = [...(state.extensions ?? []), { afterHand: state.handsPlayed, from: game.settings.scoreLimit, to: limit, at: now() }];
+        game.settings = { ...game.settings, scoreLimit: limit };
+        continueGame(state);
+        // Everyone is back in their own seat. With a move timer, anyone away goes back on autopilot after one allowance.
+        delete state.autopilot;
+        // A link still here points at a rematch that has been deleted.
+        delete state.rematchId;
+        touchClock(state, true);
+        game.status = 'active';
+        game.finishedAt = null;
+        undoable = true;
+        break;
+      }
 
       // ----- Playtest tools
       case 'dev:act': {
@@ -619,7 +752,13 @@ export function performAction(gameId: string, userId: number, action: GameAction
         }
         if (!target) throw new GameError('Nothing to undo.');
         clearBotTimer(gameId);
+        const current = game.state;
         game.state = JSON.parse(target.state) as GameState;
+        // Settings aren't in the snapshots: undoing past a "Keep playing" puts the old limit back.
+        const dropped = current?.extensions?.[game.state.extensions?.length ?? 0];
+        if (dropped) game.settings = { ...game.settings, scoreLimit: dropped.from };
+        // A rematch isn't undone, so its link stays (and a second one can't be made).
+        if (current?.rematchId) game.state.rematchId = current.rematchId;
         game.status = target.status;
         game.finishedAt = target.finishedAt;
         sql('DELETE FROM hands WHERE game_id = ? AND number > ?').run(gameId, game.state.handsPlayed);
@@ -641,6 +780,7 @@ export function performAction(gameId: string, userId: number, action: GameAction
     saveGame(game);
   });
   publish(gameId);
+  if (action.type === 'leave' || action.type === 'removePlayer') publishRematchSource(gameId);
   rescheduleBots(gameId);
 }
 
@@ -730,6 +870,7 @@ export function deleteGame(gameId: string, userId: number) {
   clearBotTimer(gameId);
   undoStacks.delete(gameId);
   publish(gameId);
+  publishRematchSource(gameId);
 }
 
 export function listGamesForUser(userId: number): GameListItem[] {

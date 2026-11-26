@@ -4,12 +4,11 @@
   import { fly } from '../../lib/motion';
   import { isPenaltyCard } from '../../lib/engine/cards';
   import type { HandSummary } from '../../lib/engine/view';
-  import { type MoveTiming, timeMove } from '../../lib/latency.svelte';
+  import type { MoveTiming, TimedMove } from '../../lib/latency.svelte';
   import { finalTrickHoldMs } from '../../lib/moments';
   import type { GameAction, GameView } from '../../lib/types';
   import { SITE_NAME } from '../../lib/ui';
   import FinalResults from './FinalResults.svelte';
-  import HandEndCelebration from './HandEndCelebration.svelte';
   import HandResult from './HandResult.svelte';
   import Lobby from './Lobby.svelte';
   import Table from './Table.svelte';
@@ -114,9 +113,11 @@
 
   /** Your latest play or pass, timed for the playtest panel's latency readout (playtest tables only). */
   let timing: MoveTiming | null = null;
+  /** The timer itself, loaded along with the playtest tools (onMount) rather than for every player. */
+  let timeMove: ((action: TimedMove) => MoveTiming) | null = null;
 
   async function act(action: GameAction): Promise<boolean> {
-    const timer = view.dev && (action.type === 'play' || action.type === 'pass') ? timeMove(action.type) : null;
+    const timer = view.dev && timeMove && (action.type === 'play' || action.type === 'pass') ? timeMove(action.type) : null;
     if (timer) timing = timer;
     busy = true;
     const guess = predict(action);
@@ -205,6 +206,13 @@
   /** A hand ended while the tab was hidden; it plays as a page load when the tab is back. */
   let endedHidden = false;
 
+  // A Sun or Moon is rare, so its banner's code is fetched only when one is coming, during the final
+  // trick's pause. If it can't load (say, an old tab after a deploy), the hand end skips to the result.
+  type CelebrationModule = typeof import('./HandEndCelebration.svelte');
+  let celebration: Promise<CelebrationModule> | undefined;
+  const loadCelebration = () => (celebration ??= import('./HandEndCelebration.svelte'));
+  let Celebration = $state.raw<CelebrationModule['default'] | null>(null);
+
   /** True when `before` was this hand's last trick, so we saw it finish rather than loading in after. */
   function endedLive(before: GameView, hand: HandSummary): boolean {
     const t = before.table;
@@ -219,6 +227,7 @@
     clearTimeout(endingTimer);
     resultOpen = false;
     const shot = hand.number > seen(seenKey, seenInMemory) && (hand.sun ?? hand.moon) !== null && hand.number > seen(shotKey, shotInMemory);
+    if (shot) loadCelebration().catch(() => {});
     ending = { hand, stage: 'trick', held: before };
     if (before && hand.finalTrick) {
       // Long enough for each of the final trick's messages (the Queen, the Jack, a watch ending) to show.
@@ -231,12 +240,23 @@
   }
 
   function showShot() {
-    if (!ending) return;
-    ending = { ...ending, stage: 'shot' };
-    shotInMemory = ending.hand.number;
-    remember(shotKey, shotInMemory);
-    // Reduced motion gets a still banner, so it needn't stay as long.
-    endingTimer = setTimeout(endHand, prefersReducedMotion.current ? 1500 : 2200);
+    const current = ending;
+    if (!current) return;
+    loadCelebration().then(
+      (module) => {
+        // Skipped, or another hand ended, while it loaded.
+        if (ending !== current) return;
+        Celebration = module.default;
+        ending = { ...current, stage: 'shot' };
+        shotInMemory = current.hand.number;
+        remember(shotKey, shotInMemory);
+        // Reduced motion gets a still banner, so it needn't stay as long.
+        endingTimer = setTimeout(endHand, prefersReducedMotion.current ? 1500 : 2200);
+      },
+      () => {
+        if (ending === current) endHand();
+      },
+    );
   }
 
   /** The last step (or a skip straight to it): the result, unless this device has already seen it. */
@@ -351,6 +371,7 @@
     try {
       notify = localStorage.getItem('hearts:notify') === '1' && Notification.permission === 'granted';
     } catch {}
+    if (view.dev) import('../../lib/latency.svelte').then((m) => (timeMove = m.timeMove), () => {});
 
     let es: EventSource | null = null;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -446,8 +467,8 @@
   <FinalResults {view} {act} {busy} onShowResult={() => (resultOpen = true)} />
 {/if}
 
-{#if ending && shooter !== null}
-  <HandEndCelebration
+{#if ending && shooter !== null && Celebration}
+  <Celebration
     kind={ending.hand.sun !== null ? 'sun' : 'moon'}
     name={shooter === view.me.seat ? 'You' : (view.players[shooter]?.name ?? `Seat ${shooter + 1}`)}
   />

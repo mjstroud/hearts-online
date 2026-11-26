@@ -21,6 +21,11 @@ Built with [Astro](https://astro.build) (server-rendered), [Svelte](https://svel
   - Passing rotates left → right → across → keep. With 5 players it's left → right → left across → right across → keep.
   - **5-player games** take out the 2♣, 2♦ and 2♠, so the 4-card crib still works and everyone gets 9 cards.
   - Games only end on a **completed hand**. By default there's no score limit, and the host marks a final hand when the season's over. If a limit is set, the game ends after the first hand in which someone reaches it.
+- **Keep playing or rematch.** When a game is over, the host can do one of two things from the results screen:
+  - **Keep playing:** the same game deals on. Totals, hand numbers and the pass rotation carry on, and the scoreboard and stats keep counting. If the game ended on its score limit, the host picks a higher limit or no limit.
+  - **Set up a rematch:** a new waiting room with the same players, seats and house rules, scores back to zero. The host can shuffle seats or add and remove players before dealing. Everyone's results screen links to it, and a second click opens the same rematch.
+
+  While a rematch exists, the old game can't be continued; deleting the rematch brings Keep playing back. Both go through the action API (`extend` and `rematch`).
 - **Playtest tables.** A solo sandbox for trying out rules:
   - every hand and the crib face up (each can be toggled)
   - computer players on auto at a chosen speed, or on manual so you play their cards yourself

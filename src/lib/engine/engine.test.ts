@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { chooseBotPass, chooseBotPlay } from './bot';
 import { type Card, type Rng, newDeck, penaltyPoints, rankValue } from './cards';
-import { aiStep, gamePass, gamePlay, newGame, redealHand, seatsToAct } from './game';
+import { aiStep, continueGame, gamePass, gamePlay, newGame, redealHand, seatsToAct } from './game';
 import { type HandState, cardsWon, dealHand, legalPlays, playCard, stackDeck, startHand, submitPass } from './hand';
 import { parseCardList, presetSpec } from './presets';
 import { DEFAULT_SETTINGS, type GameSettings, deckFor, normalizeSettings, passCycle, passLabel, passOffsetForHand } from './rules';
@@ -484,6 +484,31 @@ describe('full games', () => {
     while (!game.over) aiStep(game, S, () => true, rng);
     expect(game.handsPlayed).toBe(1);
     expect(game.hand).toBeNull();
+  });
+
+  it('keeps playing a finished game: the next hand number and pass, with totals carried over', () => {
+    const rng = seeded(21);
+    const game = newGame(5, rng);
+    expect(() => continueGame(game, rng)).toThrow(/still going/);
+    aiStep(game, S, () => true, rng);
+    game.endAfterHand = true;
+    while (!game.over) aiStep(game, S, () => true, rng);
+    const totals = game.scores.slice();
+
+    continueGame(game, rng);
+    expect(game.over).toBe(false);
+    expect(game.endAfterHand).toBeUndefined();
+    expect(game.handsPlayed).toBe(1);
+    expect(game.scores).toEqual(totals);
+    expect(game.hand!.number).toBe(2);
+    expect(game.hand!.passOffset).toBe(passOffsetForHand(2, 5));
+    expect(seatsToAct(game)).toEqual([0, 1, 2, 3, 4]);
+
+    // The next hand doesn't end the game, and adds to the same totals.
+    while (game.handsPlayed < 2) aiStep(game, S, () => true, rng);
+    expect(game.over).toBe(false);
+    expect(game.hand!.number).toBe(3);
+    expect(game.scores).toEqual(totals.map((t, s) => t + game.lastHand!.scores[s]));
   });
 
   it('redeals the current hand with a stacked deck', () => {
