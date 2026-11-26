@@ -11,6 +11,7 @@ const notices: Record<string, string> = {
   deleted: 'That game was deleted by its owner.',
   left: 'You left the game.',
   missing: 'We couldn’t find that game.',
+  'password-reset': 'Your new password is saved, and you’re signed in.',
 };
 const notice = notices[Astro.url.searchParams.get('notice') ?? ''];
 

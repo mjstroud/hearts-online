@@ -1,11 +1,11 @@
 import { defineMiddleware } from 'astro:middleware';
 import { SESSION_COOKIE, getSessionUser, setSessionCookie } from './lib/server/auth';
 import { resumeBots } from './lib/server/games';
-import { isSecure } from './lib/server/http';
+import { canonicalRedirect, isSecure } from './lib/server/http';
 
 const g = globalThis as typeof globalThis & { __heartsBooted?: boolean };
 
-const PROTECTED = ['/games', '/stats', '/join', '/account', '/playtest', '/api/'];
+const PROTECTED = ['/games', '/stats', '/join', '/account', '/playtest', '/admin', '/api/'];
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 function sameOrigin(request: Request): boolean {
@@ -24,6 +24,10 @@ export const onRequest = defineMiddleware(async (ctx, next) => {
     g.__heartsBooted = true;
     resumeBots();
   }
+
+  // One public address: send visitors on any other host (the fly.dev name, www.) to SITE_URL.
+  const canonical = canonicalRedirect(ctx.request, ctx.url);
+  if (canonical) return canonical;
 
   if (!SAFE_METHODS.has(ctx.request.method) && !sameOrigin(ctx.request)) {
     return new Response('Cross-site request blocked.', { status: 403 });

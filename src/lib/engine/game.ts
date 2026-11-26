@@ -16,6 +16,19 @@ export interface GameState {
   over: boolean;
   /** The host asked to end the game once the hand in progress is finished. */
   endAfterHand?: boolean;
+  /** Seats a computer player is sitting in for, after their person ran out of time. */
+  autopilot?: boolean[];
+  /** Move-timer bookkeeping (server-side): which turn the clock is for, and when that turn began. */
+  turnKey?: string;
+  turnSince?: number;
+}
+
+/** Identifies "whose move it is and why", so the move timer restarts only when the turn really changes. */
+export function turnKey(game: GameState): string {
+  const h = game.hand;
+  if (game.over || !h) return '';
+  if (h.phase === 'passing') return `${h.number}:pass`;
+  return `${h.number}:${h.tricks.length}:${h.current?.plays.length ?? 0}`;
 }
 
 export interface ActionResult {

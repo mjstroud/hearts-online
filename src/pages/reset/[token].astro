@@ -1,0 +1,61 @@
+---
+import AuthCard from '../../components/AuthCard.astro';
+import Layout from '../../layouts/Layout.astro';
+import { createSession, findPasswordReset, redeemPasswordReset, setSessionCookie, takeAttempt } from '../../lib/server/auth';
+import { clientIp, isSecure, readForm } from '../../lib/server/http';
+
+const token = Astro.params.token ?? '';
+const account = findPasswordReset(token);
+let error = '';
+
+if (Astro.request.method === 'POST') {
+  const form = await readForm(Astro.request);
+  let addr = 'unknown';
+  try {
+    addr = Astro.clientAddress;
+  } catch {}
+  if (!takeAttempt([{ key: `reset:ip:${clientIp(Astro.request, addr)}`, limit: 20 }]))
+    error = 'Too many attempts. Please wait a few minutes and try again.';
+  else if ((form.password ?? '') !== form.confirmPassword) error = 'Those passwords don’t match.';
+  else {
+    const result = await redeemPasswordReset(token, form.password ?? '');
+    if (typeof result === 'string') error = result;
+    else {
+      const { token: session, expires } = createSession(result.id);
+      setSessionCookie(Astro.cookies, session, expires, isSecure(Astro.request));
+      return Astro.redirect('/games?notice=password-reset', 303);
+    }
+  }
+  Astro.response.status = 400;
+}
+Astro.response.headers.set('Cache-Control', 'no-store');
+---
+
+<Layout title="Reset password">
+  {
+    account ? (
+      <AuthCard title="Choose a new password" subtitle={`For ${account.displayName} (@${account.username}).`}>
+        <form method="post" class="stack">
+          {error && <p class="alert" role="alert">{error}</p>}
+          <input type="text" name="username" autocomplete="username" value={account.username} hidden readonly />
+          <label class="field">
+            <span>New password</span>
+            <input class="input" name="password" type="password" autocomplete="new-password" required minlength="8" autofocus />
+          </label>
+          <label class="field">
+            <span>Confirm new password</span>
+            <input class="input" name="confirmPassword" type="password" autocomplete="new-password" required minlength="8" />
+          </label>
+          <button class="btn btn-primary btn-lg btn-block" type="submit">Save and sign in</button>
+        </form>
+        <p slot="below">This signs you out on any other devices.</p>
+      </AuthCard>
+    ) : (
+      <AuthCard title="This link has expired" subtitle="Reset links work once and only for 24 hours.">
+        {error && <p class="alert" role="alert">{error}</p>}
+        <p class="muted">Ask whoever runs the site to send you a new one.</p>
+        <a class="btn btn-primary btn-block" href="/login">Back to sign in</a>
+      </AuthCard>
+    )
+  }
+</Layout>

@@ -1,5 +1,16 @@
 import { type Card, isCard, secureRng } from '../engine/cards';
-import { type ActionResult, type GameState, aiStep, gamePass, gamePlay, leaders, newGame, redealHand, seatsToAct } from '../engine/game';
+import {
+  type ActionResult,
+  type GameState,
+  aiStep,
+  gamePass,
+  gamePlay,
+  leaders,
+  newGame,
+  redealHand,
+  seatsToAct,
+  turnKey,
+} from '../engine/game';
 import { type DealSpec, RuleError, legalPlays } from '../engine/hand';
 import { PRESETS, type PresetId, parseCardList, presetSpec } from '../engine/presets';
 import { type GameSettings, MAX_PLAYERS, MIN_PLAYERS, normalizeSettings, passCycle, passLabel } from '../engine/rules';
@@ -108,7 +119,40 @@ export function getPlayers(gameId: string): SeatedPlayer[] {
   return rows.map((r) => ({ seat: r.seat, userId: r.user_id, username: r.username, displayName: r.display_name, isBot: !!r.is_bot }));
 }
 
+/** Restart the move timer whenever the turn moves on (or when `force` is set). */
+function touchClock(state: GameState | null, force = false) {
+  if (!state) return;
+  const key = turnKey(state);
+  if (force || state.turnKey !== key || state.turnSince === undefined) {
+    state.turnKey = key;
+    state.turnSince = now();
+  }
+}
+
+/** Seats played by the computer: the cats, plus anyone a cat is sitting in for. */
+function autoSeat(game: GameRecord, players: SeatedPlayer[]): (seat: number) => boolean {
+  return (seat) => !!players[seat]?.isBot || !!game.state?.autopilot?.[seat];
+}
+
+/** When the move timer runs out for the seats on turn (null if there's no timer running). */
+function moveDeadline(game: GameRecord, players: SeatedPlayer[]): number | null {
+  const state = game.state;
+  if (!game.settings.moveTimer || game.status !== 'active' || !state?.hand || state.turnSince === undefined) return null;
+  const auto = autoSeat(game, players);
+  if (!seatsToAct(state).some((s) => !auto(s))) return null;
+  return state.turnSince + game.settings.moveTimer * 1000;
+}
+
+function setAutopilot(game: GameRecord, seat: number, on: boolean) {
+  const state = game.state;
+  if (!state) return;
+  const list = state.autopilot ?? Array.from({ length: state.numPlayers }, () => false);
+  list[seat] = on;
+  state.autopilot = list;
+}
+
 function saveGame(game: GameRecord) {
+  touchClock(game.state);
   game.updatedAt = now();
   sql(
     `UPDATE games SET name = ?, status = ?, settings = ?, dev = ?, state = ?, version = version + 1,
@@ -271,6 +315,8 @@ export function buildView(game: GameRecord, players: SeatedPlayer[], userId: num
   const state = game.status === 'lobby' ? null : game.state;
   const scores = state?.scores ?? players.map(() => 0);
   const isOwner = game.ownerId === userId;
+  const active = !!state && game.status === 'active';
+  const deadline = active ? moveDeadline(game, players) : null;
   return {
     id: game.id,
     name: game.name,
@@ -288,6 +334,7 @@ export function buildView(game: GameRecord, players: SeatedPlayer[], userId: num
       isBot: p.isBot,
       score: scores[p.seat] ?? 0,
       online: p.isBot || online.has(p.userId),
+      autopilot: active && !p.isBot && !!state?.autopilot?.[p.seat],
     })),
     me: { userId, seat, isOwner },
     table: state && game.status === 'active' ? tableViewFor(state, seat, game.settings) : null,
@@ -295,6 +342,7 @@ export function buildView(game: GameRecord, players: SeatedPlayer[], userId: num
     toAct: state && game.status === 'active' ? seatsToAct(state) : [],
     leaders: state && state.handsPlayed > 0 ? leaders(state.scores) : [],
     endAfterHand: !!state?.endAfterHand && game.status === 'active',
+    moveClock: deadline !== null ? { endsIn: Math.max(0, deadline - now()), seconds: game.settings.moveTimer! } : null,
     // Full information only ever goes to the owner of a solo playtest table.
     dev: game.mode === 'playtest' && isOwner && state ? devView(game) : null,
     version: game.version,
@@ -429,7 +477,17 @@ export function performAction(gameId: string, userId: number, action: GameAction
           if (!isCard(action.card)) throw new GameError('Invalid card.');
           applyResult(game, gamePlay(state, me.seat, action.card, game.settings));
         }
+        // Making your own move takes your seat back from the computer.
+        if (state.autopilot?.[me.seat]) setAutopilot(game, me.seat, false);
         undoable = true;
+        break;
+      }
+      case 'resume': {
+        const state = inProgress();
+        if (!state.autopilot?.[me.seat]) break;
+        setAutopilot(game, me.seat, false);
+        // You're back: if the table is waiting on you, your clock starts fresh.
+        if (seatsToAct(state).includes(me.seat)) touchClock(state, true);
         break;
       }
       case 'start': {
@@ -535,12 +593,14 @@ export function performAction(gameId: string, userId: number, action: GameAction
         game.status = target.status;
         game.finishedAt = target.finishedAt;
         sql('DELETE FROM hands WHERE game_id = ? AND number > ?').run(gameId, game.state.handsPlayed);
+        touchClock(game.state, true);
         break;
       }
       case 'dev:deal': {
         devOnly();
         inProgress();
         devDeal(game, players, me.seat, action);
+        touchClock(game.state, true);
         undoable = true;
         break;
       }
@@ -551,7 +611,7 @@ export function performAction(gameId: string, userId: number, action: GameAction
     saveGame(game);
   });
   publish(gameId);
-  scheduleBots(gameId);
+  rescheduleBots(gameId);
 }
 
 /** Wrap engine rule violations as friendly 400s. */
@@ -570,11 +630,21 @@ export function updateSettings(gameId: string, userId: number, name: string, inp
     if (game.status === 'finished') throw new GameError('This game is over.');
     if (name) game.name = name.slice(0, 60);
     const next = normalizeSettings({ ...game.settings, ...input });
-    // Once cards are dealt only the score limit can change, except at a playtest table.
-    game.settings = game.status === 'lobby' || game.mode === 'playtest' ? next : { ...game.settings, scoreLimit: next.scoreLimit };
+    const timerChanged = next.moveTimer !== game.settings.moveTimer;
+    // Once cards are dealt only the score limit and move timer can change, except at a playtest table.
+    game.settings =
+      game.status === 'lobby' || game.mode === 'playtest'
+        ? next
+        : { ...game.settings, scoreLimit: next.scoreLimit, moveTimer: next.moveTimer };
+    if (timerChanged && game.state) {
+      // A new allowance starts now. With the timer off, the table goes back to waiting for everyone.
+      touchClock(game.state, true);
+      if (!game.settings.moveTimer) delete game.state.autopilot;
+    }
     saveGame(game);
   });
   publish(gameId);
+  rescheduleBots(gameId);
 }
 
 export type EndMode = 'after-hand' | 'cancel' | 'now';
@@ -666,6 +736,23 @@ const BOT_DELAYS: Record<DevSettings['speed'], [number, number]> = {
   slow: [2000, 3000],
 };
 
+/**
+ * Seats the computer may move for right now. Cats always play. A cat sitting in for a person
+ * only plays while at least one person is still at the table, so a table everyone has walked
+ * away from pauses instead of playing itself forever.
+ */
+function botMayMove(game: GameRecord, players: SeatedPlayer[]): (seat: number) => boolean {
+  const autopilot = game.state?.autopilot ?? [];
+  const someoneHere = players.some((p) => !p.isBot && !autopilot[p.seat]);
+  return (seat) => !!players[seat]?.isBot || (!!autopilot[seat] && someoneHere);
+}
+
+/** Cancel any pending computer move or move-timer check, then plan the next one. */
+function rescheduleBots(gameId: string) {
+  clearBotTimer(gameId);
+  scheduleBots(gameId);
+}
+
 export function scheduleBots(gameId: string, retryDelay?: number) {
   try {
     if (botTimers.has(gameId)) return;
@@ -673,11 +760,18 @@ export function scheduleBots(gameId: string, retryDelay?: number) {
     if (!game || game.status !== 'active' || !game.state?.hand) return;
     if (game.mode === 'playtest' && game.dev.botMode === 'manual') return;
     const players = getPlayers(gameId);
-    if (!seatsToAct(game.state).some((s) => players[s]?.isBot)) return;
-    // Linger a bit longer right after a trick closes so people can see it.
-    const hand = game.state.hand;
-    const [moveDelay, trickDelay] = BOT_DELAYS[game.mode === 'playtest' ? game.dev.speed : 'normal'];
-    const delay = retryDelay ?? (hand.phase === 'playing' && hand.current?.plays.length === 0 && hand.tricks.length > 0 ? trickDelay : moveDelay);
+    let delay: number;
+    if (seatsToAct(game.state).some(botMayMove(game, players))) {
+      // Linger a bit longer right after a trick closes so people can see it.
+      const hand = game.state.hand;
+      const [moveDelay, trickDelay] = BOT_DELAYS[game.mode === 'playtest' ? game.dev.speed : 'normal'];
+      delay = retryDelay ?? (hand.phase === 'playing' && hand.current?.plays.length === 0 && hand.tricks.length > 0 ? trickDelay : moveDelay);
+    } else {
+      // Waiting on people: wake up when the move timer runs out (if there is one).
+      const deadline = moveDeadline(game, players);
+      if (deadline === null) return;
+      delay = retryDelay ?? Math.max(0, deadline - now()) + 50;
+    }
     botTimers.set(
       gameId,
       setTimeout(() => {
@@ -691,8 +785,9 @@ export function scheduleBots(gameId: string, retryDelay?: number) {
 }
 
 function runBots(gameId: string) {
+  let changed: boolean;
   try {
-    botTurn(gameId);
+    changed = botTurn(gameId);
     botFailures.delete(gameId);
   } catch (err) {
     // Don't let one bad move stall the table forever: retry with backoff (up to 5 minutes).
@@ -703,23 +798,39 @@ function runBots(gameId: string) {
     scheduleBots(gameId, retry);
     return;
   }
-  publish(gameId);
+  if (changed) publish(gameId);
   scheduleBots(gameId);
 }
 
-/** Make whatever moves computer players owe right now (all bot passes, or one bot card). */
-function botTurn(gameId: string) {
-  transaction(() => {
+/**
+ * Hand anyone whose move timer ran out to a computer player, then make whatever moves the
+ * computer owes right now (all its passes, or one card). Returns true if anything changed.
+ */
+function botTurn(gameId: string): boolean {
+  return transaction(() => {
     const game = loadGame(gameId);
-    if (!game || game.status !== 'active' || !game.state?.hand) return;
-    if (game.mode === 'playtest' && game.dev.botMode === 'manual') return;
+    if (!game || game.status !== 'active' || !game.state?.hand) return false;
+    if (game.mode === 'playtest' && game.dev.botMode === 'manual') return false;
     const players = getPlayers(gameId);
+    const state = game.state;
+    let changed = false;
+
+    const deadline = moveDeadline(game, players);
+    if (deadline !== null && now() >= deadline) {
+      const auto = autoSeat(game, players);
+      for (const seat of seatsToAct(state)) if (!auto(seat)) setAutopilot(game, seat, true);
+      changed = true;
+    }
+
     const before = snapshot(game, 'bot');
-    const result = aiStep(game.state, game.settings, (s) => !!players[s]?.isBot);
-    if (!result) return;
-    applyResult(game, result);
-    remember(gameId, before);
-    saveGame(game);
+    const result = aiStep(state, game.settings, botMayMove(game, players));
+    if (result) {
+      applyResult(game, result);
+      remember(gameId, before);
+      changed = true;
+    }
+    if (changed) saveGame(game);
+    return changed;
   });
 }
 

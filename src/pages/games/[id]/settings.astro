@@ -1,5 +1,6 @@
 ---
 import GameNav from '../../../components/GameNav.astro';
+import MoveTimerField from '../../../components/MoveTimerField.astro';
 import RuleSettings from '../../../components/RuleSettings.astro';
 import Layout from '../../../layouts/Layout.astro';
 import { settingsFromForm } from '../../../lib/server/forms';
@@ -81,6 +82,7 @@ const handNumber = game.state?.hand?.number;
               {maxScore > 0 && ` The current high score is ${maxScore}.`}
             </small>
           </label>
+          <MoveTimerField value={game.settings.moveTimer} />
           <RuleSettings settings={game.settings} locked={locked} />
           <div class="row" style="justify-content: flex-end">
             <button class="btn btn-primary" type="submit">Save changes</button>

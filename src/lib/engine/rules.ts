@@ -12,6 +12,11 @@ export interface GameSettings {
   shootTheSun: boolean;
   /** Hearts and the Queen of Spades can't be dumped on the first trick (unless that's all you have). */
   noPointsOnFirstTrick: boolean;
+  /**
+   * Seconds a person gets for each move before a computer player sits in for them
+   * (they can take the seat back at any time). `null` = no timer: the table waits as long as it takes.
+   */
+  moveTimer: number | null;
 }
 
 export const DEFAULT_SETTINGS: GameSettings = {
@@ -20,7 +25,17 @@ export const DEFAULT_SETTINGS: GameSettings = {
   shootTheMoon: true,
   shootTheSun: true,
   noPointsOnFirstTrick: true,
+  moveTimer: null,
 };
+
+/** Move-timer choices offered to hosts, in seconds. */
+export const MOVE_TIMER_OPTIONS: readonly number[] = [30, 60, 120, 300];
+
+export function moveTimerLabel(seconds: number | null): string {
+  if (!seconds) return 'Off';
+  if (seconds < 60) return `${seconds} seconds`;
+  return seconds === 60 ? '1 minute' : `${seconds / 60} minutes`;
+}
 
 export const MIN_PLAYERS = 4;
 export const MAX_PLAYERS = 5;
@@ -43,6 +58,8 @@ export function normalizeSettings(input: Partial<Record<keyof GameSettings, unkn
     const n = Math.floor(Number(limit));
     s.scoreLimit = Number.isFinite(n) && n > 0 ? Math.min(n, 1_000_000) : null;
   }
+  const timer = Number(input.moveTimer);
+  s.moveTimer = MOVE_TIMER_OPTIONS.includes(timer) ? timer : null;
   for (const key of ['jackOfDiamonds', 'shootTheMoon', 'shootTheSun', 'noPointsOnFirstTrick'] as const) {
     if (typeof input[key] === 'boolean') s[key] = input[key] as boolean;
   }

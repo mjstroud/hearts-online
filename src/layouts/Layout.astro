@@ -1,5 +1,6 @@
 ---
 import '../styles/global.css';
+import { isAdmin } from '../lib/server/auth';
 import { DECK_COOKIE, SITE_NAME, avatarColor, initials } from '../lib/ui';
 
 interface Props {
@@ -9,7 +10,7 @@ interface Props {
   full?: boolean;
 }
 
-const { title, description = 'A private online Hearts table for long-running family games.', full = false } = Astro.props;
+const { title, description = 'Online Hearts with house rules, for family games that run all year.', full = false } = Astro.props;
 const user = Astro.locals.user;
 const path = Astro.url.pathname;
 const pageTitle = title ? `${title} · ${SITE_NAME}` : SITE_NAME;
@@ -67,6 +68,7 @@ const deck = Astro.cookies.get(DECK_COOKIE)?.value === 'four' ? 'four' : 'two';
                     <span class="faint">@{user.username}</span>
                   </div>
                   <a href="/account">Account</a>
+                  {isAdmin(user) && <a href="/admin">Admin</a>}
                   <form method="post" action="/logout">
                     <button type="submit">Sign out</button>
                   </form>

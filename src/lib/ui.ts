@@ -1,6 +1,6 @@
 /** Small presentation helpers shared by Astro pages and Svelte components. */
 
-export const SITE_NAME = 'Hearts Table';
+export const SITE_NAME = 'Shoot the Sun';
 
 const AVATAR_COLORS = ['#e2557a', '#e8894a', '#d4a72c', '#4caf7f', '#3aa6b9', '#5b7fe0', '#8a63d2', '#c45cb5', '#6f8f3a', '#d0644f'];
 

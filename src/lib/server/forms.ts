@@ -4,6 +4,7 @@ import type { GameSettings } from '../engine/rules';
 export function settingsFromForm(form: Record<string, string>): Partial<Record<keyof GameSettings, unknown>> {
   const out: Partial<Record<keyof GameSettings, unknown>> = {};
   if ('scoreLimit' in form) out.scoreLimit = form.scoreLimit === '' ? null : form.scoreLimit;
+  if ('moveTimer' in form) out.moveTimer = form.moveTimer === '' ? null : form.moveTimer;
   if (form.rulesForm) {
     out.jackOfDiamonds = form.jackOfDiamonds === 'on';
     out.shootTheMoon = form.shootTheMoon === 'on';

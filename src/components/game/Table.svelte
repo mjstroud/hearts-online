@@ -15,9 +15,11 @@
     busy: boolean;
     notify: boolean;
     toggleNotify: () => void;
+    /** When the move timer runs out, on this device's clock (null = no timer running). */
+    clockEndsAt: number | null;
     onShowResult: () => void;
   }
-  let { view, act, busy, notify, toggleNotify, onShowResult }: Props = $props();
+  let { view, act, busy, notify, toggleNotify, clockEndsAt, onShowResult }: Props = $props();
 
   type Pos = 'bottom' | 'left' | 'top' | 'right' | 'top-left' | 'top-right';
   const POS4: Pos[] = ['bottom', 'left', 'top', 'right'];
@@ -45,6 +47,25 @@
   const needPass = $derived(t.phase === 'passing' && me !== null && !t.myPass);
   const leading = $derived(!!t.current && t.current.plays.length === 0);
   const leadSuit = $derived(t.current && t.current.plays.length ? suitOf(t.current.plays[0].card) : null);
+
+  // ----- Move timer and autopilot
+  let nowMs = $state(Date.now());
+  $effect(() => {
+    if (clockEndsAt === null) return;
+    nowMs = Date.now();
+    const tick = setInterval(() => (nowMs = Date.now()), 250);
+    return () => clearInterval(tick);
+  });
+  const secondsLeft = $derived(clockEndsAt === null ? null : Math.max(0, Math.ceil((clockEndsAt - nowMs) / 1000)));
+  const clockText = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  const seatOf = (seat: number | null) => (seat === null ? undefined : view.players.find((p) => p.seat === seat));
+  const onAutopilot = $derived(!!seatOf(me)?.autopilot);
+  const everyoneAway = $derived(view.players.every((p) => p.isBot || p.autopilot));
+  /** Seats whose own clock is running (people on turn, not cats or autopilot). */
+  const timed = (seat: number) => {
+    const p = seatOf(seat);
+    return secondsLeft !== null && view.toAct.includes(seat) && !!p && !p.isBot && !p.autopilot;
+  };
 
   // ----- Selection (pass picks, or a tap-to-confirm play on touch screens)
   let selected = $state<Card[]>([]);
@@ -139,6 +160,10 @@
 
   const hint = $derived.by(() => {
     if (me === null) return 'You are watching this game.';
+    if (onAutopilot) {
+      if (everyoneAway) return 'Everyone stepped away, so the table is paused until someone is back.';
+      return 'You ran out of time, so a cat is playing for you until you’re back.';
+    }
     if (t.phase === 'passing') {
       if (needPass) {
         const dir = t.passLabel.toLowerCase();
@@ -263,6 +288,10 @@
             </span>
           </div>
           <div class="seat-tags">
+            {#if p.autopilot}<span class="tag auto" title="A cat is playing for them until they’re back">🐾 Away</span>{/if}
+            {#if timed(p.seat) && secondsLeft !== null}
+              <span class="tag clock num" class:low={secondsLeft <= 10} title="Time left for this move">⏱ {clockText(secondsLeft)}</span>
+            {/if}
             {#if t.phase === 'passing'}
               <span class="tag" class:done={t.passed[p.seat]}>{t.passed[p.seat] ? '✓ Passed' : 'Choosing'}</span>
             {/if}
@@ -276,8 +305,13 @@
 
     <div class="hand-zone">
       <div class="action-bar">
-        <p class="hint" class:mine={myTurn || needPass}>{hint}</p>
-        {#if needPass}
+        <p class="hint" class:mine={myTurn || needPass || onAutopilot}>{hint}</p>
+        {#if me !== null && timed(me) && secondsLeft !== null}
+          <span class="my-clock num" class:low={secondsLeft <= 10} title="Time left before a cat sits in for you">⏱ {clockText(secondsLeft)}</span>
+        {/if}
+        {#if onAutopilot}
+          <button class="btn btn-primary" disabled={busy} onclick={() => act({ type: 'resume' })}>I’m back, give me my seat</button>
+        {:else if needPass}
           <button class="btn btn-primary" disabled={busy || selected.length !== t.passCount} onclick={pass}>
             Pass {selected.length}/{t.passCount} → {nameOf(t.passTarget)}
           </button>
@@ -823,6 +857,30 @@
   .tag.crib-tag {
     background: rgb(124 180 255 / 0.18);
     color: var(--sky);
+  }
+
+  .tag.auto {
+    background: rgb(var(--lo) / 0.75);
+    color: var(--gold);
+  }
+
+  .tag.clock,
+  .my-clock {
+    color: var(--text);
+  }
+
+  .tag.clock.low,
+  .my-clock.low {
+    background: rgb(240 71 91 / 0.2);
+    color: #ffd0d6;
+  }
+
+  .my-clock {
+    font-size: 14px;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 99px;
+    background: rgb(var(--lo) / 0.5);
   }
 
   /* ---------- Hand ---------- */

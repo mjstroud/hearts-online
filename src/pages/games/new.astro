@@ -1,4 +1,5 @@
 ---
+import MoveTimerField from '../../components/MoveTimerField.astro';
 import RuleSettings from '../../components/RuleSettings.astro';
 import Layout from '../../layouts/Layout.astro';
 import { DEFAULT_SETTINGS, normalizeSettings } from '../../lib/engine/rules';
@@ -54,6 +55,7 @@ if (Astro.request.method === 'POST') {
         />
         <small class="hint">Leave blank for an open-ended game that you end yourself. You can change this later.</small>
       </label>
+      <MoveTimerField value={settings.moveTimer} />
       <RuleSettings settings={settings} />
       <div class="row" style="justify-content: flex-end">
         <a class="btn btn-ghost" href="/games">Cancel</a>

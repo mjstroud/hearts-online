@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { CRIB_SIZE, MAX_PLAYERS, MIN_PLAYERS, cardsPerPlayer, passCycle, passLabel } from '../../lib/engine/rules';
+  import { CRIB_SIZE, MAX_PLAYERS, MIN_PLAYERS, cardsPerPlayer, moveTimerLabel, passCycle, passLabel } from '../../lib/engine/rules';
   import type { GameAction, GameView } from '../../lib/types';
   import { BOT_AVATAR, avatarColor, initials } from '../../lib/ui';
 
@@ -122,6 +122,16 @@
         <li><span class="pip">⇄</span><span>Passing: {passCycle(previewPlayers).map((o) => passLabel(o, previewPlayers)).join(' → ')}.</span></li>
         <li><span class="pip">⚑</span><span>{s.scoreLimit ? `The game ends after the hand in which someone reaches ${s.scoreLimit}.` : 'No score limit. The host ends the game after a finished hand.'}</span></li>
         {#if !s.noPointsOnFirstTrick}<li><span class="pip">!</span><span>Points may be dumped on the first trick.</span></li>{/if}
+        <li>
+          <span class="pip">⏱</span>
+          <span>
+            {#if s.moveTimer}
+              <strong>{moveTimerLabel(s.moveTimer)}</strong> per move. Run out of time and a cat sits in for you until you’re back.
+            {:else}
+              No move timer. The table waits for everyone.
+            {/if}
+          </span>
+        </li>
       </ul>
       <a class="muted small" href="/rules">Full rules →</a>
     </section>

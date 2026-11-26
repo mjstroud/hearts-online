@@ -3,7 +3,7 @@
   "type": "module",
   "version": "1.0.0",
   "private": true,
-  "description": "A private, persistent online Hearts table for family games that last all year.",
+  "description": "Shoot the Sun: private online Hearts for family games that last all year.",
   "engines": {
     "node": ">=22.13.0"
   },

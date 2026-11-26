@@ -22,6 +22,8 @@ export interface PlayerView {
   isBot: boolean;
   score: number;
   online: boolean;
+  /** A computer player is sitting in for this person until they come back. */
+  autopilot: boolean;
 }
 
 /** Everything about the hand, revealed to the owner of a playtest table. */
@@ -55,6 +57,8 @@ export interface GameView {
   leaders: number[];
   /** The host has asked to end the game when the current hand finishes. */
   endAfterHand: boolean;
+  /** The move timer for the people on turn: ms left when this view was built, and the full allowance. */
+  moveClock: { endsIn: number; seconds: number } | null;
   dev: DevView | null;
   version: number;
   updatedAt: number;
@@ -70,6 +74,8 @@ export type GameAction =
   | { type: 'removePlayer'; userId: number }
   | { type: 'leave' }
   | { type: 'shuffleSeats' }
+  /** Take your seat back from the computer player sitting in for you. */
+  | { type: 'resume' }
   // Playtest tools (owner of a playtest table only)
   | { type: 'dev:act'; seat: number; move: DevMove }
   | { type: 'dev:ai'; scope: 'move' | 'trick' | 'hand'; /** For a single move: which seat (default: bots first). */ seat?: number }

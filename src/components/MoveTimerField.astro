@@ -1,0 +1,20 @@
+---
+import { MOVE_TIMER_OPTIONS, moveTimerLabel } from '../lib/engine/rules';
+
+interface Props {
+  value: number | null;
+}
+const { value } = Astro.props;
+---
+
+<label class="field">
+  <span>Move timer</span>
+  <select class="input" name="moveTimer" style="max-width: 220px">
+    <option value="" selected={!value}>Off: wait for everyone</option>
+    {MOVE_TIMER_OPTIONS.map((s) => <option value={s} selected={value === s}>{moveTimerLabel(s)} per move</option>)}
+  </select>
+  <small class="hint">
+    Off suits games played a few tricks at a time. With a timer, anyone who runs out of time gets a cat sitting in for them
+    until they tap “I’m back”. You can change this during the game.
+  </small>
+</label>

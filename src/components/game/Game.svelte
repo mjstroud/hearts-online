@@ -3,6 +3,7 @@
   import { fly } from 'svelte/transition';
   import { isPenaltyCard } from '../../lib/engine/cards';
   import type { GameAction, GameView } from '../../lib/types';
+  import { SITE_NAME } from '../../lib/ui';
   import FinalResults from './FinalResults.svelte';
   import HandResult from './HandResult.svelte';
   import Lobby from './Lobby.svelte';
@@ -20,6 +21,8 @@
 
   const seenKey = $derived(`hearts:seen-hand:${view.id}`);
   const myTurn = $derived(view.me.seat !== null && view.toAct.includes(view.me.seat));
+  // The move timer's deadline on this device's clock, fixed when each new view arrives.
+  const clockEndsAt = $derived(view.moveClock ? Date.now() + view.moveClock.endsIn : null);
 
   function showToast(text: string) {
     const id = Date.now();
@@ -57,6 +60,8 @@
           heartsBroken: t.heartsBroken || isPenaltyCard(action.card),
         },
         toAct: next === null ? [] : [next],
+        // The next player's clock starts on the server; wait for its real deadline.
+        moveClock: null,
       };
     }
     if (action.type === 'pass' && t.phase === 'passing' && !t.myPass) {
@@ -136,7 +141,7 @@
   // Tab title + optional desktop notification when it becomes your turn.
   let wasMyTurn = false;
   $effect(() => {
-    document.title = `${myTurn ? '● Your turn · ' : ''}${view.name} · Hearts Table`;
+    document.title = `${myTurn ? '● Your turn · ' : ''}${view.name} · ${SITE_NAME}`;
     if (myTurn && !wasMyTurn && notify && document.hidden && 'Notification' in window && Notification.permission === 'granted') {
       new Notification(`Your turn in ${view.name}`, { body: 'The table is waiting on you ♥', icon: '/favicon.svg', tag: view.id });
     }
@@ -197,7 +202,7 @@
 {#if view.status === 'lobby'}
   <Lobby {view} {act} {leave} {busy} />
 {:else if view.status === 'active' && view.table}
-  <Table {view} {act} {busy} {notify} {toggleNotify} onShowResult={() => (resultOpen = true)} />
+  <Table {view} {act} {busy} {notify} {toggleNotify} {clockEndsAt} onShowResult={() => (resultOpen = true)} />
 {:else}
   <FinalResults {view} {act} {busy} />
 {/if}

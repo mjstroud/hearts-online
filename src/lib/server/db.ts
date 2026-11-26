@@ -67,6 +67,17 @@ const MIGRATIONS: string[] = [
     WHEN 'bot-7' THEN 'Cali' ELSE display_name END
   WHERE is_bot = 1;
   `,
+  // v4: one-time password reset links, made by a site admin.
+  `
+  CREATE TABLE password_resets (
+    id         TEXT PRIMARY KEY,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL
+  );
+  CREATE INDEX password_resets_user ON password_resets(user_id);
+  `,
 ];
 
 function migrate(db: DatabaseSync) {

@@ -1,7 +1,7 @@
 import { createHash, randomBytes, scrypt, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
 import type { AstroCookies } from 'astro';
-import { now, sql } from './db';
+import { now, sql, transaction } from './db';
 
 const scryptAsync = promisify(scrypt) as (pw: string, salt: Buffer, keylen: number, opts: object) => Promise<Buffer>;
 
@@ -174,4 +174,95 @@ export function signupCodeValid(code: string): boolean {
 /** Sign out every other session, e.g. after a password change. */
 export function deleteOtherSessions(userId: number, keepToken: string | undefined) {
   sql('DELETE FROM sessions WHERE user_id = ? AND id != ?').run(userId, keepToken ? hashToken(keepToken) : '');
+}
+
+// ---------------------------------------------------------------------------
+// Site admins and password reset links
+
+/** Accounts named in ADMIN_USERNAMES (comma-separated) can make password reset links for anyone. */
+export function isAdmin(user: User | null | undefined): boolean {
+  if (!user || user.isBot) return false;
+  const admins = (process.env.ADMIN_USERNAMES ?? '')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  return admins.includes(user.username.toLowerCase());
+}
+
+const RESET_HOURS = 24;
+
+export interface AccountSummary {
+  id: number;
+  username: string;
+  displayName: string;
+  createdAt: number;
+  /** Signed-in devices right now. */
+  sessions: number;
+  /** When the newest unused reset link expires, if there is one. */
+  resetUntil: number | null;
+}
+
+export function listAccounts(): AccountSummary[] {
+  const t = now();
+  const rows = sql(
+    `SELECT u.id, u.username, u.display_name, u.created_at,
+       (SELECT COUNT(*) FROM sessions s WHERE s.user_id = u.id AND s.expires_at > ?) AS sessions,
+       (SELECT MAX(r.expires_at) FROM password_resets r WHERE r.user_id = u.id AND r.expires_at > ?) AS reset_until
+     FROM users u WHERE u.is_bot = 0 ORDER BY u.username COLLATE NOCASE`,
+  ).all(t, t) as { id: number; username: string; display_name: string; created_at: number; sessions: number; reset_until: number | null }[];
+  return rows.map((r) => ({
+    id: r.id,
+    username: r.username,
+    displayName: r.display_name,
+    createdAt: r.created_at,
+    sessions: r.sessions,
+    resetUntil: r.reset_until,
+  }));
+}
+
+/** Make a one-time reset link for a person's account (valid 24 hours). Any older link for them stops working. */
+export function createPasswordReset(userId: number, adminId: number): { token: string; user: User; expires: Date } | null {
+  return transaction(() => {
+    const user = getUser(userId);
+    if (!user || user.isBot) return null;
+    const token = randomBytes(32).toString('base64url');
+    const t = now();
+    const expires = t + RESET_HOURS * 60 * 60 * 1000;
+    sql('DELETE FROM password_resets WHERE user_id = ? OR expires_at < ?').run(userId, t);
+    sql('INSERT INTO password_resets (id, user_id, created_by, created_at, expires_at) VALUES (?, ?, ?, ?, ?)').run(
+      hashToken(token),
+      userId,
+      adminId,
+      t,
+      expires,
+    );
+    return { token, user, expires: new Date(expires) };
+  });
+}
+
+/** The account a reset link is for, if the link is still good. */
+export function findPasswordReset(token: string): User | null {
+  if (!token) return null;
+  const row = sql(
+    'SELECT u.* FROM password_resets r JOIN users u ON u.id = r.user_id WHERE r.id = ? AND r.expires_at > ? AND u.is_bot = 0',
+  ).get(hashToken(token), now()) as UserRow | undefined;
+  return row ? toUser(row) : null;
+}
+
+/**
+ * Use a reset link: set the new password, retire the link, and sign the account out everywhere.
+ * Returns the account, or an error message.
+ */
+export async function redeemPasswordReset(token: string, password: string): Promise<User | string> {
+  if (password.length < 8) return 'Passwords need at least 8 characters.';
+  if (password.length > 200) return 'That password is too long.';
+  const hash = await hashPassword(password);
+  return transaction(() => {
+    const user = findPasswordReset(token);
+    if (!user) return 'This reset link has expired or was already used. Ask for a new one.';
+    sql('UPDATE users SET password_hash = ? WHERE id = ?').run(hash, user.id);
+    sql('DELETE FROM password_resets WHERE user_id = ?').run(user.id);
+    sql('DELETE FROM sessions WHERE user_id = ?').run(user.id);
+    return user;
+  });
 }

@@ -1,13 +1,14 @@
-# ♥ Hearts Table
+# ☀ Shoot the Sun
 
-A private online Hearts table for a family game that runs all year. Sign in, share a join code, and play live together or a few tricks at a time. Every move is saved, the scoreboard keeps a running total across hundreds of hands, and the stats pages track who keeps getting stuck with the Queen.
+Private online Hearts, with house rules, for a family game that runs all year. Lives at [shootthesun.com](https://shootthesun.com). Sign in, share a join code, and play live together or a few tricks at a time. Every move is saved, the scoreboard keeps a running total across hundreds of hands, and the stats pages track who keeps getting stuck with the Queen.
 
 Built with [Astro](https://astro.build) (server-rendered), [Svelte](https://svelte.dev) for the live table, and SQLite through Node's built-in `node:sqlite`. There are no native modules and no external services.
 
 ## Features
 
-- **Accounts and private games.** Username and password sign-in. Each game has a 6-character join code and invite link, and only seated players can see it. Leave and come back from any device.
+- **Accounts and private games.** Username and password sign-in. Each game has a 6-character join code and invite link, and only seated players can see it. Leave and come back from any device. Site admins can make one-time password reset links from `/admin`.
 - **Live or at your own pace.** Moves sync instantly over Server-Sent Events. A game can also sit idle for days and resume where it left off. Optional browser alerts tell you when it's your turn.
+- **Optional move timer** (30 s to 5 min, off by default). When someone runs out of time, a cat sits in for them until they tap "I'm back" or play a card. If every person at the table is away, the table pauses instead of playing itself.
 - **House rules** (configurable per game):
   - Jack of Diamonds is **−10**.
   - A 4-card face-down **crib** goes to whoever wins the first trick. Only they get to see it, and its cards count toward their score.
@@ -64,6 +65,8 @@ Set these as environment variables, or in a `.env` file (see `.env.example`):
 | --------------- | ------------------- | ----------------------------------------------------------------------- |
 | `DATABASE_PATH` | `./data/hearts.db`  | SQLite file location. Put it on a persistent disk in production.        |
 | `SIGNUP_CODE`   | _(unset)_           | If set, new accounts must enter this code. Keeps sign-ups family-only.  |
+| `ADMIN_USERNAMES` | _(unset)_         | Comma-separated usernames that can open `/admin` and make password reset links. |
+| `SITE_URL`      | _(unset)_           | The one public address (`https://shootthesun.com`). Other hosts redirect there, and reset links use it. |
 | `HOST` / `PORT` | `localhost` / `4321`| Address the production server listens on.                               |
 
 ## Deploying
@@ -90,6 +93,19 @@ A `fly.toml` is included. GitHub Actions does the deploying, so no machine needs
 5. In the Fly dashboard, create a deploy token for the new app. Add it as the secret `FLY_API_TOKEN`, then delete `FLY_ORG_TOKEN` from GitHub and revoke it in Fly.
 
 **After that:** every push to `main` that passes tests deploys automatically. Logs, secrets, and machine status are in the Fly dashboard. Each deploy restarts the single machine, which causes a few seconds of downtime.
+
+You can also do the one-time setup from your own computer with `fly auth login`, then `fly apps create`, `fly volumes create hearts_data --region ord --size 1`, `fly secrets set ...` and `fly deploy`. You still need step 5 afterwards so that pushes to `main` deploy.
+
+**Secrets to set:** `SIGNUP_CODE`, `ADMIN_USERNAMES` (your username), and `SITE_URL` once the custom domain works (see below).
+
+**Custom domain (shootthesun.com, DNS on Cloudflare)**
+
+1. `fly ips allocate-v6`, plus `fly ips allocate-v4 --shared` if the app has no IPv4 yet. `fly ips list` shows the addresses.
+2. In Cloudflare DNS, add an `A` record for `shootthesun.com` pointing at the shared IPv4 and an `AAAA` record pointing at the IPv6. Add a `CNAME` for `www` pointing at `<app>.fly.dev`. Set all three to **DNS only** (grey cloud) so Fly can issue and serve the certificates.
+3. `fly certs add shootthesun.com` and `fly certs add www.shootthesun.com`. Then `fly certs check shootthesun.com` until both are issued.
+4. `fly secrets set SITE_URL=https://shootthesun.com`. From then on, the fly.dev address and `www.` redirect to the apex domain. Don't set this before the certificate is issued, or every visit gets redirected to an address that doesn't work yet.
+
+**Backups:** Fly snapshots the volume daily and keeps the snapshots for a few days (`fly volumes snapshots list`).
 
 ### Railway / Render
 
