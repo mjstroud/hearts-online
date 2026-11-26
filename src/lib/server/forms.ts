@@ -11,5 +11,7 @@ export function settingsFromForm(form: Record<string, string>): Partial<Record<k
     out.shootTheSun = form.shootTheSun === 'on';
     out.noPointsOnFirstTrick = form.noPointsOnFirstTrick === 'on';
   }
+  // Its own marker: this switch sits outside the house-rules fieldset, which is disabled mid-game.
+  if (form.watchesForm) out.showWatches = form.showWatches === 'on';
   return out;
 }

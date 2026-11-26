@@ -3,7 +3,7 @@ import type { GameSettings } from '../lib/engine/rules';
 
 interface Props {
   settings: GameSettings;
-  /** Rules are locked once the game has started (only the score limit can change). */
+  /** House rules are locked once the game has started (the watches switch stays editable). */
   locked?: boolean;
 }
 const { settings, locked = false } = Astro.props;
@@ -18,6 +18,19 @@ const toggles: { name: keyof GameSettings; title: string; body: string }[] = [
   },
 ];
 ---
+
+{
+  /* Outside the locked fieldset on purpose: a disabled checkbox isn't submitted, which would read as
+     "off". The hidden marker tells the server this form had the switch, so an unticked box means off. */
+}
+<label class="toggle">
+  <input type="checkbox" name="showWatches" checked={settings.showWatches} />
+  <span>
+    <strong>Show Moon and Sun watches</strong>
+    <small>Marks a player who could still shoot the Moon or the Sun. You can change this during the game.</small>
+  </span>
+</label>
+<input type="hidden" name="watchesForm" value="1" />
 
 <fieldset class="stack rules" disabled={locked}>
   <legend class="label">House rules {locked && <span class="faint">· locked once cards are dealt</span>}</legend>

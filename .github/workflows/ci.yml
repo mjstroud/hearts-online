@@ -1,15 +1,25 @@
 name: CI
 
+# Branches and releases (see README):
+# - Work happens on short-lived branches that merge into `dev`. Every push to `dev` deploys the dev site.
+# - A release merges `dev` into `main`. Every push to `main` deploys the real site, shootthesun.com.
+# - Pull requests run the tests only.
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
   pull_request:
+
+# Runs for the same branch go one at a time, so an older run can never deploy over a newer one.
+# A newer run that's waiting replaces an older one that hasn't started.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -21,8 +31,8 @@ jobs:
       # Fails the job (and so the deploy) when the browser bundle grows past its budgets.
       - run: npm run check:budgets
 
-  # Ship to Fly.io once tests pass on main. Needs the FLY_API_TOKEN repo secret.
-  deploy:
+  # The real site. Needs the FLY_API_TOKEN repo secret (a deploy token for the hearts-table app).
+  deploy-live:
     needs: test
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
@@ -31,8 +41,29 @@ jobs:
       group: fly-deploy
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v4
-      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - uses: actions/checkout@v5
+      - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # 1.6, pinned: this step runs with a deploy token
       - run: flyctl deploy --remote-only
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+  # The dev site. Needs the FLY_DEV_API_TOKEN repo secret (a deploy token for the hearts-table-dev app).
+  deploy-dev:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: fly-deploy-dev
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v5
+      - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # 1.6, pinned: this step runs with a deploy token
+      - name: flyctl deploy --config fly.dev.toml
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_DEV_API_TOKEN }}
+        run: |
+          if [ -z "$FLY_API_TOKEN" ]; then
+            echo "::warning::FLY_DEV_API_TOKEN isn't set yet, so the dev site wasn't deployed. See README → Dev site."
+            exit 0
+          fi
+          flyctl deploy --remote-only --config fly.dev.toml

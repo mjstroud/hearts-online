@@ -30,9 +30,9 @@ These are the "build it fast from the start" rules. They answer the performance 
 
 1. **Your own actions show instantly.** Anything you do (play, pass, queue a card) appears on screen in the same frame, and the server's update confirms it a moment later. A dev-only readout in the playtest panel shows tap-to-screen and tap-to-server times.
 2. **Budgets, checked in CI** (`npm run check:budgets` and `view-size.test.ts`):
-   - Game page JS: at most 45 KB gzipped (39.5 KB after Phase 1).
+   - Game page JS: at most 55 KB gzipped (39.5 KB after Phase 1, 44.3 KB after Phase 2; raised from 45 KB with the owner's OK).
    - Any other JS file: at most 15 KB, and aim for 10.
-   - All CSS together: at most 11 KB (10.2 KB after Phase 1, with the font rules now in-house).
+   - All CSS together: at most 14 KB. It was 10.2 KB after Phase 1; the owner OK'd raising the cap from 11 KB for the Phase 2 visuals.
    - One player's live update: at most 4 KB (2.5–2.8 KB with 32-char names).
    A deploy that goes over fails. Raise a budget only with the owner's OK.
 3. **Load only what's needed.** The playtest panel currently ships to every player. Restaurant and taunt art should load only when switched on.
@@ -46,7 +46,7 @@ These are the "build it fast from the start" rules. They answer the performance 
    - New host options reach running games through their defaults, so choose defaults on purpose.
 7. **The table only learns from face-up cards.** Anything shown to the table, and every table-wide moment, comes from cards played face-up. The crib winner's view counts the crib's points (`queenTakenBy`, `jackTakenBy`, `pointsTaken`), so those fields must never trigger a moment.
 8. **Phones are the main platform.** Check every change at 375px wide, with 4 and 5 players, 32-character names, portrait and landscape. Check it on a real iPhone before merging anything that affects phones (see [Rollout](#rollout)).
-9. **Merge between play sessions.** Every deploy restarts the one machine.
+9. **Try it on the dev site first, and release between play sessions.** Every release to `main` restarts the real site's one machine.
 
 ## Bugs found
 
@@ -72,7 +72,7 @@ Each phase can ship on its own, between play sessions.
 
 ### Phase 1: Guardrails and phone basics
 
-**Status (2026-11-26): built on the local `phase-1` branch, not yet committed or deployed.**
+**Status (2026-11-26): live.** It's commit `b103966`, Fly release v9, deployed after volume snapshot `vs_eGg8PO2lb3pFQ8lq4xZK1a0`. Existing family accounts were covered by the terms without a click: `terms_version` = 1, with `terms_accepted_at` left empty.
 
 - **Checked:** 150 tests and the build pass, and budgets are met. A browser check covered sign-up, the terms gate, 5- and 4-player tables with 32-char names at 375×812, 812×375 and 1280×800, the self-hosted fonts, the manifest and the service worker. Console and server logs show no errors.
 - **Still needs a real device:**
@@ -109,6 +109,23 @@ All client code plus facts worked out in the view. No rule changes and no migrat
 - **M:** the moments themselves (below).
 - **S:** a hand-end sequence: the final trick sits on the felt about 1.2s, then any Sun or Moon moment, then the result. Tap to skip. The hand result also shows the final trick.
 - **M:** a trick review after each hand, from the hand result and the scoreboard: each trick's cards, who led, who won, and the points.
+
+### Added 2026-11-26 (owner requests)
+
+- **S: Get the app.** A `/app` page with an Install button when the browser offers one, plus step-by-step instructions for iPhone, Android Chrome, Samsung Internet, Firefox and desktop. It's linked from the account menu and footer, with a dismissible nudge on /games on phones, all hidden inside the app. The service worker is registered on every page so browsers treat the site as installable. Built on `feature/get-the-app`.
+- **M: Finished games: keep playing or rematch** (host only). Built on `feature/finished-games`, branched from `feature/phase-2`.
+  - **Keep playing** continues the same game: totals carry on, as do hand numbers and the pass rotation. If the game ended on its score limit, the host picks a new limit above the highest total, or none. Anyone a cat was sitting in for gets their seat back, and the cats and the move timer start again.
+  - **Rematch** opens a waiting room with the same players, seats and settings, with scores reset. Everyone's end screen links to it, and a second click returns the same rematch. A playtest rematch is dealt straight away.
+  - Both go through the game action API (`extend` and `rematch`) and are stored in the existing game state (`rematchId`, and an `extensions` history of each limit change), so no migration is needed. Views gain one field, `rematchId`.
+  - Decisions: a rematch goes back to the limit the game first finished with. Keep playing is blocked while a rematch exists; deleting the rematch brings it back. An extended game counts as in progress in lifetime stats until it finishes again. Rematch names add a plain " rematch" (then " rematch 2"), which is easy to type when deleting one.
+  - Size: the end-screen choices and the Sun/Moon banner now load with `import()`, and so does the playtest latency timer (ground rule 3). The game page's JS went from 44.3 KB to 44.0 KB.
+  - Follow-up (XS): mark where a game was extended on the scoreboard, from `extensions`.
+
+### Follow-up: measure CSS per page
+
+Astro inlines small stylesheets into each page's HTML. That CSS is re-sent with every page load, and `check:budgets` doesn't count it: about 3 KB gzipped on the game page after Phase 2. Switching to `build.inlineStylesheets: 'never'` makes all CSS cacheable files. But then the "all CSS together" budget sums every page's CSS (23.7 KB) instead of what one page loads.
+
+So change `check:budgets` to read each route's `styles` list from the server build (`dist/server/entry.mjs`) and cap the largest page, then switch. **S.** Check every page's styles in the browser after the switch.
 
 ### Phase 3: Less waiting
 
@@ -243,8 +260,9 @@ You want an app that shares accounts, data and games with the site. The server a
 
 ## Rollout
 
-- **Merge between play sessions.** Take a Fly volume snapshot before each migration: v7 (terms acceptance), v8 (pre-moves), v9 (chat) and v10 (public lobbies).
-- **Real-iPhone loop:** run `npm run dev -- --host`, then open the PC's network address on an iPhone on the same Wi-Fi. Sign-in works over plain http there. Service workers and push need https, so test those on the live site.
+- **Try everything on the dev site first** (dev.shootthesun.com, deployed from the `dev` branch), then release `dev` to `main` between play sessions. Take a Fly volume snapshot of the real site before each migration: v7 (terms acceptance, done), v8 (pre-moves), v9 (chat) and v10 (public lobbies).
+- **The dev site is the https test bed** for service workers, home-screen installs and push on real phones.
+- **Real-iPhone loop:** run `npm run dev -- --host`, then open the PC's network address on an iPhone on the same Wi-Fi. Sign-in works over plain http there. Service workers, home-screen installs and push need https, so test those on the dev site (dev.shootthesun.com).
 - **The GitHub repo is public.** Cat photos go in the database, not the repo.
 
 ## Decisions

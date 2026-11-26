@@ -1,6 +1,7 @@
 import { defineMiddleware } from 'astro:middleware';
 import { SESSION_COOKIE, getSessionUser, setSessionCookie } from './lib/server/auth';
 import { resumeBots } from './lib/server/games';
+import { isDevSite } from './lib/server/env';
 import { canonicalRedirect, isSecure } from './lib/server/http';
 import { ACCEPT_TERMS_PATH, isPageLoad, needsTerms, termsGatedPath } from './lib/terms';
 
@@ -74,6 +75,8 @@ export const onRequest = defineMiddleware(async (ctx, next) => {
     response.headers.set('X-Content-Type-Options', 'nosniff');
     response.headers.set('X-Frame-Options', 'DENY');
     response.headers.set('Referrer-Policy', 'same-origin');
+    // Keep the dev site out of search results.
+    if (isDevSite()) response.headers.set('X-Robots-Tag', 'noindex, nofollow');
   } catch {
     // Some responses (e.g. Response.redirect) have immutable headers.
   }

@@ -3,6 +3,7 @@ import Avatar from '../../../components/Avatar.astro';
 import GameNav from '../../../components/GameNav.astro';
 import ScoreChart from '../../../components/charts/ScoreChart.svelte';
 import { SERIES_COLORS } from '../../../components/charts/chart';
+import HandReviewDialog from '../../../components/game/HandReviewDialog.svelte';
 import Layout from '../../../layouts/Layout.astro';
 import { avatarSrc } from '../../../lib/avatars';
 import { passLabel } from '../../../lib/engine/rules';
@@ -21,6 +22,10 @@ const standings = seated
   .sort((a, b) => a.total - b.total || a.seat - b.seat);
 const lastHand = hands.at(-1);
 const newestFirst = hands.slice().reverse();
+// For the trick review: each hand number below is a button that HandReviewDialog listens for, so
+// the page carries no tricks and the review loads only when someone asks. Names are by seat.
+const names: string[] = [];
+for (const p of seated) names[p.seat] = p.displayName;
 ---
 
 <Layout title={`Scoreboard · ${game.name}`}>
@@ -71,7 +76,7 @@ const newestFirst = hands.slice().reverse();
     <section class="stack sheet-section">
       <div class="spread">
         <h2 class="panel-title">Score sheet</h2>
-        <span class="faint small">Newest hand first · hand score with running total beneath</span>
+        <span class="faint small">Newest hand first · hand score with running total beneath · tap a hand number for its tricks</span>
       </div>
       {
         hands.length === 0 ? (
@@ -99,7 +104,9 @@ const newestFirst = hands.slice().reverse();
                   return (
                     <tr>
                       <td>
-                        <span class="hand-no num">#{h.number}</span>
+                        <button type="button" class="btn btn-sm hand-no num" data-hand={h.number} title={`See the tricks of hand ${h.number}`}>
+                          #{h.number}
+                        </button>
                         <span class="faint pass">{passLabel(h.passOffset, h.numPlayers)}</span>
                       </td>
                       {seated.map((p) => {
@@ -131,6 +138,7 @@ const newestFirst = hands.slice().reverse();
       <p class="faint small legend">☀ Shot the Sun · ☾ Shot the Moon · Q♠ Queen · J♦ Jack · ▣ Crib</p>
     </section>
   </div>
+  {hands.length > 0 && <HandReviewDialog client:idle gameId={game.id} names={names} />}
 </Layout>
 
 <style>

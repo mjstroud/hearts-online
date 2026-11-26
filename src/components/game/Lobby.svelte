@@ -119,6 +119,7 @@
         <li><span class="pip">♣</span><span>The lowest club in play leads the first trick.</span></li>
         {#if s.shootTheMoon}<li><span class="pip">☾</span><span>Shoot the Moon: everyone else <strong>+26</strong>.</span></li>{/if}
         {#if s.shootTheSun}<li><span class="pip gold">☀</span><span>Shoot the Sun (win every trick): everyone else <strong>+52</strong>.</span></li>{/if}
+        {#if s.showWatches && (s.shootTheMoon || s.shootTheSun)}<li><span class="pip">◎</span><span>Watches: the table marks anyone who could still shoot the {[s.shootTheMoon && 'Moon', s.shootTheSun && 'Sun'].filter(Boolean).join(' or ')}.</span></li>{/if}
         <li><span class="pip">⇄</span><span>Passing: {passCycle(previewPlayers).map((o) => passLabel(o, previewPlayers)).join(' → ')}.</span></li>
         <li><span class="pip">⚑</span><span>{s.scoreLimit ? `The game ends after the hand in which someone reaches ${s.scoreLimit}.` : 'No score limit. The host ends the game after a finished hand.'}</span></li>
         {#if !s.noPointsOnFirstTrick}<li><span class="pip">!</span><span>Points may be dumped on the first trick.</span></li>{/if}

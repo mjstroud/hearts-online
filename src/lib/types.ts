@@ -64,6 +64,8 @@ export interface GameView {
   dev: DevView | null;
   version: number;
   updatedAt: number;
+  /** The rematch of this finished game, if you have a seat at it. */
+  rematchId: string | null;
 }
 
 export type DevMove = { type: 'pass'; cards: Card[] } | { type: 'play'; card: Card };
@@ -78,6 +80,13 @@ export type GameAction =
   | { type: 'shuffleSeats' }
   /** Take your seat back from the computer player sitting in for you. */
   | { type: 'resume' }
+  /**
+   * Host of a finished game: deal on, with the totals carried over. `scoreLimit` is the new limit
+   * (null for none; leave it out to keep the current one). `handsPlayed` is what your screen showed.
+   */
+  | { type: 'extend'; scoreLimit?: number | null; handsPlayed?: number }
+  /** Host of a finished game: a waiting room with the same players, seats and settings. Answers with this game's view and its `rematchId`. */
+  | { type: 'rematch' }
   // Playtest tools (owner of a playtest table only)
   | { type: 'dev:act'; seat: number; move: DevMove }
   | { type: 'dev:ai'; scope: 'move' | 'trick' | 'hand'; /** For a single move: which seat (default: bots first). */ seat?: number }

@@ -59,7 +59,10 @@ const handNumber = game.state?.hand?.number;
 
     {
       finished ? (
-        <div class="panel panel-pad muted">This game is finished, so its settings are locked.</div>
+        <div class="panel panel-pad muted">
+          This game is finished, so its settings are locked. To keep playing it or set up a rematch, use the buttons on the{' '}
+          <a href={`/games/${game.id}`}>results screen</a>.
+        </div>
       ) : (
         <form method="post" class="panel panel-pad stack" style="--gap: 22px">
           <input type="hidden" name="intent" value="save" />

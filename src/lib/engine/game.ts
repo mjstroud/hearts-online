@@ -21,6 +21,13 @@ export interface GameState {
   /** Move-timer bookkeeping (server-side): which turn the clock is for, and when that turn began. */
   turnKey?: string;
   turnSince?: number;
+  /** This finished game's rematch (server-side). It may have been deleted since. */
+  rematchId?: string;
+  /**
+   * Each "Keep playing" (server-side): after which hand, and the score limit before and after. The old
+   * limit can't be worked out from the tricks, and a rematch goes back to the first one.
+   */
+  extensions?: { afterHand: number; from: number | null; to: number | null; at: number }[];
 }
 
 /** Identifies "whose move it is and why", so the move timer restarts only when the turn really changes. */
@@ -75,6 +82,16 @@ export function gamePlay(game: GameState, seat: number, card: Card, settings: Ga
   }
   game.hand = dealHand(hand.number + 1, game.numPlayers, rng);
   return { completedHand: record, gameOver: false };
+}
+
+/** Deal on after a finished game: totals carry over, and hand numbers and the pass rotation continue. */
+export function continueGame(game: GameState, rng: Rng = secureRng): void {
+  if (!game.over) throw new RuleError('The game is still going.');
+  game.over = false;
+  // Or the next hand would end the game again.
+  delete game.endAfterHand;
+  // A hand thrown away by "End now" was never recorded, so dealing its number again is safe.
+  game.hand = dealHand(game.handsPlayed + 1, game.numPlayers, rng);
 }
 
 /** Throw away the hand in progress and deal it again (playtest tool). */

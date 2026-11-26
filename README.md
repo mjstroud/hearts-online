@@ -9,7 +9,13 @@ Built with [Astro](https://astro.build) (server-rendered), [Svelte](https://svel
 - **Accounts and private games.** Username and password sign-in. Each game has a 6-character join code and invite link, and only seated players can see it. Leave and come back from any device. Site admins can make one-time password reset links from `/admin`.
 - **Profile photos.** Upload one from the Account page and it replaces your initials wherever players are shown. The browser crops it to a 256px square before uploading. It's stored in the SQLite file with camera and location metadata stripped. The cats always keep their 🐱.
 - **Live or at your own pace.** Moves sync instantly over Server-Sent Events. A game can also sit idle for days and resume where it left off. Optional browser alerts tell you when it's your turn, through a small service worker so they work on Android too. A tab left open across a deploy shows a "New version, tap to refresh" pill.
-- **Phone-first.** Built for phones: no zooming on text boxes or quick taps, notch-safe padding, an action bar that doesn't move the hand, and full reduced-motion support. Add it to your home screen for an app-style icon and full-screen window.
+- **Phone-first.** Built for phones: no zooming on text boxes or quick taps, notch-safe padding, an action bar that doesn't move the hand, and full reduced-motion support. Add it to your home screen for an app-style icon and full-screen window. The Get the app page (`/app`, linked from the account menu, the footer and a dismissible card on /games on phones) shows a one-tap Install button when the browser offers one, and step-by-step instructions for iPhone, Android and computers when it doesn't.
+- **An easy-to-read table.**
+  - Trick cards stack by seat, so the led card is never buried. A ring marks the led card and a glow marks the card currently winning.
+  - The finished trick stays on the felt until the next lead, and a Last trick button brings it back. Tap a trick, or hover on a computer, to see who played what.
+  - A corner of the felt shows tricks left, whether hearts are broken, and a ☀ Sun or ☾ Moon watch on anyone who could still shoot. That's worked out from face-up cards only, so the crib stays secret. The host can turn the watches off.
+- **Table moments.** Short messages when hearts break, the Q♠ is played and eaten, or the J♦ is grabbed, and when a Sun or Moon watch starts or ends. When someone shoots the Moon or the Sun, a sunrise or moonrise plays before the results.
+- **Trick review.** Every finished hand's tricks can be replayed from the results screen ("See the tricks") or by tapping a hand number on the scoreboard. They load on demand from `/api/games/:id/hands/:number`.
 - **Terms and privacy.** Short Terms and Privacy pages. New players agree at sign-up, and existing players agree once on their next visit.
 - **Optional move timer** (30 s to 5 min, off by default). When someone runs out of time, a cat sits in for them until they tap "I'm back" or play a card. If every person at the table is away, the table pauses instead of playing itself.
 - **House rules** (configurable per game):
@@ -21,6 +27,11 @@ Built with [Astro](https://astro.build) (server-rendered), [Svelte](https://svel
   - Passing rotates left → right → across → keep. With 5 players it's left → right → left across → right across → keep.
   - **5-player games** take out the 2♣, 2♦ and 2♠, so the 4-card crib still works and everyone gets 9 cards.
   - Games only end on a **completed hand**. By default there's no score limit, and the host marks a final hand when the season's over. If a limit is set, the game ends after the first hand in which someone reaches it.
+- **Keep playing or rematch.** When a game is over, the host can do one of two things from the results screen:
+  - **Keep playing:** the same game deals on. Totals, hand numbers and the pass rotation carry on, and the scoreboard and stats keep counting. If the game ended on its score limit, the host picks a higher limit or no limit.
+  - **Set up a rematch:** a new waiting room with the same players, seats and house rules, scores back to zero. The host can shuffle seats or add and remove players before dealing. Everyone's results screen links to it, and a second click opens the same rematch.
+
+  While a rematch exists, the old game can't be continued; deleting the rematch brings Keep playing back. Both go through the action API (`extend` and `rematch`).
 - **Playtest tables.** A solo sandbox for trying out rules:
   - every hand and the crib face up (each can be toggled)
   - computer players on auto at a chosen speed, or on manual so you play their cards yourself
@@ -73,6 +84,7 @@ Set these as environment variables, or in a `.env` file (see `.env.example`):
 | `SIGNUP_CODE`   | _(unset)_           | If set, new accounts must enter this code. Keeps sign-ups family-only.  |
 | `ADMIN_USERNAMES` | _(unset)_         | Comma-separated usernames that can open `/admin` and make password reset links. |
 | `SITE_URL`      | _(unset)_           | The one public address (`https://shootthesun.com`). Other hosts redirect there, and reset links use it. |
+| `SITE_ENV`      | _(unset)_           | `dev` only on the dev site: DEV badge, "Dev ·" titles, noindex, and the `/dev` tools. Leave unset everywhere else. |
 | `HOST` / `PORT` | `localhost` / `4321`| Address the production server listens on.                               |
 
 ## Deploying
@@ -98,7 +110,7 @@ A `fly.toml` is included. GitHub Actions does the deploying, so no machine needs
 4. In GitHub, go to Actions → **Fly launch** → Run workflow. It creates the app, the `hearts_data` volume, and the secret, then deploys.
 5. In the Fly dashboard, create a deploy token for the new app. Add it as the secret `FLY_API_TOKEN`, then delete `FLY_ORG_TOKEN` from GitHub and revoke it in Fly.
 
-**After that:** every push to `main` that passes tests deploys automatically. Logs, secrets, and machine status are in the Fly dashboard. Each deploy restarts the single machine, which causes a few seconds of downtime.
+**After that:** every push to `main` that passes tests deploys automatically. Logs, secrets, and machine status are in the Fly dashboard. Each deploy restarts the single machine, which causes a few seconds of downtime. Day-to-day work goes to the dev site first; see [Branches and releases](#branches-and-releases).
 
 You can also do the one-time setup from your own computer with `fly auth login`, then `fly apps create`, `fly volumes create hearts_data --region ord --size 1`, `fly secrets set ...` and `fly deploy`. You still need step 5 afterwards so that pushes to `main` deploy.
 
@@ -112,6 +124,47 @@ You can also do the one-time setup from your own computer with `fly auth login`,
 4. `fly secrets set SITE_URL=https://shootthesun.com`. From then on, the fly.dev address and `www.` redirect to the apex domain. Don't set this before the certificate is issued, or every visit gets redirected to an address that doesn't work yet.
 
 **Backups:** Fly snapshots the volume daily and keeps the snapshots for a few days (`fly volumes snapshots list`).
+
+### Branches and releases
+
+Two long-lived branches, each deployed by CI when it's pushed:
+
+| Branch | Deploys to | What goes there |
+|---|---|---|
+| `dev` | [dev.shootthesun.com](https://dev.shootthesun.com) (Fly app `hearts-table-dev`, `fly.dev.toml`) | Finished work, ready to try on real phones. |
+| `main` | [shootthesun.com](https://shootthesun.com) (Fly app `hearts-table`, `fly.toml`) | Releases only. |
+
+`dev` is the repo's default branch on GitHub, so pull requests aim at it unless you choose otherwise.
+
+- **Everyday work:** branch off `dev` (for example `feature/table-moments`), then open a pull request into `dev` (base: `dev`), or merge locally and push `dev`. Pushing `dev` deploys the dev site. Squash-merging a feature branch is fine.
+- **A release:** when `dev` is ready, open a pull request from `dev` into `main` between play sessions. Its description is the release notes.
+  - If the release adds a database migration, snapshot the real site's volume first: `fly volumes snapshots create <volume id>`. `fly volumes list` shows the id.
+  - Merge it with **Create a merge commit**, never squash or rebase, or `main` gets commits `dev` doesn't have and the two drift apart. Merging deploys the real site.
+  - Then tag what was deployed: `git fetch origin`, then `git tag -a release-YYYY-MM-DD origin/main -m "..."`, then `git push origin release-YYYY-MM-DD`. Tags don't trigger CI.
+- **An urgent fix for the real site:** branch off `main`, open a pull request into `main`, then merge `main` back into `dev` (also with a merge commit) so the two don't drift.
+- Pull requests to either branch run the tests, but only pushes deploy. Only a release or an urgent fix ever targets `main`.
+
+### Dev site
+
+`dev.shootthesun.com` is a second Fly app (`hearts-table-dev`) with its own volume and database. Accounts and games there are separate from the real site, so test freely.
+
+- It has a gold **DEV** badge by the logo, a "Dev ·" tab title, and headers that keep search engines out.
+- The `/dev/long-names` table works there too.
+- It sleeps when nobody's using it (`auto_stop_machines`), so the first visit after a while takes a few seconds to wake it.
+- **Manual deploy:** `fly deploy --remote-only --config fly.dev.toml` deploys whatever is in your working copy, committed or not. It's handy for a quick check before pushing.
+
+> **Careful:** in this repo, any `fly` command without `--app` or `--config` acts on the **real** app, because `fly.toml` names it. For the dev site, always add `--app hearts-table-dev` (or `--config fly.dev.toml` for deploys). Only deploy the real app by hand from a clean, up-to-date `main`.
+
+**One-time setup** (already done for `hearts-table-dev`; kept here in case it ever needs redoing):
+
+1. `fly apps create hearts-table-dev --org personal`, then `fly volumes create hearts_dev_data --app hearts-table-dev --region ord --size 1`.
+2. `fly secrets set SIGNUP_CODE=<a code> ADMIN_USERNAMES=<your username> --app hearts-table-dev --stage`, so sign-up is never open. You'll need to sign up on the dev site under that username before admin works, because its database is separate.
+3. First deploy: `fly deploy --remote-only --config fly.dev.toml`. Then `fly ips list --app hearts-table-dev` should show an IPv6 and a shared IPv4; if not, run `fly ips allocate-v6 --app hearts-table-dev` and `fly ips allocate-v4 --shared --app hearts-table-dev`.
+4. `fly certs add dev.shootthesun.com --app hearts-table-dev`. It prints the DNS records to add (`fly certs setup dev.shootthesun.com --app hearts-table-dev` shows them again). In Cloudflare DNS for shootthesun.com, add an `A` record and an `AAAA` record, both named `dev`, pointing at the dev app's shared IPv4 and IPv6 from `fly ips list --app hearts-table-dev`. Set both to **DNS only** (grey cloud), like the main domain's records.
+5. `fly certs check dev.shootthesun.com --app hearts-table-dev` until it says the certificate is issued, usually within a few minutes of the DNS records existing.
+6. Only then: `fly secrets set SITE_URL=https://dev.shootthesun.com --app hearts-table-dev`. Setting it earlier redirects visits to an address that doesn't work yet. Never copy the real site's `SITE_URL` here: it would send every dev visit to shootthesun.com.
+7. CI: `fly tokens create deploy --app hearts-table-dev`, then save the output as the GitHub repo secret `FLY_DEV_API_TOKEN` (Settings → Secrets and variables → Actions). Until it's set, pushes to `dev` run the tests but skip the deploy with a warning.
+8. On GitHub, make `dev` the default branch (Settings → General → Default branch).
 
 ### Railway / Render
 

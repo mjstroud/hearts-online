@@ -1,0 +1,339 @@
+import { describe, expect, it } from 'vitest';
+import { chooseBotPass, chooseBotPlay } from './engine/bot';
+import { type Card, type Rng, rankValue } from './engine/cards';
+import { type GameState, gamePass, gamePlay, newGame } from './engine/game';
+import { type HandState, type Trick, dealHand, legalPlays, playCard } from './engine/hand';
+import { presetSpec } from './engine/presets';
+import { DEFAULT_SETTINGS, type GameSettings } from './engine/rules';
+import { scoreHand } from './engine/scoring';
+import { type HandSummary, type TableView, summarizeHand, tableViewFor } from './engine/view';
+import {
+  FINAL_TRICK_MS,
+  MIN_SHOW_MS,
+  type Message,
+  type Who,
+  detectMoments,
+  enqueue,
+  finalMoments,
+  finalTrickHoldMs,
+  restingMessage,
+  takeNext,
+} from './moments';
+
+/** Deterministic RNG for reproducible tests. */
+function seeded(seed: number): Rng {
+  let x = seed >>> 0 || 1;
+  return (max) => {
+    x ^= x << 13;
+    x ^= x >>> 17;
+    x ^= x << 5;
+    return (x >>> 0) % max;
+  };
+}
+
+const S = DEFAULT_SETTINGS;
+const NAMES = ['Ann', 'Bob', 'Cat', 'Dee', 'Eve'];
+const onlooker = (jack = true): Who => ({ names: NAMES, me: null, jack });
+/** A message as it reads on the felt (without the text-not-emoji selector after the \u2600). */
+const text = (m: Message) => `${m.pre}${m.name}${m.post}`.replace(/\u00a0/g, ' ').replace(/\ufe0e/g, '');
+const texts = (ms: Message[]) => ms.map(text);
+
+const gameOf = (hand: HandState): GameState => ({
+  numPlayers: hand.numPlayers,
+  hand,
+  scores: hand.dealt.map(() => 0),
+  handsPlayed: 0,
+  lastHand: null,
+  over: false,
+});
+// A copy, as the browser gets: the view shares the hand's live trick objects, which the next play changes.
+const viewFor = (hand: HandState, seat: number | null, settings: GameSettings = S) =>
+  structuredClone(tableViewFor(gameOf(hand), seat, settings)!);
+
+/**
+ * Plays a hand out card by card, feeding every seat's consecutive views (and an onlooker's) through
+ * detectMoments. Returns the onlooker's moments, after checking every seat saw exactly the same ones.
+ */
+function playThrough(hand: HandState, pick: (seat: number) => Card, settings: GameSettings = S) {
+  const seats = [null, ...hand.dealt.map((_, s) => s)];
+  let prev = seats.map((s) => viewFor(hand, s, settings));
+  const all: { messages: Message[]; ripple: Card | null; trick: number }[] = [];
+  while (hand.phase === 'playing') {
+    playCard(hand, hand.turn!, pick(hand.turn!), settings);
+    const next = seats.map((s) => viewFor(hand, s, settings));
+    const seen = next.map((v, i) => detectMoments(prev[i], v, onlooker(settings.jackOfDiamonds)));
+    // The crib winner's own view counts the crib, but every seat sees the same moments.
+    for (const m of seen) expect(m).toEqual(seen[0]);
+    all.push({ ...seen[0], trick: hand.tricks.length });
+    prev = next;
+  }
+  return all;
+}
+
+const kinds = (all: ReturnType<typeof playThrough>, kind: Message['kind']) => all.flatMap((a) => a.messages.filter((m) => m.kind === kind));
+
+describe('moments over whole hands', () => {
+  for (const players of [4, 5]) {
+    it(`fire once each, from face-up cards, identically for every seat (${players} players)`, () => {
+      for (let seed = 1; seed <= 30; seed++) {
+        const rng = seeded(seed * 7 + players);
+        const preset = seed % 5 === 0 ? 'queen-crib' : seed % 5 === 1 ? 'jack-crib' : 'random';
+        const hand = dealHand(1, players, rng, { spec: presetSpec(preset, players, 0), passOffset: 0 });
+        const jackRule = seed % 2 === 0;
+        const settings = { ...S, jackOfDiamonds: jackRule };
+        const all = playThrough(hand, (seat) => (seed % 3 ? chooseBotPlay(hand, seat, settings) : legalPlays(hand, seat, settings)[rng(legalPlays(hand, seat, settings).length)]), settings);
+
+        // Hearts break exactly once, with the card that did it.
+        const hearts = kinds(all, 'hearts');
+        expect(hearts).toHaveLength(1);
+        const first = hand.tricks.flatMap((t) => t.plays).find((p) => p.card[1] === 'H' || p.card === 'QS')!;
+        expect(text(hearts[0])).toMatch(new RegExp(`^Hearts are broken: ${NAMES[first.seat]}’s `));
+        expect(hearts[0].wash).toBe('hearts');
+
+        // The Q♠: a ripple when it lands and one message when its trick closes, unless the crib hid it.
+        const qTrick = hand.tricks.find((t) => t.plays.some((p) => p.card === 'QS'));
+        expect(kinds(all, 'queen').map(text)).toEqual(qTrick ? [`${NAMES[qTrick.winner!]} eats the Queen · +13`] : []);
+        expect(all.filter((a) => a.ripple === 'QS')).toHaveLength(qTrick ? 1 : 0);
+
+        // The J♦ only when the rule is on.
+        const jTrick = hand.tricks.find((t) => t.plays.some((p) => p.card === 'JD'));
+        expect(kinds(all, 'jack').map(text)).toEqual(jTrick && jackRule ? [`${NAMES[jTrick.winner!]} grabs the Jack · −10`] : []);
+
+        // Each watch starts and ends at most once, and only ends after it started.
+        const watch = texts(kinds(all, 'watch'));
+        for (const start of ['☀ Sun watch', '☾ Moon watch']) expect(watch.filter((m) => m.startsWith(start)).length).toBeLessThanOrEqual(1);
+        const down = watch.indexOf('☀ Sun’s down');
+        if (down >= 0) expect(watch.findIndex((m) => m.startsWith('☀ Sun watch'))).toBeLessThan(down);
+        const block = watch.findIndex((m) => m.startsWith('☾ Moon blocked'));
+        if (block >= 0) expect(watch.findIndex((m) => m.startsWith('☾ Moon watch'))).toBeLessThan(block);
+
+        // Nothing for the crib, ever: the hand's moments are the same if the crib held other cards.
+        const r = scoreHand(hand, settings);
+        if (r.sun !== null) expect(watch.some((m) => m === `☀ Sun watch: ${NAMES[r.sun!]}`)).toBe(true);
+      }
+    });
+  }
+
+  it('reads "You" from your own seat', () => {
+    const rng = seeded(11);
+    const hand = dealHand(1, 4, rng, { passOffset: 0 });
+    let prev = viewFor(hand, 0);
+    const mine: string[] = [];
+    while (hand.phase === 'playing') {
+      playCard(hand, hand.turn!, chooseBotPlay(hand, hand.turn!, S), S);
+      const next = viewFor(hand, 0);
+      mine.push(...texts(detectMoments(prev, next, { names: NAMES, me: 0, jack: true }).messages));
+      prev = next;
+    }
+    const q = hand.tricks.find((t) => t.plays.some((p) => p.card === 'QS'));
+    if (q?.winner === 0) expect(mine).toContain('You eat the Queen · +13');
+    const broke = hand.tricks.flatMap((t) => t.plays).find((p) => p.card[1] === 'H' || p.card === 'QS')!;
+    if (broke.seat === 0) expect(mine.some((m) => m.startsWith('Hearts are broken: your '))).toBe(true);
+  });
+
+  for (const players of [4, 5]) {
+    it(`a Sun run shows the Sun watch once and no Moon (${players} players)`, () => {
+      for (let seat = 0; seat < players; seat++) {
+        const rng = seeded(seat * 31 + players);
+        const hand = dealHand(1, players, rng, { spec: presetSpec('sun', players, seat), passOffset: 0 });
+        const all = playThrough(hand, (s) => {
+          const legal = legalPlays(hand, s, S);
+          return s === seat ? legal.reduce((a, b) => (rankValue(b) > rankValue(a) ? b : a)) : chooseBotPlay(hand, s, S);
+        });
+        const watch = all.flatMap((a) => texts(a.messages.filter((m) => m.kind === 'watch')));
+        expect(watch).toEqual([`☀ Sun watch: ${NAMES[seat]}`]);
+        // On the trick the watch starts: 4 of 12, 3 of 9.
+        expect(all.find((a) => a.messages.some((m) => m.kind === 'watch'))!.trick).toBe(players === 5 ? 3 : 4);
+      }
+    });
+
+    it(`a Moon run shows the Moon watch once, and it's never blocked (${players} players)`, () => {
+      let shots = 0;
+      for (let seat = 0; seat < players; seat++) {
+        const rng = seeded(seat * 17 + players);
+        const hand = dealHand(1, players, rng, { spec: presetSpec('moon', players, seat), passOffset: 0 });
+        const all = playThrough(hand, (s) => {
+          const legal = legalPlays(hand, s, S);
+          return s === seat ? legal.reduce((a, b) => (rankValue(b) > rankValue(a) ? b : a)) : chooseBotPlay(hand, s, S);
+        });
+        if (scoreHand(hand, S).moon !== seat) continue;
+        shots++;
+        expect(all.flatMap((a) => texts(a.messages.filter((m) => m.kind === 'watch')))).toEqual([`☾ Moon watch: ${NAMES[seat]}`]);
+      }
+      expect(shots).toBeGreaterThan(0);
+    });
+  }
+});
+
+/** A bare view for hand-made cases: only the fields moments read. */
+function tv(p: Partial<TableView>): TableView {
+  return {
+    handNumber: 3,
+    phase: 'playing',
+    trickNumber: 6,
+    totalTricks: 12,
+    handSizes: [7, 7, 7, 7],
+    current: { leader: 0, plays: [], winner: null },
+    lastTrick: null,
+    heartsBrokenBy: null,
+    sunWatch: null,
+    moonWatch: null,
+    ...p,
+  } as TableView;
+}
+
+const won = (winner: number, ...cards: Card[]): Trick => ({
+  leader: winner,
+  plays: cards.map((card, i) => ({ seat: (winner + i) % 4, card })),
+  winner,
+});
+
+describe('detectMoments', () => {
+  const before = tv({ lastTrick: won(2, '2C', '3C', '4C', '5C'), sunWatch: 2, moonWatch: 2 });
+  const closes = (trick: Trick, p: Partial<TableView> = {}) =>
+    tv({ trickNumber: 7, handSizes: [6, 6, 6, 6], current: { leader: trick.winner!, plays: [], winner: null }, lastTrick: trick, ...p });
+
+  it('stays quiet on a first view, a new hand, a big jump or an undo', () => {
+    const next = closes(won(1, '6C', '7C', '8C', 'QS'));
+    expect(detectMoments(null, next, onlooker()).messages).toEqual([]);
+    expect(detectMoments(tv({ handNumber: 2 }), next, onlooker()).messages).toEqual([]);
+    // Two tricks at once: this tab missed updates (a reconnect catching up).
+    expect(detectMoments(tv({ trickNumber: 5 }), next, onlooker()).messages).toEqual([]);
+    expect(detectMoments(next, before, onlooker()).messages).toEqual([]);
+  });
+
+  it('says nothing when the host turns the watches off mid-trick', () => {
+    const off = tv({ lastTrick: before.lastTrick, current: { leader: 2, plays: [{ seat: 2, card: '9D' }], winner: null } });
+    expect(detectMoments(before, off, onlooker()).messages).toEqual([]);
+  });
+
+  it('tells the Sun going down and the Moon being blocked, by who took the trick', () => {
+    const m = detectMoments(tv({ ...before, sunWatch: null }), closes(won(3, '6H', '7C', '8C', '9C')), onlooker());
+    expect(texts(m.messages)).toEqual(['☾ Moon blocked by Dee']);
+    const both = detectMoments(before, closes(won(3, '6H', '7C', '8C', '9C')), { names: NAMES, me: 3, jack: true });
+    // During a Sun run only the Sun was showing, so its end is the news.
+    expect(texts(both.messages)).toEqual(['☀ Sun’s down']);
+    const sunOnly = detectMoments(before, closes(won(3, '6C', '7C', '8C', '9C'), { moonWatch: 2 }), onlooker());
+    expect(texts(sunOnly.messages)).toEqual(['☀ Sun’s down', '☾ Moon watch: Cat']);
+  });
+
+  it('starts a watch when the trick closes', () => {
+    const m = detectMoments(tv({ trickNumber: 4 }), closes(won(1, '6C', '7C', '8C', '9C'), { trickNumber: 5, sunWatch: 1 }), {
+      names: NAMES,
+      me: 1,
+      jack: true,
+    });
+    expect(texts(m.messages)).toEqual(['☀ Sun watch: You']);
+  });
+
+  it('breaks hearts the moment the card lands, with a wash, and ripples the Q♠', () => {
+    const lands = tv({ current: { leader: 0, plays: [{ seat: 0, card: 'AS' }, { seat: 1, card: 'QS' }], winner: null }, heartsBrokenBy: { seat: 1, card: 'QS', trick: 6 } });
+    const prev = tv({ current: { leader: 0, plays: [{ seat: 0, card: 'AS' }], winner: null } });
+    const m = detectMoments(prev, lands, onlooker());
+    expect(texts(m.messages)).toEqual(['Hearts are broken: Bob’s Q♠']);
+    expect(m.ripple).toBe('QS');
+    // Your own play: predicted first (no heartsBrokenBy yet), then the server names it.
+    const mine = detectMoments({ ...lands, heartsBrokenBy: null }, lands, { names: NAMES, me: 1, jack: true });
+    expect(texts(mine.messages)).toEqual(['Hearts are broken: your Q♠']);
+    expect(mine.ripple).toBeNull();
+  });
+
+  it('keeps the spaces next to a name, which flex layout would drop', () => {
+    const m = detectMoments(tv({}), closes(won(1, '6C', 'QS', '8C', '9C')), onlooker()).messages[0];
+    expect(m.post.startsWith('\u00a0')).toBe(true);
+    const r = restingMessage(won(1, '6C', '7C', '8C', '9C'), onlooker(), false)!;
+    expect(r.post).toBe('\u00a0takes it');
+  });
+});
+
+describe('resting message', () => {
+  const t = won(2, '6C', '7C', '8C', '9C');
+  it('names who took the trick, and folds in your lead', () => {
+    expect(text(restingMessage(t, onlooker(), false)!)).toBe('Cat takes it');
+    expect(text(restingMessage(t, { names: NAMES, me: 2, jack: true }, true)!)).toBe('You take it · your lead');
+    expect(text(restingMessage(t, { names: NAMES, me: 2, jack: true }, false)!)).toBe('You take it');
+    expect(restingMessage({ ...t, winner: null }, onlooker(), false)).toBeNull();
+  });
+});
+
+describe('the hand-end sequence', () => {
+  const summary = (p: Partial<HandSummary>): HandSummary =>
+    ({ number: 3, jackScored: true, sun: null, moon: null, finalTrick: won(1, '2D', 'QS', 'JD', '4D'), ...p }) as HandSummary;
+
+  const final = (before: TableView | null, s: HandSummary, w = onlooker()) => finalMoments(before, s.finalTrick!, s, w);
+
+  it('tells the final trick but leaves a shot to the full-screen celebration', () => {
+    const m = final(null, summary({ moon: 1 }));
+    expect(texts(m)).toEqual(['Bob eats the Queen · +13', 'Bob grabs the Jack · −10']);
+    expect(m.some((x) => x.kind === 'shot')).toBe(false);
+    expect(final(null, summary({ jackScored: false, sun: 0, finalTrick: won(0, '2D', '3D', '4D', '5D') }), { names: NAMES, me: 0, jack: false })).toEqual([]);
+  });
+
+  it('holds the final trick long enough for each of its messages', () => {
+    const s = summary({});
+    expect(finalTrickHoldMs(null, s.finalTrick!, s, onlooker())).toBe(2 * MIN_SHOW_MS);
+    const quiet = summary({ finalTrick: won(0, '2D', '3D', '4D', '5D') });
+    expect(finalTrickHoldMs(null, quiet.finalTrick!, quiet, onlooker())).toBe(FINAL_TRICK_MS);
+  });
+
+  it('tells a watch ending on the final trick, if this tab saw that trick in progress', () => {
+    // The final trick (Bob leads 2♦, then Q♠, J♦ and 4♦) with two cards down.
+    const inPlay = { leader: 1, plays: won(1, '2D', 'QS', 'JD', '4D').plays.slice(0, 2), winner: null };
+    const last = tv({ trickNumber: 12, handSizes: [1, 0, 0, 1], current: inPlay, sunWatch: 0, moonWatch: 0 });
+    expect(texts(final(last, summary({})))).toContain('☀ Sun’s down');
+    // A view from earlier in the hand, another hand, or another trick isn't enough to know.
+    expect(texts(final({ ...last, trickNumber: 10 }, summary({})))).not.toContain('☀ Sun’s down');
+    expect(texts(final({ ...last, handNumber: 2 }, summary({})))).not.toContain('☀ Sun’s down');
+    expect(texts(final({ ...last, current: { ...inPlay, plays: [{ seat: 1, card: '3D' }] } }, summary({})))).not.toContain('☀ Sun’s down');
+    const moon = tv({ trickNumber: 12, handSizes: [1, 0, 0, 1], current: inPlay, moonWatch: 2 });
+    expect(texts(final(moon, summary({})))).toContain('☾ Moon blocked by Bob');
+  });
+
+  it('without the hand’s summary, tells only what the trick itself shows', () => {
+    // After a game's last hand the felt holds a view whose lastHand is the hand before.
+    const trick = won(1, '2D', 'QS', 'JD', '4D');
+    const last = tv({ trickNumber: 12, handSizes: [1, 0, 0, 1], current: { leader: 1, plays: trick.plays.slice(0, 3), winner: null }, sunWatch: 0 });
+    expect(texts(finalMoments(last, trick, null, onlooker(false)))).toEqual(['Bob eats the Queen · +13', '☀ Sun’s down']);
+    expect(texts(finalMoments(null, trick, null, onlooker(true)))).toEqual(['Bob eats the Queen · +13', 'Bob grabs the Jack · −10']);
+  });
+
+  it('works from a real game: the next hand is dealt with the last card', () => {
+    const rng = seeded(5);
+    const game = newGame(4, rng);
+    const h = game.hand!;
+    for (let s = 0; s < 4; s++) gamePass(game, s, chooseBotPass(h.hands[s]));
+    let before: TableView | null = null;
+    while (game.hand === h) {
+      before = structuredClone(tableViewFor(game, null, S));
+      gamePlay(game, h.turn!, chooseBotPlay(h, h.turn!, S), S, rng);
+    }
+    const s = summarizeHand(game.lastHand!);
+    const after = tableViewFor(game, null, S)!;
+    expect(after.handNumber).toBe(2);
+    // Across hands, detectMoments says nothing; the sequence uses the summary instead.
+    expect(detectMoments(before, after, onlooker()).messages).toEqual([]);
+    const m = texts(finalMoments(before, s.finalTrick!, s, onlooker()));
+    const q = s.finalTrick!.plays.some((p) => p.card === 'QS');
+    expect(m.includes(`${NAMES[s.finalTrick!.winner!]} eats the Queen · +13`)).toBe(q);
+  });
+});
+
+describe('message queue', () => {
+  const m = (kind: Message['kind'], name: string, delay?: number): Message => ({ kind, pre: '', name, post: '', delay });
+
+  it('orders by priority, then arrival, and keeps the first few', () => {
+    const q = enqueue([], [m('jack', 'j'), m('hearts', 'h'), m('watch', 'w1'), m('queen', 'q'), m('watch', 'w2')], 0);
+    expect(q.map((x) => x.name)).toEqual(['q', 'h', 'w1', 'w2']);
+    expect(enqueue(q, [m('shot', 's')], 0).map((x) => x.name)).toEqual(['s', 'q', 'h', 'w1']);
+  });
+
+  it('holds a delayed message back until it is due', () => {
+    const q = enqueue([], [m('shot', 's', 1200), m('queen', 'q')], 1000);
+    let r = takeNext(q, 1000);
+    expect(r.next?.name).toBe('q');
+    r = takeNext(r.rest, 1100);
+    expect(r).toMatchObject({ next: null, wait: 1100 });
+    expect(takeNext(r.rest, 2200).next?.name).toBe('s');
+    expect(takeNext([], 0)).toEqual({ next: null, rest: [], wait: null });
+  });
+});
