@@ -57,14 +57,16 @@ const here = `${new URL(siteOrigin(Astro.request)).host}/app`;
       <section class="panel panel-pad way" data-way="android">
         <h2>Android</h2>
         <p data-browser="chrome">
-          <strong>Chrome:</strong> tap <strong>⋮</strong> at the top right, then <strong>Install app</strong> or{' '}
+          <strong>Chrome:</strong> tap <strong>⋮</strong> next to the address bar, then <strong>Install app</strong> or{' '}
           <strong>Add to Home screen</strong>. If it asks, choose <strong>Install</strong>.
         </p>
         <p data-browser="samsung">
           <strong>Samsung Internet:</strong> tap the menu <strong>☰</strong> at the bottom right, then{' '}
           <strong>Add page to</strong> → <strong>Home screen</strong>.
         </p>
-        <p data-browser="firefox"><strong>Firefox:</strong> tap <strong>⋮</strong>, then <strong>Install</strong>.</p>
+        <p data-browser="firefox">
+          <strong>Firefox:</strong> tap <strong>⋮</strong>, then <strong>Install</strong> or <strong>Add to Home screen</strong>.
+        </p>
       </section>
 
       <section class="panel panel-pad way" data-way="desktop">
@@ -75,7 +77,7 @@ const here = `${new URL(siteOrigin(Astro.request)).host}/app`;
             ><path d="M9 4H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1h-4M12 3v9m-3-3 3 3 3-3M8 20h8"></path></svg
           >{' '}
           at the right end of the address bar. No icon? In Chrome, use <strong>⋮</strong> →{' '}
-          <strong>Cast, save and share</strong> → <strong>Install page as app</strong>. In Edge, use <strong>···</strong> →{' '}
+          <strong>Cast, save, and share</strong> → <strong>Install page as app</strong>. In Edge, use <strong>···</strong> →{' '}
           <strong>Apps</strong> → <strong>Install this site as an app</strong>.
         </p>
         <p><strong>Safari on a Mac:</strong> <strong>File</strong> → <strong>Add to Dock</strong>.</p>

@@ -51,6 +51,7 @@ const deck = Astro.cookies.get(DECK_COOKIE)?.value === 'four' ? 'four' : 'two';
        * preventDefault() so browsers that show their own offer still do. data-app marks the installed app, so
        * .browser-only links hide before first paint. The service worker goes on every page because some
        * browsers only offer to install a site that has one (it does nothing to requests: see public/sw.js).
+       * Anything that can be missing or blocked (localStorage, matchMedia, serviceWorker over plain http) sits in a try.
        */
     }
     <script is:inline>
@@ -64,10 +65,12 @@ const deck = Astro.cookies.get(DECK_COOKIE)?.value === 'four' ? 'four' : 'two';
           localStorage.setItem('hearts:app-nudge', 'installed');
         } catch {}
       });
-      if (matchMedia('(display-mode: standalone)').matches || navigator.standalone) document.documentElement.dataset.app = '';
+      try {
+        if (matchMedia('(display-mode: standalone)').matches || navigator.standalone) document.documentElement.dataset.app = '';
+      } catch {}
       addEventListener('load', () => {
         try {
-          navigator.serviceWorker?.register('/sw.js', { scope: '/' }).catch(() => {});
+          navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {});
         } catch {}
       });
     </script>
