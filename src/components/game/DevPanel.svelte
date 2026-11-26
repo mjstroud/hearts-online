@@ -2,7 +2,7 @@
   import type { Card } from '../../lib/engine/cards';
   import { PRESETS, type PresetId } from '../../lib/engine/presets';
   import type { BotMode, BotSpeed, GameAction, GameView } from '../../lib/types';
-  import { BOT_AVATAR, avatarColor, initials } from '../../lib/ui';
+  import Avatar from '../Avatar.svelte';
   import PlayingCard from '../PlayingCard.svelte';
 
   interface Props {
@@ -134,7 +134,7 @@
         {@const sel = passSel[p.seat] ?? []}
         <div class="seat-row" class:acting={st.tone === 'act'}>
           <div class="who">
-            <span class="avatar" style={`--size: 26px; --avatar: ${avatarColor(p.username)}`}>{p.isBot ? BOT_AVATAR : initials(p.name)}</span>
+            <Avatar name={p.name} seed={p.username} isBot={p.isBot} src={p.avatar} size={26} />
             <span class="who-text">
               <strong>{nameOf(p.seat)}</strong>
               <small class:act={st.tone === 'act'} class:done={st.tone === 'done'}>

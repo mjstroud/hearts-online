@@ -1,7 +1,9 @@
 ---
 import '../styles/global.css';
+import Avatar from '../components/Avatar.astro';
+import { avatarSrc } from '../lib/avatars';
 import { isAdmin } from '../lib/server/auth';
-import { DECK_COOKIE, SITE_NAME, avatarColor, initials } from '../lib/ui';
+import { DECK_COOKIE, SITE_NAME } from '../lib/ui';
 
 interface Props {
   title?: string;
@@ -57,9 +59,7 @@ const deck = Astro.cookies.get(DECK_COOKIE)?.value === 'four' ? 'four' : 'two';
             user ? (
               <details class="user-menu">
                 <summary aria-label="Account menu" title={user.displayName}>
-                  <span class="avatar" style={`--size: 30px; --avatar: ${avatarColor(user.username)}`}>
-                    {initials(user.displayName)}
-                  </span>
+                  <Avatar name={user.displayName} seed={user.username} src={avatarSrc(user.avatarId)} size={30} />
                   <span class="user-name">{user.displayName}</span>
                 </summary>
                 <div class="menu panel">

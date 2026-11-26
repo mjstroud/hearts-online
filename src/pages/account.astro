@@ -1,9 +1,12 @@
 ---
+import AvatarEditor from '../components/AvatarEditor.svelte';
 import DeckToggle from '../components/DeckToggle.svelte';
 import PlayingCard from '../components/PlayingCard.svelte';
 import Layout from '../layouts/Layout.astro';
+import { avatarSrc } from '../lib/avatars';
 import { SESSION_COOKIE, changePassword, deleteOtherSessions, takeAttempt, updateDisplayName } from '../lib/server/auth';
 import { DISPLAY_NAME_MAX, DISPLAY_NAME_MAX_UNITS, displayNameLength } from '../lib/names';
+import { publishPlayerChange } from '../lib/server/games';
 import { readForm } from '../lib/server/http';
 
 const user = Astro.locals.user!;
@@ -19,6 +22,7 @@ if (Astro.request.method === 'POST') {
     if ('error' in res) error = res.error;
     else {
       displayName = user.displayName = res.name; // so the header reflects it right away
+      publishPlayerChange(user.id); // and so do the tables they're seated at
       saved = 'Name updated.';
     }
   } else if (form.intent === 'password') {
@@ -33,6 +37,11 @@ if (Astro.request.method === 'POST') {
     }
   }
   if (error) Astro.response.status = 400;
+} else {
+  // The photo editor uploads in the background, then comes back here to say how it went.
+  const photo = Astro.url.searchParams.get('photo');
+  if (photo === 'saved') saved = 'Photo updated.';
+  else if (photo === 'removed') saved = 'Photo removed.';
 }
 ---
 
@@ -47,6 +56,11 @@ if (Astro.request.method === 'POST') {
     <div class="stack" style="--gap: 20px">
       {error && <p class="alert" role="alert">{error}</p>}
       {saved && <p class="alert ok" role="status">{saved}</p>}
+
+      <div class="stack" style="--gap: 8px">
+        <AvatarEditor client:load username={user.username} displayName={user.displayName} avatar={avatarSrc(user.avatarId)} />
+        <noscript><p class="hint">Changing your photo needs JavaScript, which is turned off in this browser.</p></noscript>
+      </div>
 
       <form method="post" class="panel panel-pad stack">
         <input type="hidden" name="intent" value="profile" />
@@ -101,6 +115,13 @@ if (Astro.request.method === 'POST') {
 
 <script>
   import '../lib/name-field';
+
+  // Drop ?photo=… once it's been shown, so a reload doesn't say "Photo updated." again.
+  const url = new URL(location.href);
+  if (url.searchParams.has('photo')) {
+    url.searchParams.delete('photo');
+    history.replaceState(history.state, '', url);
+  }
 </script>
 
 <style>

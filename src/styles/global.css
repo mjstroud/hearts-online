@@ -599,6 +599,7 @@ select.input {
 
 .avatar {
   --size: 36px;
+  position: relative;
   flex: none;
   width: var(--size);
   height: var(--size);
@@ -616,6 +617,21 @@ select.input {
   letter-spacing: 0;
   overflow: hidden;
   white-space: nowrap;
+}
+
+/* A photo lies over the initials, so they show while it loads or if it can't. */
+.avatar > img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+  /* Taps and long-presses go to whatever the avatar sits in, not a "Save image" menu. */
+  pointer-events: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
 }
 
 /* ---------- Data tables ---------- */

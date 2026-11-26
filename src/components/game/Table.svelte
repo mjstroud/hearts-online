@@ -3,7 +3,8 @@
   import { type Card, SUIT_SYMBOL, cardLabel, isPenaltyCard, suitOf } from '../../lib/engine/cards';
   import type { Trick } from '../../lib/engine/hand';
   import type { GameAction, GameView } from '../../lib/types';
-  import { BOT_AVATAR, avatarColor, initials, signed } from '../../lib/ui';
+  import { signed } from '../../lib/ui';
+  import Avatar from '../Avatar.svelte';
   import PlayingCard from '../PlayingCard.svelte';
   import DeckToggle from '../DeckToggle.svelte';
   import DevPanel from './DevPanel.svelte';
@@ -272,9 +273,7 @@
         <div class={`seat at-${pos}`} class:acting class:me={p.seat === me}>
           <div class="plaque">
             <span class="seat-avatar">
-              <span class="avatar" style={`--size: ${arenaW < 520 ? 34 : 38}px; --avatar: ${avatarColor(p.username)}`}>
-                {p.isBot ? BOT_AVATAR : initials(p.name)}
-              </span>
+              <Avatar name={p.name} seed={p.username} isBot={p.isBot} src={p.avatar} size={arenaW < 520 ? 34 : 38} />
               {#if !p.isBot}<span class="presence" class:on={p.online}></span>{/if}
             </span>
             <span class="plaque-text">
@@ -764,11 +763,7 @@
     padding: 2px;
   }
 
-  .seat-avatar .avatar {
-    position: relative;
-  }
-
-  /* Spinning ring on a pseudo-element so the badges on the avatar stay upright. */
+  /* Spinning ring on a pseudo-element so the badges on the avatar stay upright. The avatar (position: relative) sits on top. */
   .acting .seat-avatar::before {
     content: '';
     position: absolute;

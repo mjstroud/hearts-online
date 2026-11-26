@@ -17,6 +17,7 @@ import { type GameSettings, MAX_PLAYERS, MIN_PLAYERS, normalizeSettings, passCyc
 import type { HandRecord } from '../engine/scoring';
 import { summarizeHand, tableViewFor } from '../engine/view';
 import type { DevSettings, DevView, GameAction, GameListItem, GameMode, GameStatus, GameView } from '../types';
+import { avatarSrc } from '../avatars';
 import { GAME_NAME_MAX, clipToLength } from '../names';
 import { now, sql, transaction } from './db';
 import { onlineUsers, subscribers } from './hub';
@@ -53,7 +54,12 @@ export interface SeatedPlayer {
   username: string;
   displayName: string;
   isBot: boolean;
+  /** The person's profile photo, if they have one. */
+  avatarId: string | null;
 }
+
+/** A seated player's photo URL. The cats never have one. */
+const playerAvatar = (p: SeatedPlayer) => (p.isBot ? null : avatarSrc(p.avatarId));
 
 interface GameRow {
   id: string;
@@ -113,11 +119,18 @@ export function loadGame(id: string): GameRecord | null {
 
 export function getPlayers(gameId: string): SeatedPlayer[] {
   const rows = sql(
-    `SELECT gp.seat, u.id AS user_id, u.username, u.display_name, u.is_bot
+    `SELECT gp.seat, u.id AS user_id, u.username, u.display_name, u.is_bot, u.avatar_id
      FROM game_players gp JOIN users u ON u.id = gp.user_id
      WHERE gp.game_id = ? ORDER BY gp.seat`,
-  ).all(gameId) as { seat: number; user_id: number; username: string; display_name: string; is_bot: number }[];
-  return rows.map((r) => ({ seat: r.seat, userId: r.user_id, username: r.username, displayName: r.display_name, isBot: !!r.is_bot }));
+  ).all(gameId) as { seat: number; user_id: number; username: string; display_name: string; is_bot: number; avatar_id: string | null }[];
+  return rows.map((r) => ({
+    seat: r.seat,
+    userId: r.user_id,
+    username: r.username,
+    displayName: r.display_name,
+    isBot: !!r.is_bot,
+    avatarId: r.is_bot ? null : r.avatar_id,
+  }));
 }
 
 /** Restart the move timer whenever the turn moves on (or when `force` is set). */
@@ -338,6 +351,7 @@ export function buildView(game: GameRecord, players: SeatedPlayer[], userId: num
       score: scores[p.seat] ?? 0,
       online: p.isBot || online.has(p.userId),
       autopilot: active && !p.isBot && !!state?.autopilot?.[p.seat],
+      avatar: playerAvatar(p),
     })),
     me: { userId, seat, isOwner },
     table: state && game.status === 'active' ? tableViewFor(state, seat, game.settings) : null,
@@ -381,6 +395,16 @@ export function publish(gameId: string) {
     }
   } catch (err) {
     console.error('Failed to publish game update', err);
+  }
+}
+
+/** Someone changed their photo or name: refresh every live table they're seated at. Never throws. */
+export function publishPlayerChange(userId: number): void {
+  try {
+    const rows = sql('SELECT game_id FROM game_players WHERE user_id = ?').all(userId) as { game_id: string }[];
+    for (const r of rows) publish(r.game_id);
+  } catch (err) {
+    console.error('Failed to publish player change', err);
   }
 }
 
@@ -727,7 +751,13 @@ export function listGamesForUser(userId: number): GameListItem[] {
       isOwner: game.ownerId === userId,
       joinCode: game.joinCode,
       handsPlayed: game.state?.handsPlayed ?? 0,
-      players: players.map((p) => ({ name: p.displayName, isBot: p.isBot, score: scores[p.seat] ?? 0, isMe: p.userId === userId })),
+      players: players.map((p) => ({
+        name: p.displayName,
+        isBot: p.isBot,
+        score: scores[p.seat] ?? 0,
+        isMe: p.userId === userId,
+        avatar: playerAvatar(p),
+      })),
       yourTurn: mySeat !== undefined && toAct.includes(mySeat),
       waitingOn: toAct.map((s) => players[s]?.displayName).filter(Boolean),
       updatedAt: game.updatedAt,

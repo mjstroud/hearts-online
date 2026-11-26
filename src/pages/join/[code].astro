@@ -1,8 +1,9 @@
 ---
 import AuthCard from '../../components/AuthCard.astro';
+import Avatar from '../../components/Avatar.astro';
 import Layout from '../../layouts/Layout.astro';
+import { avatarSrc } from '../../lib/avatars';
 import { GameError, findGameIdByCode, getPlayers, isMember, joinGame, loadGame } from '../../lib/server/games';
-import { BOT_AVATAR, avatarColor, initials } from '../../lib/ui';
 
 const user = Astro.locals.user!;
 const id = findGameIdByCode(Astro.params.code ?? '');
@@ -31,9 +32,7 @@ const open = game.status === 'lobby' && players.length < 5;
       {
         players.map((p) => (
           <li>
-            <span class="avatar" style={`--size: 28px; --avatar: ${avatarColor(p.username)}`}>
-              {p.isBot ? BOT_AVATAR : initials(p.displayName)}
-            </span>
+            <Avatar name={p.displayName} seed={p.username} isBot={p.isBot} src={avatarSrc(p.avatarId)} size={28} />
             <span class="pname" title={p.displayName}>{p.displayName}</span>
           </li>
         ))

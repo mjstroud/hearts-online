@@ -1,7 +1,7 @@
 <script lang="ts">
   import { CRIB_SIZE, MAX_PLAYERS, MIN_PLAYERS, cardsPerPlayer, moveTimerLabel, passCycle, passLabel } from '../../lib/engine/rules';
   import type { GameAction, GameView } from '../../lib/types';
-  import { BOT_AVATAR, avatarColor, initials } from '../../lib/ui';
+  import Avatar from '../Avatar.svelte';
 
   interface Props {
     view: GameView;
@@ -67,7 +67,7 @@
         {#each view.players as p (p.userId)}
           <li>
             <span class="seat-no num">{p.seat + 1}</span>
-            <span class="avatar" style={`--avatar: ${avatarColor(p.username)}`}>{p.isBot ? BOT_AVATAR : initials(p.name)}</span>
+            <Avatar name={p.name} seed={p.username} isBot={p.isBot} src={p.avatar} />
             <span class="who">
               <strong title={p.name}>{p.name}</strong>
               <small class="faint">

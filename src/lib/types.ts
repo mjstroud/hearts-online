@@ -24,6 +24,8 @@ export interface PlayerView {
   online: boolean;
   /** A computer player is sitting in for this person until they come back. */
   autopilot: boolean;
+  /** Profile photo URL (from avatarSrc), or null for initials. Always null for the cats. */
+  avatar: string | null;
 }
 
 /** Everything about the hand, revealed to the owner of a playtest table. */
@@ -99,7 +101,7 @@ export interface GameListItem {
   isOwner: boolean;
   joinCode: string;
   handsPlayed: number;
-  players: { name: string; isBot: boolean; score: number; isMe: boolean }[];
+  players: { name: string; isBot: boolean; score: number; isMe: boolean; avatar: string | null }[];
   yourTurn: boolean;
   waitingOn: string[];
   updatedAt: number;

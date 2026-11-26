@@ -3,7 +3,8 @@
   import { fade, scale } from 'svelte/transition';
   import type { HandSummary } from '../../lib/engine/view';
   import type { PlayerView } from '../../lib/types';
-  import { BOT_AVATAR, avatarColor, initials, signed } from '../../lib/ui';
+  import { signed } from '../../lib/ui';
+  import Avatar from '../Avatar.svelte';
   import PlayingCard from '../PlayingCard.svelte';
 
   interface Props {
@@ -62,7 +63,7 @@
           <tr class:best={summary.scores[p.seat] === best}>
             <td>
               <span class="who">
-                <span class="avatar" style={`--size: 24px; --avatar: ${avatarColor(p.username)}`}>{p.isBot ? BOT_AVATAR : initials(p.name)}</span>
+                <Avatar name={p.name} seed={p.username} isBot={p.isBot} src={p.avatar} size={24} />
                 <span class="nm" title={p.name}>{p.name}</span>
                 {#if summary.cribWinner === p.seat}<span class="badge" title="Won the crib">Crib</span>{/if}
               </span>

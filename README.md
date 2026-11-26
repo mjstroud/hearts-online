@@ -7,6 +7,7 @@ Built with [Astro](https://astro.build) (server-rendered), [Svelte](https://svel
 ## Features
 
 - **Accounts and private games.** Username and password sign-in. Each game has a 6-character join code and invite link, and only seated players can see it. Leave and come back from any device. Site admins can make one-time password reset links from `/admin`.
+- **Profile photos.** Upload one from the Account page and it replaces your initials wherever players are shown. The browser crops it to a 256px square before uploading. It's stored in the SQLite file with camera and location metadata stripped. The cats always keep their 🐱.
 - **Live or at your own pace.** Moves sync instantly over Server-Sent Events. A game can also sit idle for days and resume where it left off. Optional browser alerts tell you when it's your turn.
 - **Optional move timer** (30 s to 5 min, off by default). When someone runs out of time, a cat sits in for them until they tap "I'm back" or play a card. If every person at the table is away, the table pauses instead of playing itself.
 - **House rules** (configurable per game):
@@ -137,3 +138,4 @@ src/
 - State-changing requests must come from the same origin. The check works behind a TLS proxy.
 - Sign-in and sign-up attempts are rate-limited per username and per IP. Changing your password signs out your other devices.
 - Redirects after sign-in only go to paths on this site.
+- Profile photos are checked on the server, whatever the browser says they are. The format is worked out from the bytes and the file is parsed: JPEG or WebP only, no animation, at most 60 KB and a 32–512px square, so a tiny file can't claim to be huge. Each upload gets a new unguessable URL, served only to signed-in people with a sandboxing Content-Security-Policy.

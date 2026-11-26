@@ -1,12 +1,17 @@
 ---
+import Avatar from '../components/Avatar.astro';
 import Layout from '../layouts/Layout.astro';
-import { createPasswordReset, isAdmin, listAccounts } from '../lib/server/auth';
+import { avatarSrc } from '../lib/avatars';
+import { createPasswordReset, getUser, isAdmin, listAccounts } from '../lib/server/auth';
+import { removeAvatar } from '../lib/server/avatars';
+import { publishPlayerChange } from '../lib/server/games';
 import { readForm, siteOrigin } from '../lib/server/http';
 
 const user = Astro.locals.user!;
 if (!isAdmin(user)) return Astro.rewrite('/404');
 
 let error = '';
+let notice = '';
 let made: { link: string; name: string; expires: Date } | null = null;
 if (Astro.request.method === 'POST') {
   const form = await readForm(Astro.request);
@@ -14,6 +19,15 @@ if (Astro.request.method === 'POST') {
     const res = createPasswordReset(Number(form.userId), user.id);
     if (!res) error = 'That account doesn’t exist.';
     else made = { link: `${siteOrigin(Astro.request)}/reset/${res.token}`, name: res.user.displayName, expires: res.expires };
+  } else if (form.intent === 'removeAvatar') {
+    const target = getUser(Number(form.userId));
+    if (!target || target.isBot) error = 'That account doesn’t exist.';
+    else if (!removeAvatar(target.id)) error = `${target.displayName} doesn’t have a photo.`;
+    else {
+      // Tables they're seated at swap the photo for their initials right away.
+      publishPlayerChange(target.id);
+      notice = `Removed ${target.displayName}’s photo.`;
+    }
   }
   if (error) Astro.response.status = 400;
 }
@@ -34,6 +48,7 @@ const when = (t: number) => new Date(t).toLocaleDateString('en-US', { month: 'sh
 
     <div class="stack" style="--gap: 20px">
       {error && <p class="alert" role="alert">{error}</p>}
+      {notice && <p class="alert ok" role="status">{notice}</p>}
       {
         made && (
           <section class="panel panel-pad stack made" style="--gap: 10px">
@@ -61,20 +76,40 @@ const when = (t: number) => new Date(t).toLocaleDateString('en-US', { month: 'sh
             {
               accounts.map((a) => (
                 <tr>
-                  <td>
-                    <strong title={a.displayName}>{a.displayName}</strong>
-                    <span class="faint small">@{a.username}</span>
+                  <td class="who-cell">
+                    <span class="who">
+                      <Avatar name={a.displayName} seed={a.username} src={avatarSrc(a.avatarId)} size={28} />
+                      <span class="who-text">
+                        <strong title={a.displayName}>{a.displayName}</strong>
+                        <span class="faint small">@{a.username}</span>
+                      </span>
+                    </span>
                   </td>
-                  <td class="faint small">{when(a.createdAt)}</td>
-                  <td class="num">{a.sessions}</td>
+                  <td class="faint small joined">
+                    <span class="m-only">Joined </span>
+                    {when(a.createdAt)}
+                  </td>
+                  <td class="num devices">
+                    {a.sessions}
+                    <span class="m-only faint small">{a.sessions === 1 ? ' device' : ' devices'} signed in</span>
+                  </td>
                   <td class="right">
-                    <form method="post">
-                      <input type="hidden" name="intent" value="reset" />
-                      <input type="hidden" name="userId" value={a.id} />
-                      <button class="btn btn-sm" type="submit" title={a.resetUntil ? 'A link is already out; making a new one cancels it' : ''}>
-                        {a.resetUntil ? 'New reset link' : 'Make reset link'}
-                      </button>
-                    </form>
+                    <div class="actions">
+                      {a.avatarId && (
+                        <form method="post">
+                          <input type="hidden" name="intent" value="removeAvatar" />
+                          <input type="hidden" name="userId" value={a.id} />
+                          <button class="btn btn-ghost btn-sm" type="submit">Remove photo</button>
+                        </form>
+                      )}
+                      <form method="post">
+                        <input type="hidden" name="intent" value="reset" />
+                        <input type="hidden" name="userId" value={a.id} />
+                        <button class="btn btn-sm" type="submit" title={a.resetUntil ? 'A link is already out; making a new one cancels it' : ''}>
+                          {a.resetUntil ? 'New reset link' : 'Make reset link'}
+                        </button>
+                      </form>
+                    </div>
                   </td>
                 </tr>
               ))
@@ -112,14 +147,22 @@ const when = (t: number) => new Date(t).toLocaleDateString('en-US', { month: 'sh
     overflow-x: auto;
   }
 
-  .accounts td strong {
-    display: block;
+  /* Let a long name or username wrap so the table fits the panel. */
+  .who-cell {
+    min-width: 11em;
+    overflow-wrap: anywhere;
   }
 
-  /* Let a long name or username wrap so the table fits the panel. */
-  .accounts td:first-child {
-    min-width: 9em;
-    overflow-wrap: anywhere;
+  .who {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .who-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
   }
 
   .num {
@@ -128,6 +171,13 @@ const when = (t: number) => new Date(t).toLocaleDateString('en-US', { month: 'sh
 
   .right {
     text-align: right;
+  }
+
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 6px;
   }
 
   .small {
@@ -142,5 +192,66 @@ const when = (t: number) => new Date(t).toLocaleDateString('en-US', { month: 'sh
   .made {
     border-color: rgb(242 196 109 / 0.35);
     overflow-wrap: anywhere;
+  }
+
+  .m-only {
+    display: none;
+  }
+
+  /* Phones: each account becomes a little card, name on top, details and buttons beneath. */
+  @media (max-width: 560px) {
+    .accounts,
+    .accounts tbody {
+      display: block;
+    }
+
+    .accounts thead {
+      display: none;
+    }
+
+    .accounts tr {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      align-items: baseline;
+      gap: 4px 12px;
+      padding: 14px 16px;
+    }
+
+    .accounts tr + tr {
+      border-top: 1px solid rgb(var(--hi) / 0.06);
+    }
+
+    .accounts td {
+      display: block;
+      padding: 0;
+      border: 0;
+    }
+
+    .who-cell,
+    .accounts td.right {
+      grid-column: 1 / -1;
+      min-width: 0;
+    }
+
+    .who-cell {
+      margin-bottom: 4px;
+    }
+
+    .accounts td.devices {
+      text-align: left;
+      font-size: 13px;
+    }
+
+    .accounts td.right {
+      margin-top: 8px;
+    }
+
+    .actions {
+      justify-content: flex-start;
+    }
+
+    .m-only {
+      display: inline;
+    }
   }
 </style>

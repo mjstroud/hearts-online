@@ -89,6 +89,18 @@ const MIGRATIONS: string[] = [
     ('bot-6', 'Serena', NULL, 1, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
     ('bot-7', 'Cali', NULL, 1, CAST(strftime('%s', 'now') AS INTEGER) * 1000);
   `,
+  // v6: profile photos. The image bytes live in their own table so "SELECT * FROM users" stays small.
+  `
+  CREATE TABLE avatars (
+    id         TEXT PRIMARY KEY,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    type       TEXT NOT NULL,
+    data       BLOB NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX avatars_user ON avatars(user_id);
+  ALTER TABLE users ADD COLUMN avatar_id TEXT;
+  `,
 ];
 
 function migrate(db: DatabaseSync) {
@@ -111,13 +123,14 @@ function open(): DatabaseSync {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const db = new DatabaseSync(file);
   db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000; PRAGMA synchronous = NORMAL;');
-  migrate(db);
   return db;
 }
 
-// Keep a single connection across dev-server module reloads.
+// Keep a single connection across dev-server module reloads, but migrate on every load:
+// a reload can bring new migrations, and an up-to-date database is a single PRAGMA read.
 const g = globalThis as typeof globalThis & { __heartsDb?: DatabaseSync; __heartsStmts?: Map<string, StatementSync> };
 export const db: DatabaseSync = (g.__heartsDb ??= open());
+migrate(db);
 const statements: Map<string, StatementSync> = (g.__heartsStmts ??= new Map());
 
 /** Cached prepared statement. */

@@ -5,7 +5,7 @@ import { canonicalRedirect, isSecure } from './lib/server/http';
 
 const g = globalThis as typeof globalThis & { __heartsBooted?: boolean };
 
-const PROTECTED = ['/games', '/stats', '/join', '/account', '/playtest', '/admin', '/api/'];
+const PROTECTED = ['/games', '/stats', '/join', '/account', '/playtest', '/admin', '/api/', '/avatars/'];
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 function sameOrigin(request: Request): boolean {
@@ -49,6 +49,13 @@ export const onRequest = defineMiddleware(async (ctx, next) => {
   if (!ctx.locals.user && PROTECTED.some((p) => path === p || path.startsWith(p.endsWith('/') ? p : `${p}/`))) {
     if (path.startsWith('/api/')) {
       return Response.json({ error: 'Please sign in.' }, { status: 401 });
+    }
+    // Photos load as <img>, so a redirect to the sign-in page would be no use.
+    if (path.startsWith('/avatars/')) {
+      return new Response('Please sign in.', {
+        status: 401,
+        headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' },
+      });
     }
     return ctx.redirect(`/login?next=${encodeURIComponent(path + ctx.url.search)}`);
   }

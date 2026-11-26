@@ -16,6 +16,8 @@ export interface User {
   username: string;
   displayName: string;
   isBot: boolean;
+  /** The current profile photo (see avatarSrc), or null. Always null for the cats. */
+  avatarId: string | null;
 }
 
 interface UserRow {
@@ -24,9 +26,16 @@ interface UserRow {
   display_name: string;
   password_hash: string | null;
   is_bot: number;
+  avatar_id: string | null;
 }
 
-const toUser = (r: UserRow): User => ({ id: r.id, username: r.username, displayName: r.display_name, isBot: !!r.is_bot });
+const toUser = (r: UserRow): User => ({
+  id: r.id,
+  username: r.username,
+  displayName: r.display_name,
+  isBot: !!r.is_bot,
+  avatarId: r.is_bot ? null : r.avatar_id,
+});
 
 export async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(16);
@@ -66,7 +75,7 @@ export async function createUser(username: string, rawDisplayName: string, passw
       hash,
       now(),
     );
-    return { id: Number(res.lastInsertRowid), username, displayName, isBot: false };
+    return { id: Number(res.lastInsertRowid), username, displayName, isBot: false, avatarId: null };
   } catch {
     return null; // lost a race for the same username
   }
@@ -226,16 +235,25 @@ export interface AccountSummary {
   sessions: number;
   /** When the newest unused reset link expires, if there is one. */
   resetUntil: number | null;
+  avatarId: string | null;
 }
 
 export function listAccounts(): AccountSummary[] {
   const t = now();
   const rows = sql(
-    `SELECT u.id, u.username, u.display_name, u.created_at,
+    `SELECT u.id, u.username, u.display_name, u.created_at, u.avatar_id,
        (SELECT COUNT(*) FROM sessions s WHERE s.user_id = u.id AND s.expires_at > ?) AS sessions,
        (SELECT MAX(r.expires_at) FROM password_resets r WHERE r.user_id = u.id AND r.expires_at > ?) AS reset_until
      FROM users u WHERE u.is_bot = 0 ORDER BY u.username COLLATE NOCASE`,
-  ).all(t, t) as { id: number; username: string; display_name: string; created_at: number; sessions: number; reset_until: number | null }[];
+  ).all(t, t) as {
+    id: number;
+    username: string;
+    display_name: string;
+    created_at: number;
+    avatar_id: string | null;
+    sessions: number;
+    reset_until: number | null;
+  }[];
   return rows.map((r) => ({
     id: r.id,
     username: r.username,
@@ -243,6 +261,7 @@ export function listAccounts(): AccountSummary[] {
     createdAt: r.created_at,
     sessions: r.sessions,
     resetUntil: r.reset_until,
+    avatarId: r.avatar_id,
   }));
 }
 
