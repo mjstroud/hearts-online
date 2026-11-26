@@ -11,6 +11,8 @@ concurrency:
 
 jobs:
   launch:
+    # It always targets the real app (fly.toml), so only ever run it from main. The dev site is set up by hand.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     env:
       FLY_ORG: personal
@@ -18,7 +20,7 @@ jobs:
       FLY_API_TOKEN: ${{ secrets.FLY_ORG_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # 1.6, pinned: this step runs with a deploy token
 
       - name: Read app name and region from fly.toml
         run: |

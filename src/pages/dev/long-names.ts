@@ -1,12 +1,14 @@
 import type { APIRoute } from 'astro';
 import { DEFAULT_SETTINGS } from '../../lib/engine/rules';
 import { now, sql, transaction } from '../../lib/server/db';
+import { devToolsEnabled } from '../../lib/server/env';
 import { createPlaytest, publishPlayerChange } from '../../lib/server/games';
 
 /**
  * Dev only: a playtest table where every other seat has an old 32-character, one-word name, for
  * checking layouts on a phone. /dev/long-names seats five (?players=4 for four), and &me=long gives
- * your own local account a 32-character name too. Production builds answer 404.
+ * your own local account a 32-character name too. It also works on the dev site (SITE_ENV=dev);
+ * the real site answers 404.
  */
 
 // One word each, so nothing can wrap. The W's are about the widest letters there are.
@@ -36,7 +38,7 @@ function longNamedBots(count: number): number[] {
 }
 
 export const GET: APIRoute = ({ locals, url, redirect }) => {
-  if (!import.meta.env.DEV) return new Response(null, { status: 404 });
+  if (!devToolsEnabled()) return new Response(null, { status: 404 });
   const user = locals.user;
   if (!user) return redirect(`/login?next=${encodeURIComponent(url.pathname + url.search)}`);
 

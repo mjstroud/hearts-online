@@ -1,0 +1,40 @@
+# Fly.io config for the dev site, dev.shootthesun.com. Pushes to the `dev` branch deploy here (see README → Branches
+# and releases). It's a separate app with its own volume, so its accounts and games never touch the real site's.
+app = "hearts-table-dev"
+primary_region = "ord"
+
+[build]
+
+[env]
+  DATABASE_PATH = "/data/hearts.db"
+  PORT = "8080"
+  # Adds the DEV badge, keeps search engines out and turns on the dev tools (src/lib/server/env.ts).
+  SITE_ENV = "dev"
+
+[[mounts]]
+  source = "hearts_dev_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # Unlike the real site, sleep when nobody's using it; the first visit wakes it in a few seconds.
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [http_service.concurrency]
+    type = "connections"
+    soft_limit = 400
+    hard_limit = 500
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "30s"
+    method = "GET"
+    path = "/healthz"
+    timeout = "5s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

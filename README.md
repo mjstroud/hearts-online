@@ -73,6 +73,7 @@ Set these as environment variables, or in a `.env` file (see `.env.example`):
 | `SIGNUP_CODE`   | _(unset)_           | If set, new accounts must enter this code. Keeps sign-ups family-only.  |
 | `ADMIN_USERNAMES` | _(unset)_         | Comma-separated usernames that can open `/admin` and make password reset links. |
 | `SITE_URL`      | _(unset)_           | The one public address (`https://shootthesun.com`). Other hosts redirect there, and reset links use it. |
+| `SITE_ENV`      | _(unset)_           | `dev` only on the dev site: DEV badge, "Dev ·" titles, noindex, and the `/dev` tools. Leave unset everywhere else. |
 | `HOST` / `PORT` | `localhost` / `4321`| Address the production server listens on.                               |
 
 ## Deploying
@@ -98,7 +99,7 @@ A `fly.toml` is included. GitHub Actions does the deploying, so no machine needs
 4. In GitHub, go to Actions → **Fly launch** → Run workflow. It creates the app, the `hearts_data` volume, and the secret, then deploys.
 5. In the Fly dashboard, create a deploy token for the new app. Add it as the secret `FLY_API_TOKEN`, then delete `FLY_ORG_TOKEN` from GitHub and revoke it in Fly.
 
-**After that:** every push to `main` that passes tests deploys automatically. Logs, secrets, and machine status are in the Fly dashboard. Each deploy restarts the single machine, which causes a few seconds of downtime.
+**After that:** every push to `main` that passes tests deploys automatically. Logs, secrets, and machine status are in the Fly dashboard. Each deploy restarts the single machine, which causes a few seconds of downtime. Day-to-day work goes to the dev site first; see [Branches and releases](#branches-and-releases).
 
 You can also do the one-time setup from your own computer with `fly auth login`, then `fly apps create`, `fly volumes create hearts_data --region ord --size 1`, `fly secrets set ...` and `fly deploy`. You still need step 5 afterwards so that pushes to `main` deploy.
 
@@ -112,6 +113,47 @@ You can also do the one-time setup from your own computer with `fly auth login`,
 4. `fly secrets set SITE_URL=https://shootthesun.com`. From then on, the fly.dev address and `www.` redirect to the apex domain. Don't set this before the certificate is issued, or every visit gets redirected to an address that doesn't work yet.
 
 **Backups:** Fly snapshots the volume daily and keeps the snapshots for a few days (`fly volumes snapshots list`).
+
+### Branches and releases
+
+Two long-lived branches, each deployed by CI when it's pushed:
+
+| Branch | Deploys to | What goes there |
+|---|---|---|
+| `dev` | [dev.shootthesun.com](https://dev.shootthesun.com) (Fly app `hearts-table-dev`, `fly.dev.toml`) | Finished work, ready to try on real phones. |
+| `main` | [shootthesun.com](https://shootthesun.com) (Fly app `hearts-table`, `fly.toml`) | Releases only. |
+
+`dev` is the repo's default branch on GitHub, so pull requests aim at it unless you choose otherwise.
+
+- **Everyday work:** branch off `dev` (for example `feature/table-moments`), then open a pull request into `dev` (base: `dev`), or merge locally and push `dev`. Pushing `dev` deploys the dev site. Squash-merging a feature branch is fine.
+- **A release:** when `dev` is ready, open a pull request from `dev` into `main` between play sessions. Its description is the release notes.
+  - If the release adds a database migration, snapshot the real site's volume first: `fly volumes snapshots create <volume id>`. `fly volumes list` shows the id.
+  - Merge it with **Create a merge commit**, never squash or rebase, or `main` gets commits `dev` doesn't have and the two drift apart. Merging deploys the real site.
+  - Then tag what was deployed: `git fetch origin`, then `git tag -a release-YYYY-MM-DD origin/main -m "..."`, then `git push origin release-YYYY-MM-DD`. Tags don't trigger CI.
+- **An urgent fix for the real site:** branch off `main`, open a pull request into `main`, then merge `main` back into `dev` (also with a merge commit) so the two don't drift.
+- Pull requests to either branch run the tests, but only pushes deploy. Only a release or an urgent fix ever targets `main`.
+
+### Dev site
+
+`dev.shootthesun.com` is a second Fly app (`hearts-table-dev`) with its own volume and database. Accounts and games there are separate from the real site, so test freely.
+
+- It has a gold **DEV** badge by the logo, a "Dev ·" tab title, and headers that keep search engines out.
+- The `/dev/long-names` table works there too.
+- It sleeps when nobody's using it (`auto_stop_machines`), so the first visit after a while takes a few seconds to wake it.
+- **Manual deploy:** `fly deploy --remote-only --config fly.dev.toml` deploys whatever is in your working copy, committed or not. It's handy for a quick check before pushing.
+
+> **Careful:** in this repo, any `fly` command without `--app` or `--config` acts on the **real** app, because `fly.toml` names it. For the dev site, always add `--app hearts-table-dev` (or `--config fly.dev.toml` for deploys). Only deploy the real app by hand from a clean, up-to-date `main`.
+
+**One-time setup** (already done for `hearts-table-dev`; kept here in case it ever needs redoing):
+
+1. `fly apps create hearts-table-dev --org personal`, then `fly volumes create hearts_dev_data --app hearts-table-dev --region ord --size 1`.
+2. `fly secrets set SIGNUP_CODE=<a code> ADMIN_USERNAMES=<your username> --app hearts-table-dev --stage`, so sign-up is never open. You'll need to sign up on the dev site under that username before admin works, because its database is separate.
+3. First deploy: `fly deploy --remote-only --config fly.dev.toml`. Then `fly ips list --app hearts-table-dev` should show an IPv6 and a shared IPv4; if not, run `fly ips allocate-v6 --app hearts-table-dev` and `fly ips allocate-v4 --shared --app hearts-table-dev`.
+4. In Cloudflare DNS for shootthesun.com, add a `CNAME` named `dev` with target `hearts-table-dev.fly.dev`, proxy status **DNS only** (grey cloud).
+5. `fly certs add dev.shootthesun.com --app hearts-table-dev`, then `fly certs check dev.shootthesun.com --app hearts-table-dev` until it says the certificate is issued.
+6. Only then: `fly secrets set SITE_URL=https://dev.shootthesun.com --app hearts-table-dev`. Setting it earlier redirects visits to an address that doesn't work yet. Never copy the real site's `SITE_URL` here: it would send every dev visit to shootthesun.com.
+7. CI: `fly tokens create deploy --app hearts-table-dev`, then save the output as the GitHub repo secret `FLY_DEV_API_TOKEN` (Settings → Secrets and variables → Actions). Until it's set, pushes to `dev` run the tests but skip the deploy with a warning.
+8. On GitHub, make `dev` the default branch (Settings → General → Default branch).
 
 ### Railway / Render
 

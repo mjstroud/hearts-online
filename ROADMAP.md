@@ -46,7 +46,7 @@ These are the "build it fast from the start" rules. They answer the performance 
    - New host options reach running games through their defaults, so choose defaults on purpose.
 7. **The table only learns from face-up cards.** Anything shown to the table, and every table-wide moment, comes from cards played face-up. The crib winner's view counts the crib's points (`queenTakenBy`, `jackTakenBy`, `pointsTaken`), so those fields must never trigger a moment.
 8. **Phones are the main platform.** Check every change at 375px wide, with 4 and 5 players, 32-character names, portrait and landscape. Check it on a real iPhone before merging anything that affects phones (see [Rollout](#rollout)).
-9. **Merge between play sessions.** Every deploy restarts the one machine.
+9. **Try it on the dev site first, and release between play sessions.** Every release to `main` restarts the real site's one machine.
 
 ## Bugs found
 
@@ -72,7 +72,7 @@ Each phase can ship on its own, between play sessions.
 
 ### Phase 1: Guardrails and phone basics
 
-**Status (2026-11-26): built on the local `phase-1` branch, not yet committed or deployed.**
+**Status (2026-11-26): live.** It's commit `b103966`, Fly release v9, deployed after volume snapshot `vs_eGg8PO2lb3pFQ8lq4xZK1a0`. Existing family accounts were covered by the terms without a click: `terms_version` = 1, with `terms_accepted_at` left empty.
 
 - **Checked:** 150 tests and the build pass, and budgets are met. A browser check covered sign-up, the terms gate, 5- and 4-player tables with 32-char names at 375×812, 812×375 and 1280×800, the self-hosted fonts, the manifest and the service worker. Console and server logs show no errors.
 - **Still needs a real device:**
@@ -243,8 +243,9 @@ You want an app that shares accounts, data and games with the site. The server a
 
 ## Rollout
 
-- **Merge between play sessions.** Take a Fly volume snapshot before each migration: v7 (terms acceptance), v8 (pre-moves), v9 (chat) and v10 (public lobbies).
-- **Real-iPhone loop:** run `npm run dev -- --host`, then open the PC's network address on an iPhone on the same Wi-Fi. Sign-in works over plain http there. Service workers and push need https, so test those on the live site.
+- **Try everything on the dev site first** (dev.shootthesun.com, deployed from the `dev` branch), then release `dev` to `main` between play sessions. Take a Fly volume snapshot of the real site before each migration: v7 (terms acceptance, done), v8 (pre-moves), v9 (chat) and v10 (public lobbies).
+- **The dev site is the https test bed** for service workers, home-screen installs and push on real phones.
+- **Real-iPhone loop:** run `npm run dev -- --host`, then open the PC's network address on an iPhone on the same Wi-Fi. Sign-in works over plain http there. Service workers, home-screen installs and push need https, so test those on the dev site (dev.shootthesun.com).
 - **The GitHub repo is public.** Cat photos go in the database, not the repo.
 
 ## Decisions

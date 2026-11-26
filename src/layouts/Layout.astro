@@ -6,6 +6,7 @@ import geistLatin from '../assets/fonts/geist-latin.woff2?url';
 import Avatar from '../components/Avatar.astro';
 import { avatarSrc } from '../lib/avatars';
 import { isAdmin } from '../lib/server/auth';
+import { isDevSite } from '../lib/server/env';
 import { DECK_COOKIE, SITE_NAME } from '../lib/ui';
 
 interface Props {
@@ -18,7 +19,9 @@ interface Props {
 const { title, description = 'Online Hearts with house rules, for family games that run all year.', full = false } = Astro.props;
 const user = Astro.locals.user;
 const path = Astro.url.pathname;
-const pageTitle = title ? `${title} · ${SITE_NAME}` : SITE_NAME;
+// The dev site wears a DEV badge and a "Dev ·" tab title, so nobody plays the season game there by mistake.
+const devSite = isDevSite();
+const pageTitle = `${devSite ? 'Dev · ' : ''}${title ? `${title} · ${SITE_NAME}` : SITE_NAME}`;
 const nav = user
   ? [
       { href: '/games', label: 'Games' },
@@ -41,7 +44,8 @@ const deck = Astro.cookies.get(DECK_COOKIE)?.value === 'four' ? 'four' : 'two';
     {/* Home-screen app. iPhones prefer the two Apple tags to the manifest for the icon and name. */}
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
-    <meta name="apple-mobile-web-app-title" content={SITE_NAME} />
+    <meta name="apple-mobile-web-app-title" content={devSite ? `${SITE_NAME} Dev` : SITE_NAME} />
+    {devSite && <meta name="robots" content="noindex, nofollow" />}
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     {/* Fonts are self-hosted (src/styles/fonts.css). Preload the two every page uses so text doesn't reflow late. */}
     <link rel="preload" href={archivoLatin} as="font" type="font/woff2" crossorigin />
@@ -54,6 +58,7 @@ const deck = Astro.cookies.get(DECK_COOKIE)?.value === 'four' ? 'four' : 'two';
         <a class="brand" href={user ? '/games' : '/'} aria-label={`${SITE_NAME} home`}>
           <span class="brand-mark" aria-hidden="true">♥</span>
           <span class="brand-name">{SITE_NAME}</span>
+          {devSite && <span class="dev-badge" title="This is the dev site. Games here are for testing.">Dev</span>}
         </a>
         <nav class="nav" aria-label="Main">
           {nav.map((item) => <a href={item.href} class:list={{ active: active(item.href) }}>{item.label}</a>)}
@@ -158,6 +163,18 @@ const deck = Astro.cookies.get(DECK_COOKIE)?.value === 'four' ? 'four' : 'two';
     font-size: 19px;
     font-weight: 700;
     font-variation-settings: 'wdth' 108;
+  }
+
+  /* Only on the dev site. Stays visible on phones, where the site name is hidden. */
+  .dev-badge {
+    padding: 2px 7px;
+    border-radius: 6px;
+    background: var(--gold);
+    color: #1a1408;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
   }
 
   .nav {
