@@ -1,10 +1,12 @@
 ---
+import Avatar from '../../../components/Avatar.astro';
 import GameNav from '../../../components/GameNav.astro';
 import MoveTimerField from '../../../components/MoveTimerField.astro';
 import RuleSettings from '../../../components/RuleSettings.astro';
 import Layout from '../../../layouts/Layout.astro';
+import { avatarSrc } from '../../../lib/avatars';
 import { settingsFromForm } from '../../../lib/server/forms';
-import { GameError, deleteGame, endGame, loadGame, updateSettings } from '../../../lib/server/games';
+import { GameError, deleteGame, endGame, getPlayers, loadGame, performAction, toGameError, updateSettings } from '../../../lib/server/games';
 import { readForm } from '../../../lib/server/http';
 
 const user = Astro.locals.user!;
@@ -36,9 +38,16 @@ if (Astro.request.method === 'POST') {
       if (form.confirmName !== game.name) throw new GameError('Type the game’s exact name to delete it.');
       deleteGame(game.id, user.id);
       return Astro.redirect('/games', 303);
+    } else if (form.intent === 'remove') {
+      if (form.confirm !== 'on') throw new GameError('Tick the box to confirm removing them.');
+      const target = getPlayers(game.id).find((p) => p.userId === Number(form.userId));
+      performAction(game.id, user.id, { type: 'removePlayer', userId: Number(form.userId) });
+      saved = `${target?.displayName ?? 'That player'} is out of the game. A cat has their seat now.`;
     }
   } catch (err) {
-    error = err instanceof GameError ? err.message : 'Something went wrong.';
+    // Rule errors from the engine come through performAction too.
+    const e = toGameError(err);
+    error = e.status < 500 ? e.message : 'Something went wrong.';
     Astro.response.status = 400;
   }
   game = loadGame(game.id)!;
@@ -48,6 +57,10 @@ const finished = game.status === 'finished';
 const maxScore = game.state ? Math.max(...game.state.scores) : 0;
 const ending = !!game.state?.endAfterHand;
 const handNumber = game.state?.hand?.number;
+// Anyone but the host can be taken out once the game is under way (in the waiting room it's done at the table).
+const ownerId = game.ownerId;
+const removable =
+  game.status === 'active' && game.mode === 'normal' ? getPlayers(game.id).filter((p) => !p.isBot && p.userId !== ownerId) : [];
 ---
 
 <Layout title={`Settings · ${game.name}`}>
@@ -139,6 +152,31 @@ const handNumber = game.state?.hand?.number;
       )
     }
 
+    {
+      removable.length > 0 && (
+        <section class="people stack">
+          <h2 class="panel-title">Players</h2>
+          {removable.map((p) => (
+            <form method="post" class="panel panel-pad stack" style="--gap: 12px">
+              <input type="hidden" name="intent" value="remove" />
+              <input type="hidden" name="userId" value={p.userId} />
+              <div class="person">
+                <Avatar name={p.displayName} seed={p.username} isBot={false} src={avatarSrc(p.avatarId)} size={30} />
+                <strong class="nm" title={p.displayName}>{p.displayName}</strong>
+                <button class="btn btn-danger btn-sm" type="submit">Remove</button>
+              </div>
+              <p class="muted small">
+                A cat takes {p.displayName}’s seat now and plays out hand {handNumber}. Finished hands stay theirs.
+              </p>
+              <label class="row small" style="--gap: 8px">
+                <input type="checkbox" name="confirm" required /> Yes, remove them from “{game.name}”
+              </label>
+            </form>
+          ))}
+        </section>
+      )
+    }
+
     <section class="danger stack">
       <h2 class="panel-title">Danger zone</h2>
       {
@@ -182,9 +220,36 @@ const handNumber = game.state?.hand?.number;
 
 <style>
   .ending,
+  .people,
   .danger {
     margin-top: 36px;
     --gap: 12px;
+  }
+
+  /* A 32-character one-word name is cut short; the button never moves. */
+  .person {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .person .nm {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .person .btn {
+    flex: none;
+  }
+
+  /* These quote a player's name, which can be one long word. */
+  .people p,
+  .people label {
+    overflow-wrap: anywhere;
   }
 
   .danger .panel {

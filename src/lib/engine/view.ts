@@ -2,7 +2,7 @@ import { type Card, JACK_OF_DIAMONDS, QUEEN_OF_SPADES, isHeart, isPenaltyCard, p
 import type { GameState } from './game';
 import { type HandPhase, type Trick, legalPlays } from './hand';
 import { type GameSettings, PASS_COUNT, passLabel } from './rules';
-import type { HandRecord } from './scoring';
+import { type HandRecord, tableTricks, tableTricksWon } from './scoring';
 
 /**
  * What one seat is allowed to see. Built on the server, so other players'
@@ -66,11 +66,19 @@ export interface HandSummary {
   cribPoints: number;
   moon: number | null;
   sun: number | null;
+  /** The last trick the table saw played (before any the server played out on its own). */
   finalTrick: Trick | null;
+  /** The first trick the server played out because nothing left could score, or null. */
+  autoFrom: number | null;
+  /**
+   * Display names by seat for this hand, filled in by the server only when they differ from who
+   * sits there now (someone who played it was removed since).
+   */
+  names?: string[];
 }
 
 export function summarizeHand(r: HandRecord): HandSummary {
-  const last = r.tricks.at(-1);
+  const last = tableTricks(r).at(-1);
   return {
     number: r.number,
     passOffset: r.passOffset,
@@ -78,7 +86,8 @@ export function summarizeHand(r: HandRecord): HandSummary {
     scores: r.scores,
     penalty: r.penalty,
     hearts: r.hearts,
-    tricksWon: r.tricksWon,
+    // Tricks played out on their own aren't anyone's doing, so they don't count.
+    tricksWon: tableTricksWon(r),
     queen: r.queen,
     jack: r.jack,
     jackScored: r.jackScored,
@@ -88,6 +97,7 @@ export function summarizeHand(r: HandRecord): HandSummary {
     moon: r.moon,
     sun: r.sun,
     finalTrick: last ? { leader: last.leader, plays: last.plays, winner: last.winner } : null,
+    autoFrom: r.autoFrom ?? null,
   };
 }
 

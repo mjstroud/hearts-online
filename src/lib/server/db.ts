@@ -106,6 +106,18 @@ const MIGRATIONS: string[] = [
   ALTER TABLE users ADD COLUMN terms_version INTEGER;
   ALTER TABLE users ADD COLUMN terms_accepted_at INTEGER;
   `,
+  // v8: players a host removed mid-game, so the hands they played stay theirs in the stats and trick reviews.
+  `
+  CREATE TABLE removed_players (
+    game_id      TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    user_id      INTEGER NOT NULL REFERENCES users(id),
+    seat         INTEGER NOT NULL,
+    through_hand INTEGER NOT NULL, -- the last finished hand they played (state.handsPlayed at removal)
+    removed_at   INTEGER NOT NULL,
+    PRIMARY KEY (game_id, user_id)
+  );
+  CREATE INDEX removed_players_user ON removed_players(user_id);
+  `,
 ];
 
 function migrate(db: DatabaseSync) {

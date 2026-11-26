@@ -1,14 +1,17 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
-  import { type Card, SUIT_SYMBOL, cardLabel, isPenaltyCard, suitOf } from '../../lib/engine/cards';
-  import { type Trick, trickWinner } from '../../lib/engine/hand';
-  import type { TableView } from '../../lib/engine/view';
+  import { prefersReducedMotion } from 'svelte/motion';
+  import { type Card, QUEEN_OF_SPADES, SUIT_SYMBOL, cardLabel, isPenaltyCard, suitOf } from '../../lib/engine/cards';
+  import { type Trick, followPlays, queueSuit, trickWinner } from '../../lib/engine/hand';
+  import type { HandSummary, TableView } from '../../lib/engine/view';
   import {
+    ARRIVE_MS,
     MIN_SHOW_MS,
     type Message,
     type Queued,
     type Wash,
     type Who,
+    arrivalDelays,
     detectMoments,
     enqueue,
     finalMoments,
@@ -37,10 +40,28 @@
     /** When the move timer runs out, on this device's clock (null = no timer running). */
     clockEndsAt: number | null;
     onShowResult: () => void;
-    /** The hand's final trick, while the hand-end sequence holds it on the felt in place of the usual centre. */
+    /**
+     * The hand's final trick (the last one the table saw played), while the hand-end sequence holds
+     * it on the felt in place of the usual centre.
+     */
     finalTrick?: Trick | null;
+    /** With finalTrick: the last view of that hand this tab saw, from before its final trick finished. */
+    finalBefore?: TableView | null;
+    /** With finalTrick: that hand's summary. */
+    finalHand?: HandSummary | null;
   }
-  let { view, act, busy, notify, toggleNotify, clockEndsAt, onShowResult, finalTrick = null }: Props = $props();
+  let {
+    view,
+    act,
+    busy,
+    notify,
+    toggleNotify,
+    clockEndsAt,
+    onShowResult,
+    finalTrick = null,
+    finalBefore = null,
+    finalHand = null,
+  }: Props = $props();
 
   type Pos = 'bottom' | 'left' | 'top' | 'right' | 'top-left' | 'top-right';
   const POS4: Pos[] = ['bottom', 'left', 'top', 'right'];
@@ -65,6 +86,8 @@
     names.length <= 1 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
 
   const myTurn = $derived(t.phase === 'playing' && me !== null && t.turn === me);
+  /** Your card is down in the trick in progress. */
+  const iPlayed = $derived(me !== null && !!t.current?.plays.some((p) => p.seat === me));
   const needPass = $derived(t.phase === 'passing' && me !== null && !t.myPass);
   const leading = $derived(!!t.current && t.current.plays.length === 0);
   const leadSuit = $derived(t.current && t.current.plays.length ? suitOf(t.current.plays[0].card) : null);
@@ -88,12 +111,19 @@
     return secondsLeft !== null && view.toAct.includes(seat) && !!p && !p.isBot && !p.autopilot;
   };
 
-  // ----- Selection (pass picks, or a tap-to-confirm play on touch screens)
+  // ----- Selection (pass picks, or a tap-to-confirm play or queue on touch screens)
   let selected = $state<Card[]>([]);
-  const selKey = $derived(`${t.handNumber}:${t.phase}:${t.trickNumber}:${myTurn}`);
+  const selKey = $derived(`${t.handNumber}:${t.phase}:${t.trickNumber}:${iPlayed}`);
   $effect(() => {
     selKey;
     selected = [];
+  });
+  // When your turn arrives, a card you'd picked to queue stays picked if you may play it ("Play 7♣").
+  $effect(() => {
+    if (!myTurn) return;
+    untrack(() => {
+      if (selected.some((c) => !t.legal.includes(c))) selected = [];
+    });
   });
 
   const finePointer = typeof window !== 'undefined' && window.matchMedia('(hover: hover) and (pointer: fine)').matches;
@@ -108,6 +138,16 @@
     await act({ type: 'play', card });
   }
 
+  async function queueCard(card: Card) {
+    const ok = await act({ type: 'premove', card, hand: t.handNumber, trick: t.trickNumber });
+    if (ok && selected[0] === card) selected = [];
+  }
+
+  function cancelQueue() {
+    selected = [];
+    act({ type: 'premove', card: null, hand: t.handNumber, trick: t.trickNumber });
+  }
+
   function clickCard(card: Card) {
     if (busy) return;
     if (needPass) {
@@ -116,10 +156,18 @@
       else selected = [...selected.slice(1), card];
       return;
     }
-    if (myTurn && t.legal.includes(card)) {
+    if (myTurn) {
+      if (!t.legal.includes(card)) return;
       if (finePointer || selected[0] === card) play(card);
       else selected = [card];
+      return;
     }
+    if (!canQueue) return;
+    // Tap the queued card to cancel it; queuing another one replaces it.
+    if (card === queuedCard) cancelQueue();
+    else if (!queueable.includes(card)) return;
+    else if (finePointer || selected[0] === card) queueCard(card);
+    else selected = [card];
   }
 
   // ----- The felt: the trick in progress, else the last finished one until the next lead (on a
@@ -136,6 +184,48 @@
   // Your own break shows at once (the prediction sets heartsBroken); the server then names the card.
   const breaker = $derived(t.heartsBrokenBy?.card ?? t.current?.plays.find((p) => isPenaltyCard(p.card))?.card);
   const trickKey = (tr: Trick | null) => tr?.plays.map((p) => p.card).join('') ?? '';
+
+  // ----- Whether the latest update is one the table watched: not the first view (a page load), not
+  // across a gap in versions (a reconnect or refresh catching up: every game change is one version),
+  // and not while the page is hidden or just after it comes back into view. Worked out before the
+  // felt redraws, so its cards know whether to slide in.
+  let watched = false;
+  let seenVersion: number | null = null;
+  let quietUntil = 0;
+  $effect.pre(() => {
+    const v = view.version;
+    untrack(() => {
+      watched = seenVersion !== null && v - seenVersion <= 1 && !document.hidden && Date.now() >= quietUntil;
+      seenVersion = v;
+    });
+  });
+
+  // ----- Cards that land in one update (the last trick playing itself, queued cards firing together)
+  // slide in one after another, in play order, so the order still reads; on trick 1 too, as the crib
+  // gives way. Cards already on the felt don't wait. An update the table didn't watch shows the felt
+  // as it is, and reduced motion has the cards appear together.
+  let onFelt: Card[] = [];
+  const feltKey = $derived(trickKey(shown));
+  const arrival = $derived.by(() => {
+    feltKey;
+    return untrack(() => {
+      const cards = shown?.plays.map((p) => p.card) ?? [];
+      const delays = arrivalDelays(prefersReducedMotion.current || !watched ? cards : onFelt, shown);
+      onFelt = cards;
+      return { delays, slide: watched };
+    });
+  });
+  const waitFor = (card: Card | undefined) => (card && arrival.delays.get(card)) || 0;
+  const landed = $derived(Math.max(0, ...arrival.delays.values()));
+  // The winner's glow, the losers' fade and "takes it" wait until every card has landed.
+  let settledKey = $state('');
+  const settled = $derived(landed === 0 || settledKey === feltKey);
+  $effect(() => {
+    const key = feltKey;
+    if (!landed) return;
+    const timer = setTimeout(() => (settledKey = key), landed + ARRIVE_MS);
+    return () => clearTimeout(timer);
+  });
 
   // ----- Trick inspector: the cards in play order, who played each, the led card and the winner
   let inspect = $state<'shown' | 'last' | null>(null);
@@ -158,7 +248,9 @@
 
   // ----- One message slot. Moments queue by priority and each stays up at least MIN_SHOW_MS;
   // with nothing queued it says who took the trick on the felt (and "your lead").
-  const who = (): Who => ({ names: view.players.map((p) => p.name), me, jack: view.settings.jackOfDiamonds });
+  // For a finished hand, the names of who played it: after the host removes someone, their hands stay theirs.
+  const handName = (s: HandSummary | null, seat: number) => s?.names?.[seat] ?? view.players[seat]?.name ?? '';
+  const who = (s: HandSummary | null = null): Who => ({ names: view.players.map((p) => handName(s, p.seat)), me, jack: view.settings.jackOfDiamonds });
   let queue: Queued[] = [];
   let queued = $state<Message | null>(null);
   let slotTimer: ReturnType<typeof setTimeout> | undefined;
@@ -180,7 +272,7 @@
     queue = [];
     queued = null;
   }
-  const slot = $derived(queued ?? restingMessage(finished ? shown : null, who(), myTurn && leading && !finalTrick));
+  const slot = $derived(queued ?? restingMessage(finished && settled ? shown : null, who(), myTurn && leading && !finalTrick && !lastAuto));
 
   // One-shot effects, all on the one fx keyframe below; each sets its own colours and path.
   // A warm band across the felt for hearts, and a dark ring from the Q♠. (A Sun or Moon shot is Game.svelte's
@@ -203,43 +295,44 @@
     setTimeout(() => rippleFx?.id === id && (rippleFx = null), FX.ripple[1]);
   }
 
-  // ----- Table moments, from consecutive views, so only changes the table watched happen. Never
-  // the first view, and not across a gap in versions (a reconnect or refresh catching up: every
-  // game change is one version), while the page is hidden, or just after it comes back into view.
+  // ----- Table moments, from consecutive views, so only changes the table watched happen (see
+  // `watched` above). Each waits for the card it's about to land: hearts breaking for that card,
+  // the rest for the card that closed the trick.
   let prevT: TableView | null = null;
-  let prevVersion = 0;
-  let endOfHand: TableView | null = null;
   let finalKey = '';
-  let quietUntil = 0;
+  const later = (ms: number, fn: () => void) => (ms ? setTimeout(fn, ms) : fn());
   $effect(() => {
     const next = t;
     const ft = finalTrick;
     untrack(() => {
       const prev = prevT;
-      const live = !!prev && view.version - prevVersion <= 1 && !document.hidden && Date.now() >= quietUntil;
-      prevVersion = view.version;
+      const live = !!prev && watched;
       if (next !== prev) {
         prevT = next;
-        // The latest view of a final trick in progress, for its watch endings in the hand-end sequence.
-        if (next.phase === 'playing' && next.trickNumber === next.totalTricks) endOfHand = next;
         if (prev && prev.handNumber !== next.handNumber) {
           hush();
           inspect = null;
         }
         if (live) {
           const m = detectMoments(prev, next, who());
-          if (m.ripple) ripple(m.ripple);
-          say(m.messages);
+          const q = m.ripple;
+          if (q) later(waitFor(q), () => ripple(q));
+          const closing = waitFor(next.lastTrick?.plays.at(-1)?.card);
+          say(m.messages.map((x) => ({ ...x, delay: x.kind === 'hearts' ? waitFor(next.heartsBrokenBy?.card) : closing })));
         }
       }
       if (trickKey(ft) !== finalKey) {
         finalKey = trickKey(ft);
         hush();
         inspect = null;
-        // After a game's last hand the felt holds a view from before it ended, whose lastHand is the
-        // hand before, so the summary only counts when its final trick is the one on the felt.
-        const s = view.lastHand && trickKey(view.lastHand.finalTrick) === finalKey ? view.lastHand : null;
-        if (ft && live) say(finalMoments(endOfHand, ft, s, who()));
+        if (ft && live) {
+          // The next hand is dealt with the last card, so a Q♠ landing in the final trick gets its ripple here.
+          if (ft.plays.some((p) => p.card === QUEEN_OF_SPADES) && !finalBefore?.current?.plays.some((p) => p.card === QUEEN_OF_SPADES)) {
+            later(waitFor(QUEEN_OF_SPADES), () => ripple(QUEEN_OF_SPADES));
+          }
+          const closing = waitFor(ft.plays.at(-1)?.card);
+          say(finalMoments(finalBefore, ft, finalHand, who(finalHand)).map((x) => ({ ...x, delay: closing })));
+        }
       }
     });
   });
@@ -288,6 +381,22 @@
   let showCrib = $state(true);
   const manualBots = $derived(view.dev?.botMode === 'manual');
 
+  /** The last trick plays itself: every card in it is forced, so the server plays them after the usual pause. */
+  const lastAuto = $derived(
+    t.phase === 'playing' && t.trickNumber === t.totalTricks && !!view.settings.autoPlayLast && !manualBots && me !== null && !onAutopilot,
+  );
+
+  // ----- Queuing a card to play the moment your turn arrives: once the lead suit is known (trick 1's
+  // is always clubs), and never in the last trick, which plays itself. Only cards you could play
+  // against that suit can be queued.
+  const qSuit = $derived(t.phase === 'playing' && me !== null ? queueSuit(t.current, t.trickNumber === 1, me, t.turn) : null);
+  const canQueue = $derived(qSuit !== null && !myTurn && !onAutopilot && !lastAuto && !finalTrick);
+  const queueable = $derived(canQueue && qSuit ? followPlays(t.myHand, qSuit, t.trickNumber === 1, view.settings) : []);
+  /** Your queued card, while it waits for your turn. */
+  const queuedCard = $derived(canQueue && view.premove && t.myHand.includes(view.premove) ? view.premove : null);
+  /** "{Name} is up. Tap a card…": the name is cut short rather than wrapping the hint. */
+  const queueHint = $derived(canQueue && !queuedCard && !manualBots && t.turn !== null);
+
   const fresh = (card: Card) => t.received.includes(card) && t.myHand.length === t.totalTricks;
 
   const hint = $derived.by(() => {
@@ -305,6 +414,8 @@
       if (manualBots) return `Waiting for ${list(waiting)} to pass. Pass for them in the playtest panel, or press AI move.`;
       return `Waiting for ${list(waiting)} to pass…`;
     }
+    // A tap on your last card still plays it, but there's no need.
+    if (lastAuto) return iPlayed ? 'Last trick · the cards play themselves' : 'Last trick · your card plays itself';
     if (myTurn) {
       if (leading) {
         if (t.trickNumber === 1) return `Lead the ${cardLabel(t.legal[0])} to open the hand.`;
@@ -317,7 +428,9 @@
         return `You’re out of ${SUIT_SYMBOL[leadSuit]}. No points on the first trick.`;
       return `You’re out of ${leadSuit ? SUIT_SYMBOL[leadSuit] : 'that suit'}. Play anything.`;
     }
+    if (queuedCard) return `${cardLabel(queuedCard)} plays when it’s your turn`;
     if (manualBots) return `${nameOf(t.turn)} is up. Play a card for them in the playtest panel, or press AI move.`;
+    // When you can queue a card, the template shows queueHint's line instead of this one.
     return `Waiting for ${nameOf(t.turn)} to play…`;
   });
 </script>
@@ -358,12 +471,15 @@
             >
               {#each shown.plays as p, i (p.card)}
                 {@const pos = posOf(p.seat)}
+                {@const wait = waitFor(p.card)}
+                <!-- A card waiting its turn to slide in stays out of sight until then. Global, so trick 1's
+                     cards slide in too, though the trick appears along with them. -->
                 <div
                   class={`played at-${pos}`}
                   class:led={i === 0}
-                  class:winner={topSeat === p.seat}
-                  class:loser={finished && topSeat !== p.seat}
-                  in:fly={{ ...FROM[pos], duration: 280, opacity: 0.2 }}
+                  class:winner={settled && topSeat === p.seat}
+                  class:loser={settled && finished && topSeat !== p.seat}
+                  in:fly|global={{ ...FROM[pos], duration: arrival.slide ? ARRIVE_MS : 0, opacity: wait ? 0 : 0.2, delay: wait }}
                   out:fade={{ duration: 160 }}
                 >
                   <PlayingCard card={p.card} width={trickW} jackScored={view.settings.jackOfDiamonds} />
@@ -501,7 +617,9 @@
     <div class="hand-zone">
       <!-- A hint and one slot in a fixed-height row: it never wraps, so the hand stays put between the select and confirm taps. -->
       <div class="action-bar">
-        <p class="hint" class:mine={myTurn || needPass || onAutopilot} aria-live="polite">{hint}</p>
+        <p class="hint" class:mine={(myTurn || needPass || onAutopilot) && !lastAuto} aria-live="polite">
+          {#if queueHint}<span class="hint-nm">{nameOf(t.turn)}</span> is up. Tap a card to play it when it’s your turn.{:else}{hint}{/if}
+        </p>
         {#if onAutopilot}
           <button class="btn btn-primary act" disabled={busy} onclick={() => act({ type: 'resume' })}>
             I’m back<span class="act-long">, give me my seat</span>
@@ -512,6 +630,12 @@
           </button>
         {:else if myTurn && !finePointer && selected.length === 1}
           <button class="btn btn-primary act" disabled={busy} onclick={() => play(selected[0])}>Play {cardLabel(selected[0])}</button>
+        {:else if canQueue && !finePointer && selected.length === 1 && selected[0] !== queuedCard}
+          <button class="btn act" disabled={busy} onclick={() => queueCard(selected[0])}>
+            Queue {cardLabel(selected[0])}{queuedCard ? ' instead' : ''}
+          </button>
+        {:else if queuedCard}
+          <button class="btn btn-ghost act" disabled={busy} onclick={cancelQueue}>Cancel</button>
         {:else if me !== null && timed(me) && secondsLeft !== null}
           <!-- While a button holds the slot, your plaque's clock tag still counts down. -->
           <span class="my-clock num act" class:low={secondsLeft <= 10} title="Time left before a cat sits in for you">⏱ {clockText(secondsLeft)}</span>
@@ -520,7 +644,7 @@
 
       <div class="hand" bind:clientWidth={handW} style={`height: ${cardW * 1.4 + 34 + arcDrop}px`}>
         {#each t.myHand as card, i (card)}
-          {@const playable = needPass || (myTurn && t.legal.includes(card))}
+          {@const canPick = (myTurn && t.legal.includes(card)) || (canQueue && queueable.includes(card))}
           <div
             class="slot"
             style={`transform: translate(${handOffset + i * step}px, ${(i - mid) ** 2 * ARC}px) rotate(${(i - mid) * spread}deg); z-index: ${i}`}
@@ -529,12 +653,13 @@
             <PlayingCard
               {card}
               width={cardW}
-              selected={selected.includes(card)}
-              dimmed={myTurn && !t.legal.includes(card)}
+              selected={selected.includes(card) && card !== queuedCard}
+              queued={card === queuedCard}
+              dimmed={(myTurn || canQueue) && !canPick}
               fresh={fresh(card)}
               jackScored={view.settings.jackOfDiamonds}
-              onclick={needPass || myTurn ? () => clickCard(card) : undefined}
-              disabled={busy || !playable}
+              onclick={needPass || myTurn || canQueue ? () => clickCard(card) : undefined}
+              disabled={busy || !(needPass || canPick || card === queuedCard)}
             />
           </div>
         {/each}
@@ -598,8 +723,9 @@
         </div>
         <div class="last-hand">
           {#each view.players as p}
+            {@const nm = handName(view.lastHand, p.seat)}
             <div class="lh-row">
-              <span class="lh-name" title={p.name}>{p.seat === me ? 'You' : p.name}</span>
+              <span class="lh-name" title={nm}>{p.seat === me ? 'You' : nm}</span>
               <span class="lh-tags">
                 {#if view.lastHand.sun === p.seat}<span title="Shot the Sun">☀</span>{/if}
                 {#if view.lastHand.moon === p.seat}<span title="Shot the Moon">☾</span>{/if}
@@ -1295,6 +1421,16 @@
   .hint.mine {
     color: var(--text);
     font-weight: 600;
+  }
+
+  /* A long name in the hint is cut short, so the instruction after it still fits in its two lines. */
+  .hint-nm {
+    display: inline-block;
+    max-width: 9em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
   }
 
   .hand {

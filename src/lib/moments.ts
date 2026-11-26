@@ -12,13 +12,38 @@ import type { HandSummary, TableView } from './engine/view';
 export const MIN_SHOW_MS = 1200;
 /** The shortest time the hand's final trick sits on the felt before a Sun or Moon celebration or the result. */
 export const FINAL_TRICK_MS = 1200;
+/** Cards that land in one update slide in this far apart (ms), so the order they were played in still reads. */
+export const STAGGER_MS = 150;
+/** How long one card takes to slide in (ms). */
+export const ARRIVE_MS = 280;
 
 /**
- * How long the hand-end sequence holds the final trick on the felt: long enough for each of its
- * messages (the Queen, the Jack, a watch ending) to get its turn in the slot.
+ * How long each card of `trick` waits before it slides in. Cards already on the felt don't wait;
+ * the new ones go one after another in play order.
+ */
+export function arrivalDelays(onFelt: readonly Card[], trick: Trick | null): Map<Card, number> {
+  const delays = new Map<Card, number>();
+  let n = 0;
+  for (const p of trick?.plays ?? []) delays.set(p.card, onFelt.includes(p.card) ? 0 : STAGGER_MS * n++);
+  return delays;
+}
+
+/**
+ * How long the hand-end sequence holds the final trick on the felt: long enough for its cards to
+ * slide in and for each of its messages (auto-finished, the Queen, the Jack, a watch ending) to get
+ * its turn in the slot.
  */
 export function finalTrickHoldMs(before: TableView | null, trick: Trick, s: HandSummary | null, w: Who): number {
-  return Math.max(FINAL_TRICK_MS, finalMoments(before, trick, s, w).length * MIN_SHOW_MS);
+  const landed = Math.max(0, ...arrivalDelays(before?.current?.plays.map((p) => p.card) ?? [], trick).values());
+  return landed + Math.max(FINAL_TRICK_MS, finalMoments(before, trick, s, w).length * MIN_SHOW_MS);
+}
+
+/** The trick review's note for a hand the server finished early ("Tricks 10–12 played out…"), or null. */
+export function playedOutNote(autoFrom: number | null | undefined, totalTricks: number): string | null {
+  if (!autoFrom) return null;
+  return autoFrom >= totalTricks
+    ? `Trick ${totalTricks} played out on its own: no points were left.`
+    : `Tricks ${autoFrom}–${totalTricks} played out on their own: no points were left.`;
 }
 
 /** The message slot's order: lower goes first. "Takes it" and "your lead" are what it shows when nothing's queued. */
@@ -70,6 +95,8 @@ const verb = (w: Who, seat: number, v: string) => ` ${v}${seat === w.me ? '' : '
 
 /** Tricks finished so far this hand. */
 const doneTricks = (v: TableView) => (v.phase === 'done' ? v.totalTricks : v.phase === 'playing' ? v.trickNumber - 1 : 0);
+/** The last trick the table saw played: when the server finished the hand early, the one before `s.autoFrom`. */
+const lastTableTrick = (s: HandSummary | null, totalTricks: number) => (s?.autoFrom ? s.autoFrom - 1 : totalTricks);
 /** Cards played face-up so far this hand. */
 const played = (v: TableView) => doneTricks(v) * v.handSizes.length + (v.current?.plays.length ?? 0);
 /** Face-up cards still on show: the trick in progress and the last finished one. */
@@ -133,23 +160,36 @@ export function detectMoments(prev: TableView | null, next: TableView, w: Who): 
 }
 
 /**
+ * Whether this tab watched hand `s` end, rather than loading in after: `before`, its last view
+ * before the hand ended, shows the last trick the table saw played still in progress. Only then
+ * does the hand-end sequence hold that trick on the felt. The next hand's first view never counts,
+ * even straight into play after a Keep hand.
+ */
+export function endedLive(before: TableView | null, s: HandSummary): boolean {
+  if (!before || before.handNumber !== s.number || before.phase !== 'playing') return false;
+  return before.trickNumber === lastTableTrick(s, before.totalTricks);
+}
+
+/**
  * The moments for a hand's final trick, while the hand-end sequence holds it on the felt. The next
  * hand is dealt in the same update as the last card, so they can't come from consecutive views.
- * `before` is the last view this tab saw before the trick finished: watch endings are only told if
- * it shows this very trick in progress. `s` is that hand's summary, or null when this tab doesn't
- * have it (after a game's last hand the felt holds a view whose lastHand is the hand before). A Sun
- * or Moon shot isn't told here: Game.svelte's full-screen celebration (HandEndCelebration) plays it
- * once the final trick has had its moment, so the table never announces it twice.
+ * `trick` is the last trick the table saw played: when the server finished the hand early, that's
+ * the one before `s.autoFrom`. `before` is the last view this tab saw before the trick finished:
+ * watch endings are only told if it shows this very trick in progress. `s` is that hand's summary,
+ * or null when this tab doesn't have it. A Sun or Moon shot isn't told here: Game.svelte's
+ * full-screen celebration (HandEndCelebration) plays it once the final trick has had its moment, so
+ * the table never announces it twice.
  */
 export function finalMoments(before: TableView | null, trick: Trick, s: HandSummary | null, w: Who): Message[] {
   if (trick.winner === null) return [];
-  const out = taken(trick, w, s ? s.jackScored : w.jack);
+  const out: Message[] = s?.autoFrom ? [msg('auto', 'No points left · hand over', '', '')] : [];
+  out.push(...taken(trick, w, s ? s.jackScored : w.jack));
   const seen = before?.current;
   if (
     before &&
     seen &&
     (!s || before.handNumber === s.number) &&
-    doneTricks(before) === before.totalTricks - 1 &&
+    doneTricks(before) === lastTableTrick(s, before.totalTricks) - 1 &&
     seen.leader === trick.leader &&
     seen.plays.every((p, i) => trick.plays[i]?.card === p.card)
   ) {

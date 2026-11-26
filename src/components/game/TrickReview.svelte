@@ -1,5 +1,7 @@
 <script lang="ts">
   import type { HandReview } from '../../lib/engine/review';
+  import { cardsPerPlayer } from '../../lib/engine/rules';
+  import { playedOutNote } from '../../lib/moments';
   import { signed } from '../../lib/ui';
   import TrickCards from './TrickCards.svelte';
 
@@ -7,14 +9,15 @@
   interface Props {
     gameId: string;
     hand: number;
-    /** Display names by seat. */
+    /** Display names by seat, for a server too old to send the hand's own. */
     names: string[];
     /** Outside the hand result (the scoreboard): also show the pass, any Sun or Moon, and the crib. */
     standalone?: boolean;
   }
   let { gameId, hand, names, standalone = false }: Props = $props();
 
-  const name = (seat: number) => names[seat] ?? `Seat ${seat + 1}`;
+  // The hand's own players: a seat may have changed hands since (a host removing someone).
+  const seatNames = (r: HandReview) => Array.from({ length: r.numPlayers }, (_, s) => r.names?.[s] ?? names[s] ?? `Seat ${s + 1}`);
   const pts = (n: number) => (n === 0 ? '·' : signed(n));
 
   // Never cached: a playtest undo can take a hand back.
@@ -30,6 +33,9 @@
 {#await review}
   <p class="faint">Loading the tricks…</p>
 {:then r}
+  {@const who = seatNames(r)}
+  {@const name = (seat: number) => who[seat]}
+  {@const note = playedOutNote(r.autoFrom, cardsPerPlayer(r.numPlayers))}
   <div class="stack">
     {#if standalone}
       <p class="line">
@@ -48,10 +54,11 @@
             <span class="nm">{name(t.winner)}</span> won
             <strong class="num" class:up={t.points > 0} class:down={t.points < 0}>{pts(t.points)}</strong>
           </p>
-          <TrickCards plays={t.plays} winner={t.winner} {names} />
+          <TrickCards plays={t.plays} winner={t.winner} names={who} />
         </li>
       {/each}
     </ol>
+    {#if note}<p class="faint small">{note}</p>{/if}
     {#if standalone}
       <div>
         <p class="line">
@@ -94,6 +101,10 @@
   .line strong {
     margin-left: auto;
     padding-left: 8px;
+  }
+
+  .small {
+    font-size: 13px;
   }
 
   /* Capped, so one long name gets cut short before a short one does. */

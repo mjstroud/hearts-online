@@ -1,4 +1,4 @@
-import { type Card, isCard, secureRng } from '../engine/cards';
+import { type Card, isCard, secureRng, suitOf } from '../engine/cards';
 import {
   type ActionResult,
   type GameState,
@@ -12,16 +12,26 @@ import {
   seatsToAct,
   turnKey,
 } from '../engine/game';
-import { type DealSpec, RuleError, legalPlays } from '../engine/hand';
+import { type DealSpec, RuleError, type Trick, followPlays, isFinalTrick, legalPlays, queueSuit } from '../engine/hand';
 import { PRESETS, type PresetId, parseCardList, presetSpec } from '../engine/presets';
-import { type GameSettings, MAX_PLAYERS, MIN_PLAYERS, normalizeSettings, passCycle, passLabel } from '../engine/rules';
+import {
+  DEFAULT_SETTINGS,
+  type GameSettings,
+  MAX_PLAYERS,
+  MID_GAME_SETTINGS,
+  MIN_PLAYERS,
+  MOVE_TIMER_OPTIONS,
+  normalizeSettings,
+  passCycle,
+  passLabel,
+} from '../engine/rules';
 import type { HandRecord } from '../engine/scoring';
 import { summarizeHand, tableViewFor } from '../engine/view';
 import type { DevSettings, DevView, GameAction, GameListItem, GameMode, GameStatus, GameView } from '../types';
 import { avatarSrc } from '../avatars';
 import { GAME_NAME_MAX, clipToLength } from '../names';
 import { now, sql, transaction } from './db';
-import { onlineUsers, subscribers } from './hub';
+import { type Subscriber, onlineUsers, sendTo, subscribers } from './hub';
 
 export class GameError extends Error {
   constructor(
@@ -144,9 +154,26 @@ function touchClock(state: GameState | null, force = false) {
   }
 }
 
-/** Seats played by the computer: the cats, plus anyone a cat is sitting in for. */
-function autoSeat(game: GameRecord, players: SeatedPlayer[]): (seat: number) => boolean {
-  return (seat) => !!players[seat]?.isBot || !!game.state?.autopilot?.[seat];
+/**
+ * The one rule for seats the server is about to play: the cats, anyone a cat is sitting in for,
+ * and (with autoPlayLast) every seat in the final trick. Alerts, /games badges, the move timer and
+ * the computer players all follow it. Only while someone is still at the table, so a table
+ * everyone has walked away from pauses instead of playing itself forever, final trick included.
+ * At a playtest table on manual the owner drives every seat, so the server plays none.
+ */
+function serverPlays(game: GameRecord, players: SeatedPlayer[]): (seat: number) => boolean {
+  if (game.mode === 'playtest' && game.dev.botMode === 'manual') return () => false;
+  const autopilot = game.state?.autopilot ?? [];
+  const someoneHere = players.some((p) => !p.isBot && !autopilot[p.seat]);
+  const hand = game.state?.hand;
+  const lastTrick = someoneHere && game.settings.autoPlayLast && !!hand && isFinalTrick(hand);
+  return (seat) => !!players[seat]?.isBot || (!!autopilot[seat] && someoneHere) || lastTrick;
+}
+
+/** People the move timer runs for: at the table themselves, and not about to be played for. */
+function clocked(game: GameRecord, players: SeatedPlayer[]): (seat: number) => boolean {
+  const plays = serverPlays(game, players);
+  return (seat) => !!players[seat] && !players[seat].isBot && !game.state?.autopilot?.[seat] && !plays(seat);
 }
 
 /** When the move timer runs out for the seats on turn (null if there's no timer running). */
@@ -155,8 +182,7 @@ function moveDeadline(game: GameRecord, players: SeatedPlayer[]): number | null 
   if (!game.settings.moveTimer || game.status !== 'active' || !state?.hand || state.turnSince === undefined) return null;
   // At a playtest table with the computer players on manual, the owner drives every seat: no clock.
   if (game.mode === 'playtest' && game.dev.botMode === 'manual') return null;
-  const auto = autoSeat(game, players);
-  if (!seatsToAct(state).some((s) => !auto(s))) return null;
+  if (!seatsToAct(state).some(clocked(game, players))) return null;
   return state.turnSince + game.settings.moveTimer * 1000;
 }
 
@@ -190,6 +216,58 @@ function saveGame(game: GameRecord) {
 
 export function isMember(gameId: string, userId: number): boolean {
   return !!sql('SELECT 1 FROM game_players WHERE game_id = ? AND user_id = ?').get(gameId, userId);
+}
+
+/** The host took this person out of the game after it started (a cat has their seat). */
+export function wasRemoved(gameId: string, userId: number): boolean {
+  return !!sql('SELECT 1 FROM removed_players WHERE game_id = ? AND user_id = ?').get(gameId, userId);
+}
+
+/** Whoever played one seat of one hand. */
+export type Occupant = Pick<SeatedPlayer, 'userId' | 'displayName' | 'isBot'>;
+export type OccupantOf = (record: HandRecord, seat: number) => Occupant | undefined;
+
+/** Someone the host took out mid-game. The hands up to `throughHand` are theirs. */
+export interface RemovedPlayer {
+  seat: number;
+  userId: number;
+  displayName: string;
+  throughHand: number;
+}
+
+export function removedPlayers(gameId: string): RemovedPlayer[] {
+  const rows = sql(
+    `SELECT rp.seat, rp.user_id, u.display_name, rp.through_hand FROM removed_players rp
+     JOIN users u ON u.id = rp.user_id WHERE rp.game_id = ? ORDER BY rp.through_hand, rp.removed_at`,
+  ).all(gameId) as { seat: number; user_id: number; display_name: string; through_hand: number }[];
+  return rows.map((r) => ({ seat: r.seat, userId: r.user_id, displayName: r.display_name, throughHand: r.through_hand }));
+}
+
+/**
+ * Who played each seat of a hand. Records name their players; older ones (from before seats could
+ * change hands) fall back to whoever was removed from that seat after the hand, else whoever
+ * sits there now.
+ */
+export function occupants(seated: SeatedPlayer[], removed: RemovedPlayer[]): OccupantOf {
+  const known = new Map<number, Occupant>();
+  for (const r of removed) known.set(r.userId, { userId: r.userId, displayName: r.displayName, isBot: false });
+  for (const p of seated) known.set(p.userId, p);
+  const lookUp = (userId: number): Occupant | undefined => {
+    if (!known.has(userId)) {
+      const row = sql('SELECT display_name, is_bot FROM users WHERE id = ?').get(userId) as
+        | { display_name: string; is_bot: number }
+        | undefined;
+      if (row) known.set(userId, { userId, displayName: row.display_name, isBot: !!row.is_bot });
+    }
+    return known.get(userId);
+  };
+  return (record, seat) => {
+    const id = record.players?.[seat];
+    if (id !== undefined) return lookUp(id);
+    // Earliest first, so a seat that changed hands twice goes to whoever had it at the time.
+    const before = removed.find((r) => r.seat === seat && r.throughHand >= record.number);
+    return before ? known.get(before.userId) : seated[seat];
+  };
 }
 
 /** Insert a game row with its owner in seat 0. Call inside a transaction. */
@@ -291,6 +369,7 @@ interface Snapshot {
 const g = globalThis as typeof globalThis & {
   __heartsUndo?: Map<string, Snapshot[]>;
   __heartsBotTimers?: Map<string, ReturnType<typeof setTimeout>>;
+  __heartsPremoves?: Map<string, Map<number, Premove>>;
 };
 const undoStacks: Map<string, Snapshot[]> = (g.__heartsUndo ??= new Map());
 
@@ -305,6 +384,38 @@ function remember(gameId: string, snap: Snapshot | null) {
   stack.push(snap);
   if (stack.length > 400) stack.splice(0, stack.length - 400);
   undoStacks.set(gameId, stack);
+}
+
+// ---------------------------------------------------------------------------
+// Pre-moves: a card someone queued to play the moment their turn arrives.
+// In memory and apart from the saved state, so nothing the rest of the table receives (the version,
+// the clock, the computer players' timing) changes when someone queues. A restart forgets them,
+// which just means "not queued".
+
+interface Premove {
+  hand: number;
+  /** 1-based trick number. */
+  trick: number;
+  card: Card;
+}
+
+/** Game id → user id → their queued card. */
+const premoves: Map<string, Map<number, Premove>> = (g.__heartsPremoves ??= new Map());
+
+function dropPremove(gameId: string, userId: number) {
+  const queued = premoves.get(gameId);
+  queued?.delete(userId);
+  if (queued?.size === 0) premoves.delete(gameId);
+}
+
+/** Someone's queued card, if it's still for the trick in progress and theirs to play. */
+function premoveFor(game: GameRecord, seat: number | null, userId: number): Card | null {
+  const entry = premoves.get(game.id)?.get(userId);
+  const hand = game.status === 'active' ? game.state?.hand : null;
+  if (!entry || seat === null || !hand?.current || hand.phase !== 'playing') return null;
+  if (entry.hand !== hand.number || entry.trick !== hand.tricks.length + 1) return null;
+  if (hand.turn === seat || hand.current.plays.some((p) => p.seat === seat) || !hand.hands[seat]?.includes(entry.card)) return null;
+  return entry.card;
 }
 
 const canUndo = (gameId: string) => !!undoStacks.get(gameId)?.some((s) => s.by === 'you');
@@ -326,12 +437,29 @@ function devView(game: GameRecord): DevView {
   };
 }
 
+/**
+ * Names by seat for the hand just finished, when someone who played it has since been removed: the
+ * result screen then names them, not the cat in their seat now. Undefined the rest of the time,
+ * which keeps the live update small.
+ */
+function lastHandNames(game: GameRecord, players: SeatedPlayer[]): string[] | undefined {
+  const last = game.status === 'lobby' ? null : game.state?.lastHand;
+  if (!last) return undefined;
+  const removed = removedPlayers(game.id);
+  if (!removed.some((r) => r.throughHand >= last.number)) return undefined;
+  // The stored record says who sat where.
+  const record = getHandRecord(game.id, last.number) ?? last;
+  const occupant = occupants(players, removed);
+  return Array.from({ length: last.numPlayers }, (_, seat) => occupant(record, seat)?.displayName ?? '');
+}
+
 export function buildView(
   game: GameRecord,
   players: SeatedPlayer[],
   userId: number,
   online: Set<number>,
   rematch = rematchFor(game),
+  lastNames = lastHandNames(game, players),
 ): GameView {
   const me = players.find((p) => p.userId === userId);
   const seat = me?.seat ?? null;
@@ -340,6 +468,9 @@ export function buildView(
   const isOwner = game.ownerId === userId;
   const active = !!state && game.status === 'active';
   const deadline = active ? moveDeadline(game, players) : null;
+  const yourTurn = active && seat !== null && seatsToAct(state).includes(seat) && !serverPlays(game, players)(seat);
+  const lastHand = state?.lastHand ? summarizeHand(state.lastHand) : null;
+  if (lastHand && lastNames) lastHand.names = lastNames;
   return {
     id: game.id,
     name: game.name,
@@ -362,7 +493,7 @@ export function buildView(
     })),
     me: { userId, seat, isOwner },
     table: state && game.status === 'active' ? tableViewFor(state, seat, game.settings) : null,
-    lastHand: state?.lastHand ? summarizeHand(state.lastHand) : null,
+    lastHand,
     toAct: state && game.status === 'active' ? seatsToAct(state) : [],
     leaders: state && state.handsPlayed > 0 ? leaders(state.scores) : [],
     endAfterHand: !!state?.endAfterHand && game.status === 'active',
@@ -373,6 +504,9 @@ export function buildView(
     updatedAt: game.updatedAt,
     // Someone taken out of the rematch's waiting room no longer gets a link to it.
     rematchId: rematch?.seated.has(userId) ? rematch.id : null,
+    yourTurn,
+    // Only ever your own: nobody else may learn that you queued a card.
+    premove: active ? premoveFor(game, seat, userId) : null,
   };
 }
 
@@ -384,27 +518,58 @@ export function getGameView(gameId: string, userId: number): GameView | null {
 
 /** Push each connected player their own view of the game. Never throws: the change is already saved. */
 export function publish(gameId: string) {
+  // Streams with nothing more to hear once told: someone no longer at the table, or a deleted game.
+  const goodbye: Subscriber[] = [];
   try {
     const subs = subscribers(gameId);
     if (!subs.length) return;
     const game = loadGame(gameId);
     if (!game) {
-      for (const s of subs) s.send('deleted', {});
+      for (const s of subs) {
+        goodbye.push(s);
+        s.send('deleted', {});
+      }
       return;
     }
     const players = getPlayers(gameId);
     const online = onlineUsers(gameId);
+    // Worked out once for everyone, not once per player.
     const rematch = rematchFor(game);
+    const lastNames = lastHandNames(game, players);
     for (const s of subs) {
       try {
-        if (!players.some((p) => p.userId === s.userId)) s.send('removed', {});
-        else s.send('state', buildView(game, players, s.userId, online, rematch));
+        if (!players.some((p) => p.userId === s.userId)) {
+          goodbye.push(s);
+          s.send('removed', {});
+        } else s.send('state', buildView(game, players, s.userId, online, rematch, lastNames));
       } catch (err) {
         console.error('Failed to push update', err);
       }
     }
   } catch (err) {
     console.error('Failed to publish game update', err);
+  } finally {
+    // After everyone has been sent this update, so a hang-up can't interrupt it.
+    for (const s of goodbye) {
+      try {
+        s.close?.();
+      } catch (err) {
+        console.error('Failed to close a live stream', err);
+      }
+    }
+  }
+}
+
+/** Push just this person's open tabs a fresh view: a queued card is nobody else's business. Never throws. */
+function publishTo(gameId: string, userId: number) {
+  try {
+    if (!subscribers(gameId).some((s) => s.userId === userId)) return;
+    const game = loadGame(gameId);
+    const players = getPlayers(gameId);
+    if (!game || !players.some((p) => p.userId === userId)) return;
+    sendTo(gameId, userId, 'state', buildView(game, players, userId, onlineUsers(gameId)));
+  } catch (err) {
+    console.error('Failed to push update', err);
   }
 }
 
@@ -512,22 +677,154 @@ export function rematchGame(gameId: string, userId: number): string {
 // ---------------------------------------------------------------------------
 // Actions
 
-function recordHand(gameId: string, record: HandRecord) {
+/** A finished hand, with who sat where: a seat can change hands, and the hands played stay theirs. */
+function recordHand(gameId: string, record: HandRecord, players: SeatedPlayer[]) {
+  const ids: number[] = [];
+  for (const p of players) ids[p.seat] = p.userId;
   sql('INSERT INTO hands (game_id, number, record, completed_at) VALUES (?, ?, ?, ?)').run(
     gameId,
     record.number,
-    JSON.stringify(record),
+    JSON.stringify({ ...record, players: ids }),
     now(),
   );
 }
 
-function applyResult(game: GameRecord, result: ActionResult | null) {
-  if (!result) return;
-  if (result.completedHand) recordHand(game.id, result.completedHand);
+/** Record a finished hand and end the game if it's over. */
+function settle(game: GameRecord, result: ActionResult, players: SeatedPlayer[]) {
+  if (result.completedHand) {
+    recordHand(game.id, result.completedHand, players);
+    // Every queued card was for the hand that just ended.
+    premoves.delete(game.id);
+  }
   if (result.gameOver) {
     game.status = 'finished';
     game.finishedAt = now();
   }
+}
+
+/** Settle a move, then play any queued cards it brought round. Every way a card is played comes through here. */
+function applyResult(game: GameRecord, result: ActionResult | null, players: SeatedPlayer[]) {
+  if (!result) return;
+  settle(game, result, players);
+  playQueued(game, players);
+}
+
+/**
+ * The moment a seat's turn arrives, its queued card goes down, in the same update as the move
+ * that brought the turn round (and the next seat's too, if that one is queued as well). Never
+ * throws: the move that got here stands either way.
+ */
+function playQueued(game: GameRecord, players: SeatedPlayer[]) {
+  const state = game.state;
+  const hand = state?.hand;
+  const queued = premoves.get(game.id);
+  if (!state || !hand || !queued) return;
+  try {
+    while (game.status === 'active' && state.hand === hand && hand.phase === 'playing' && hand.turn !== null) {
+      const seat = hand.turn;
+      const player = players[seat];
+      if (!player || player.isBot) break;
+      const entry = queued.get(player.userId);
+      if (!entry) break;
+      queued.delete(player.userId);
+      if (entry.hand !== hand.number || entry.trick !== hand.tricks.length + 1 || state.autopilot?.[seat]) break;
+      if (!legalPlays(hand, seat, game.settings).includes(entry.card)) break;
+      remember(game.id, snapshot(game, 'you'));
+      settle(game, gamePlay(state, seat, entry.card, game.settings), players);
+    }
+  } catch (err) {
+    console.error(`Failed to play a queued card in game ${game.id}`, err);
+  }
+  if (queued.size === 0 && premoves.get(game.id) === queued) premoves.delete(game.id);
+}
+
+/**
+ * Queue a card, or cancel with `card: null`. Changes nothing anyone else can see. Returns true
+ * when the seat's turn arrived while the request was on its way: the card is then played as usual.
+ */
+function queueCard(game: GameRecord, me: SeatedPlayer, action: Extract<GameAction, { type: 'premove' }>): boolean {
+  if (action.card === null) {
+    dropPremove(game.id, me.userId);
+    return false;
+  }
+  const { card, hand: handNumber, trick } = action;
+  if (!isCard(card) || !Number.isInteger(handNumber) || !Number.isInteger(trick)) throw new GameError('Invalid request.');
+  const state = game.state;
+  const active = game.status === 'active' && !!state;
+  if (active && state.autopilot?.[me.seat]) throw new GameError('Tap “I’m back” first.');
+  const hand = active ? state.hand : null;
+  const current = hand?.phase === 'playing' ? hand.current : null;
+  // The trick on screen is over, or this seat has played in it: a harmless race, nothing to queue.
+  if (!hand || !current || handNumber !== hand.number || trick !== hand.tricks.length + 1 || current.plays.some((p) => p.seat === me.seat)) {
+    dropPremove(game.id, me.userId);
+    return false;
+  }
+  const firstTrick = hand.tricks.length === 0;
+  if (hand.turn === me.seat) {
+    // Its turn arrived on the way. As a follower that's simply a play; a lead was never queueable.
+    if (!current.plays.length) throw new GameError('It’s your lead: play a card.');
+    dropPremove(game.id, me.userId);
+    return true;
+  }
+  const suit = queueSuit(current, firstTrick, me.seat, hand.turn);
+  if (!suit) throw new GameError('You can queue a card once the lead card is down.');
+  const held = hand.hands[me.seat];
+  if (!held.includes(card)) throw new GameError('That card is not in your hand.');
+  if (!followPlays(held, suit, firstTrick, game.settings).includes(card)) {
+    // The same wording as an illegal play.
+    throw new GameError(held.some((c) => suitOf(c) === suit) ? 'You must follow suit.' : 'No points can be played on the first trick.');
+  }
+  let queued = premoves.get(game.id);
+  if (!queued) premoves.set(game.id, (queued = new Map()));
+  queued.set(me.userId, { hand: handNumber, trick, card });
+  return false;
+}
+
+/**
+ * A tap on a card the server already played for this seat (the final trick, a queued card, or a
+ * hand that ended on its own). True only if the card isn't a legal play right now.
+ */
+function lateTap(game: GameRecord, seat: number, card: Card): boolean {
+  const state = game.state;
+  if (!state) return false;
+  const hand = state.hand;
+  if (game.status === 'active' && hand && legalPlays(hand, seat, game.settings).includes(card)) return false;
+  const mine = (tricks: readonly Trick[]) => tricks.some((t) => t.plays.some((p) => p.seat === seat && p.card === card));
+  if (hand && (mine(hand.tricks) || (hand.current && mine([hand.current])))) return true;
+  // The record keeps every trick, the ones played out on their own included.
+  return !!state.lastHand && mine(state.lastHand.tricks);
+}
+
+/** Take a seat back from the computer. If the table is waiting on you, your clock starts fresh. */
+function resume(game: GameRecord, seat: number) {
+  const state = game.state!;
+  setAutopilot(game, seat, false);
+  if (seatsToAct(state).includes(seat)) touchClock(state, true);
+}
+
+/**
+ * Mid-game, a cat takes the seat for good: it plays out the hand in progress, and the hands
+ * already finished stay with the person (the hand records name who sat where). The seat's row is
+ * moved to the cat rather than deleted, so every seat keeps its number.
+ */
+function removeMidGame(game: GameRecord, players: SeatedPlayer[], targetId: number) {
+  const state = game.state!;
+  const target = players.find((p) => p.userId === targetId);
+  if (!target) throw new GameError('That player isn’t at this table.');
+  if (target.isBot) throw new GameError('A cat is already playing that seat.');
+  const cat = availableCats(players)[0];
+  if (cat === undefined) throw new GameError('All the cats are already at the table.');
+  const t = now();
+  sql('UPDATE game_players SET user_id = ?, joined_at = ? WHERE game_id = ? AND seat = ?').run(cat, t, game.id, target.seat);
+  sql('INSERT OR REPLACE INTO removed_players (game_id, user_id, seat, through_hand, removed_at) VALUES (?, ?, ?, ?, ?)').run(
+    game.id,
+    target.userId,
+    target.seat,
+    state.handsPlayed,
+    t,
+  );
+  if (state.autopilot?.[target.seat]) setAutopilot(game, target.seat, false);
+  dropPremove(game.id, target.userId);
 }
 
 function parseCards(value: unknown): Card[] {
@@ -536,11 +833,11 @@ function parseCards(value: unknown): Card[] {
 }
 
 /** Let the computer play for every seat until `done` says stop (or the game ends). */
-function aiUntil(game: GameRecord, done: (state: GameState) => boolean) {
+function aiUntil(game: GameRecord, players: SeatedPlayer[], done: (state: GameState) => boolean) {
   for (let i = 0; i < 500 && game.state && game.status === 'active'; i++) {
     const result = aiStep(game.state, game.settings);
     if (!result) break;
-    applyResult(game, result);
+    applyResult(game, result, players);
     if (done(game.state)) break;
   }
 }
@@ -572,9 +869,32 @@ function devDeal(game: GameRecord, players: SeatedPlayer[], mySeat: number, acti
   redealHand(state, secureRng, { spec, passOffset });
 }
 
+/**
+ * A settings change sent as JSON, checked strictly. normalizeSettings quietly turns anything odd
+ * into the default, which would switch an option off (or the limit away) on a typo.
+ */
+function validSettings(input: unknown): input is Partial<GameSettings> {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return false;
+  return Object.entries(input).every(([key, value]) => {
+    if (key === 'scoreLimit') return value === null || (Number.isInteger(value) && (value as number) >= 1 && (value as number) <= 1_000_000);
+    if (key === 'moveTimer') return value === null || MOVE_TIMER_OPTIONS.includes(value as number);
+    // Every other setting is a switch.
+    return Object.hasOwn(DEFAULT_SETTINGS, key) && typeof DEFAULT_SETTINGS[key as keyof GameSettings] === 'boolean' && typeof value === 'boolean';
+  });
+}
+
 export function performAction(gameId: string, userId: number, action: GameAction): void {
   // A rematch writes a new game as well, so it runs in its own transaction, away from the play path.
   if (action?.type === 'rematch') return void rematchGame(gameId, userId);
+  // The JSON twin of the settings page.
+  if (action?.type === 'settings') {
+    const { settings, name } = action;
+    if (!validSettings(settings) || (name !== undefined && typeof name !== 'string')) throw new GameError('Invalid request.');
+    return void updateSettings(gameId, userId, (name ?? '').trim(), settings);
+  }
+  // False when nothing anyone else can see has changed: a late tap, or a card queued or cancelled.
+  // Then there's no save, no update for the table and no change to the computer players' timing.
+  let changed = true;
   transaction(() => {
     const game = loadGame(gameId);
     if (!game) throw new GameError('That game no longer exists.', 404);
@@ -596,28 +916,57 @@ export function performAction(gameId: string, userId: number, action: GameAction
       if (game.mode !== 'playtest' || !isOwner) throw new GameError('Playtest tools are only available at your own playtest table.', 403);
     };
     const before = snapshot(game, 'you');
-    let undoable = false;
+    let remembered = false;
+    // Called once the move has gone through, and before any queued card it sets off remembers its
+    // own step: undo then takes the queued card back first.
+    const undoable = () => {
+      if (!remembered) remember(gameId, before);
+      remembered = true;
+    };
 
     switch (action?.type) {
-      case 'pass':
-      case 'play': {
+      case 'pass': {
         const state = inProgress();
-        if (action.type === 'pass') gamePass(state, me.seat, parseCards(action.cards));
-        else {
-          if (!isCard(action.card)) throw new GameError('Invalid card.');
-          applyResult(game, gamePlay(state, me.seat, action.card, game.settings));
-        }
+        gamePass(state, me.seat, parseCards(action.cards));
         // Making your own move takes your seat back from the computer.
         if (state.autopilot?.[me.seat]) setAutopilot(game, me.seat, false);
-        undoable = true;
+        undoable();
+        break;
+      }
+      case 'play': {
+        if (!isCard(action.card)) throw new GameError('Invalid card.');
+        // Checked before the game's status, as the hand (or the game) may have ended on that card.
+        if (lateTap(game, me.seat, action.card)) {
+          // It's down already, so the tap just succeeds. If a cat was sitting in, it means "I'm back".
+          if (game.status !== 'active' || !game.state?.autopilot?.[me.seat]) {
+            changed = false;
+            return;
+          }
+          resume(game, me.seat);
+          break;
+        }
+        const state = inProgress();
+        const result = gamePlay(state, me.seat, action.card, game.settings);
+        undoable();
+        applyResult(game, result, players);
+        if (state.autopilot?.[me.seat]) setAutopilot(game, me.seat, false);
+        break;
+      }
+      case 'premove': {
+        if (!queueCard(game, me, action)) {
+          changed = false;
+          return;
+        }
+        // The turn came round while the card was on its way: it's played like any other.
+        const result = gamePlay(game.state!, me.seat, action.card!, game.settings);
+        undoable();
+        applyResult(game, result, players);
         break;
       }
       case 'resume': {
         const state = inProgress();
         if (!state.autopilot?.[me.seat]) break;
-        setAutopilot(game, me.seat, false);
-        // You're back: if the table is waiting on you, your clock starts fresh.
-        if (seatsToAct(state).includes(me.seat)) touchClock(state, true);
+        resume(game, me.seat);
         break;
       }
       case 'start': {
@@ -640,8 +989,15 @@ export function performAction(gameId: string, userId: number, action: GameAction
       }
       case 'removePlayer':
       case 'leave': {
-        lobbyOnly();
         const target = action.type === 'leave' ? userId : Number(action.userId);
+        if (action.type === 'removePlayer' && game.status !== 'lobby') {
+          ownerOnly();
+          if (target === game.ownerId) throw new GameError('The owner can’t leave their own game (delete it instead).');
+          if (game.status !== 'active' || !game.state) throw new GameError('This game is over. Tap Keep playing first to remove someone.');
+          removeMidGame(game, players, target);
+          break;
+        }
+        lobbyOnly();
         if (action.type === 'removePlayer') ownerOnly();
         if (target === game.ownerId) throw new GameError('The owner can’t leave their own game (delete it instead).');
         sql('DELETE FROM game_players WHERE game_id = ? AND user_id = ?').run(gameId, target);
@@ -686,10 +1042,11 @@ export function performAction(gameId: string, userId: number, action: GameAction
         delete state.autopilot;
         // A link still here points at a rematch that has been deleted.
         delete state.rematchId;
+        premoves.delete(gameId);
         touchClock(state, true);
         game.status = 'active';
         game.finishedAt = null;
-        undoable = true;
+        undoable();
         break;
       }
 
@@ -703,9 +1060,11 @@ export function performAction(gameId: string, userId: number, action: GameAction
         if (move?.type === 'pass') gamePass(state, seat, parseCards(move.cards));
         else if (move?.type === 'play') {
           if (!isCard(move.card)) throw new GameError('Invalid card.');
-          applyResult(game, gamePlay(state, seat, move.card, game.settings));
+          const result = gamePlay(state, seat, move.card, game.settings);
+          undoable();
+          applyResult(game, result, players);
         } else throw new GameError('Unknown move.');
-        undoable = true;
+        undoable();
         break;
       }
       case 'dev:ai': {
@@ -720,14 +1079,16 @@ export function performAction(gameId: string, userId: number, action: GameAction
               ? aiStep(state, game.settings, (s) => s === seat)
               : (aiStep(state, game.settings, (s) => !!players[s]?.isBot) ?? aiStep(state, game.settings));
           if (!result) throw new GameError('Nothing to play right now.');
-          applyResult(game, result);
+          undoable();
+          applyResult(game, result, players);
         } else if (action.scope === 'trick') {
           const tricks = hand.tricks.length;
-          aiUntil(game, (s) => s.hand !== hand || hand.tricks.length > tricks);
+          undoable();
+          aiUntil(game, players, (s) => s.hand !== hand || hand.tricks.length > tricks);
         } else if (action.scope === 'hand') {
-          aiUntil(game, (s) => s.hand !== hand);
+          undoable();
+          aiUntil(game, players, (s) => s.hand !== hand);
         } else throw new GameError('Unknown scope.');
-        undoable = true;
         break;
       }
       case 'dev:bots': {
@@ -752,6 +1113,7 @@ export function performAction(gameId: string, userId: number, action: GameAction
         }
         if (!target) throw new GameError('Nothing to undo.');
         clearBotTimer(gameId);
+        premoves.delete(gameId);
         const current = game.state;
         game.state = JSON.parse(target.state) as GameState;
         // Settings aren't in the snapshots: undoing past a "Keep playing" puts the old limit back.
@@ -769,16 +1131,21 @@ export function performAction(gameId: string, userId: number, action: GameAction
         devOnly();
         inProgress();
         devDeal(game, players, me.seat, action);
+        premoves.delete(gameId);
         touchClock(game.state, true);
-        undoable = true;
+        undoable();
         break;
       }
       default:
         throw new GameError('Unknown action.');
     }
-    if (undoable) remember(gameId, before);
     saveGame(game);
   });
+  if (!changed) {
+    // Your other tabs show what you queued; nobody else hears a thing.
+    if (action.type === 'premove') publishTo(gameId, userId);
+    return;
+  }
   publish(gameId);
   if (action.type === 'leave' || action.type === 'removePlayer') publishRematchSource(gameId);
   rescheduleBots(gameId);
@@ -801,11 +1168,9 @@ export function updateSettings(gameId: string, userId: number, name: string, inp
     if (name) game.name = clipToLength(name, GAME_NAME_MAX);
     const next = normalizeSettings({ ...game.settings, ...input });
     const timerChanged = next.moveTimer !== game.settings.moveTimer;
-    // Once cards are dealt only the score limit, move timer and watches can change, except at a playtest table.
-    game.settings =
-      game.status === 'lobby' || game.mode === 'playtest'
-        ? next
-        : { ...game.settings, scoreLimit: next.scoreLimit, moveTimer: next.moveTimer, showWatches: next.showWatches };
+    // Once cards are dealt the house rules stay put, except at a playtest table.
+    if (game.status === 'lobby' || game.mode === 'playtest') game.settings = next;
+    else game.settings = { ...game.settings, ...Object.fromEntries(MID_GAME_SETTINGS.map((key) => [key, next[key]])) };
     if (timerChanged && game.state) {
       // A new allowance starts now. With the timer off, the table goes back to waiting for everyone.
       touchClock(game.state, true);
@@ -841,6 +1206,7 @@ export function endGame(gameId: string, userId: number, mode: EndMode, forHand?:
       state.over = true;
       game.status = 'finished';
       game.finishedAt = now();
+      premoves.delete(gameId);
     };
     if (mode === 'now') {
       if (stale) throw new GameError(`Hand ${forHand} is already over and hand ${current} has been dealt. Reload the page and try again.`);
@@ -869,6 +1235,7 @@ export function deleteGame(gameId: string, userId: number) {
   });
   clearBotTimer(gameId);
   undoStacks.delete(gameId);
+  premoves.delete(gameId);
   publish(gameId);
   publishRematchSource(gameId);
 }
@@ -882,7 +1249,9 @@ export function listGamesForUser(userId: number): GameListItem[] {
     const game = toRecord(row);
     const players = getPlayers(game.id);
     const scores = game.state?.scores ?? [];
-    const toAct = game.status === 'active' && game.state ? seatsToAct(game.state) : [];
+    // Only the people the table is really waiting on: not seats the server is about to play.
+    const plays = serverPlays(game, players);
+    const toAct = game.status === 'active' && game.state ? seatsToAct(game.state).filter((s) => !players[s]?.isBot && !plays(s)) : [];
     const mySeat = players.find((p) => p.userId === userId)?.seat;
     return {
       id: game.id,
@@ -937,17 +1306,6 @@ const BOT_DELAYS: Record<DevSettings['speed'], [number, number]> = {
   slow: [2000, 3000],
 };
 
-/**
- * Seats the computer may move for right now. Cats always play. A cat sitting in for a person
- * only plays while at least one person is still at the table, so a table everyone has walked
- * away from pauses instead of playing itself forever.
- */
-function botMayMove(game: GameRecord, players: SeatedPlayer[]): (seat: number) => boolean {
-  const autopilot = game.state?.autopilot ?? [];
-  const someoneHere = players.some((p) => !p.isBot && !autopilot[p.seat]);
-  return (seat) => !!players[seat]?.isBot || (!!autopilot[seat] && someoneHere);
-}
-
 /** Cancel any pending computer move or move-timer check, then plan the next one. */
 function rescheduleBots(gameId: string) {
   clearBotTimer(gameId);
@@ -962,8 +1320,8 @@ export function scheduleBots(gameId: string, retryDelay?: number) {
     if (game.mode === 'playtest' && game.dev.botMode === 'manual') return;
     const players = getPlayers(gameId);
     let delay: number;
-    if (seatsToAct(game.state).some(botMayMove(game, players))) {
-      // Linger a bit longer right after a trick closes so people can see it.
+    if (seatsToAct(game.state).some(serverPlays(game, players))) {
+      // Linger a bit longer right after a trick closes so people can see it (the final trick waits the same).
       const hand = game.state.hand;
       const [moveDelay, trickDelay] = BOT_DELAYS[game.mode === 'playtest' ? game.dev.speed : 'normal'];
       delay = retryDelay ?? (hand.phase === 'playing' && hand.current?.plays.length === 0 && hand.tricks.length > 0 ? trickDelay : moveDelay);
@@ -1005,7 +1363,9 @@ function runBots(gameId: string) {
 
 /**
  * Hand anyone whose move timer ran out to a computer player, then make whatever moves the
- * computer owes right now (all its passes, or one card). Returns true if anything changed.
+ * computer owes right now: all its passes, or one card. In the final trick it's every card the
+ * server plays, in one save and one update, and the browser staggers them. Returns true if
+ * anything changed.
  */
 function botTurn(gameId: string): boolean {
   return transaction(() => {
@@ -1018,17 +1378,22 @@ function botTurn(gameId: string): boolean {
 
     const deadline = moveDeadline(game, players);
     if (deadline !== null && now() >= deadline) {
-      const auto = autoSeat(game, players);
-      for (const seat of seatsToAct(state)) if (!auto(seat)) setAutopilot(game, seat, true);
+      const timedOut = clocked(game, players);
+      for (const seat of seatsToAct(state)) if (timedOut(seat)) setAutopilot(game, seat, true);
       changed = true;
     }
 
+    const hand = state.hand;
+    const finalTrick = !!hand && isFinalTrick(hand);
     const before = snapshot(game, 'bot');
-    const result = aiStep(state, game.settings, botMayMove(game, players));
-    if (result) {
-      applyResult(game, result);
-      remember(gameId, before);
+    let result = aiStep(state, game.settings, serverPlays(game, players));
+    // Below any queued card that fires in applyResult, so undo takes that back first.
+    if (result) remember(gameId, before);
+    while (result) {
+      applyResult(game, result, players);
       changed = true;
+      if (!finalTrick || game.status !== 'active' || state.hand !== hand) break;
+      result = aiStep(state, game.settings, serverPlays(game, players));
     }
     if (changed) saveGame(game);
     return changed;

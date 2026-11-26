@@ -7,7 +7,8 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearts-hands-test-'));
 process.env.DATABASE_PATH = path.join(dir, 'test.db');
 const { sql } = await import('./db');
-const { createGame, createPlaytest, getGameView, getHandRecord, joinGame, loadGame, performAction, updateSettings } = await import('./games');
+const { createGame, createPlaytest, getGameView, getHandRecord, getPlayers, joinGame, loadGame, performAction, updateSettings } =
+  await import('./games');
 const { settingsFromForm } = await import('./forms');
 const { normalizeSettings } = await import('../engine/rules');
 const { reviewHand } = await import('../engine/review');
@@ -36,14 +37,16 @@ describe('trick review endpoint', () => {
   it('serves a finished hand to the people at the table, and nothing else', async () => {
     const owner = addUser();
     const outsider = addUser();
-    const id = createPlaytest(owner, 'Sandbox', normalizeSettings({}), 4);
+    // Every trick played at the table, so none are left out of the review.
+    const id = createPlaytest(owner, 'Sandbox', normalizeSettings({ autoFinish: false }), 4);
     performAction(id, owner, { type: 'dev:ai', scope: 'hand' });
     expect(loadGame(id)!.state!.handsPlayed).toBe(1);
 
     const res = await getReview(id, '1', owner);
     expect(res.status).toBe(200);
     const review = await res.json();
-    expect(review).toEqual(reviewHand(getHandRecord(id, 1)!));
+    const names = getPlayers(id).map((p) => p.displayName);
+    expect(review).toEqual({ ...reviewHand(getHandRecord(id, 1)!), names });
     expect(review.tricks).toHaveLength(12);
     expect(JSON.stringify(review)).not.toMatch(/dealt|passes/);
 
@@ -68,7 +71,7 @@ describe('trick review endpoint', () => {
     performAction(theirs, bob, { type: 'dev:ai', scope: 'hand' });
 
     const review = await (await getReview(mine, '1', alice)).json();
-    expect(review).toEqual(reviewHand(getHandRecord(mine, 1)!));
+    expect(review).toEqual({ ...reviewHand(getHandRecord(mine, 1)!), names: getPlayers(mine).map((p) => p.displayName) });
     expect(review.numPlayers).toBe(4);
     // Bob's hand 1 exists, but Alice isn't at his table.
     expect((await getReview(theirs, '1', alice)).status).toBe(404);
