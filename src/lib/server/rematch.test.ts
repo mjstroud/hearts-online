@@ -301,6 +301,41 @@ describe('keep playing', () => {
     endGame(id, host, 'now');
     expect(overview().gamesFinished).toBe(1);
   });
+
+  it('plays a five-seat game on past the limit it ended on, with the rotation and the stats running straight on', () => {
+    const users = [addUser(), addUser(), addUser(), addUser(), addUser()];
+    const id = createGame(users[0], 'Five on', normalizeSettings({ scoreLimit: 1 }));
+    for (const user of users.slice(1)) joinGame(id, user);
+    performAction(id, users[0], { type: 'start' });
+    playOut(id);
+    expect(state(id).handsPlayed).toBe(1);
+    const tab = listen(id, users[3]);
+    extend(id, users[0], { scoreLimit: 1_000_000 });
+    tab.stop();
+    // Everyone's open tab is told straight away, and switches to the table.
+    expect(tab.views.at(-1)).toMatchObject({ status: 'active', handsPlayed: 1, rematchId: null, table: { handNumber: 2 } });
+
+    // The limit that ended it is gone, so neither of the next two hands ends it again.
+    for (const n of [2, 3]) {
+      expect(state(id).hand!.number).toBe(n);
+      expect(state(id).hand!.passOffset).toBe(passOffsetForHand(n, 5));
+      playTo(id, n);
+      expect(loadGame(id)!.status).toBe('active');
+    }
+    expect(getHandRecords(id).map((h) => h.number)).toEqual([1, 2, 3]);
+    const { series, players } = gameStats(id);
+    expect(series.map((p) => p.totals.at(-1))).toEqual(state(id).scores);
+    expect(players.every((p) => p.hands === 3)).toBe(true);
+
+    // Finished again, it counts once in everyone's lifetime stats, and so does its win.
+    endGame(id, users[0], 'now');
+    const overviews = users.map((user) => userOverview(user, 'player'));
+    expect(overviews.map((o) => o.gamesFinished)).toEqual([1, 1, 1, 1, 1]);
+    expect(overviews.map((o) => o.me.hands)).toEqual([3, 3, 3, 3, 3]);
+    expect(overviews.map((o) => o.me.total)).toEqual(state(id).scores);
+    expect(overviews.every((o) => o.gamesWon <= 1)).toBe(true);
+    expect(overviews.some((o) => o.gamesWon === 1)).toBe(true);
+  });
 });
 
 describe('rematch', () => {
@@ -516,6 +551,25 @@ describe('playtest tables', () => {
     // And it can keep playing again from there.
     extend(id, owner, { scoreLimit: 300 });
     expect(state(id).extensions!.map((e) => e.from)).toEqual([1]);
+  });
+
+  it('undoing two “Keep playing”s puts each limit back in turn', () => {
+    const { id, owner } = finishedPlaytest(4);
+    extend(id, owner, { scoreLimit: 400 });
+    endGame(id, owner, 'now');
+    extend(id, owner, { scoreLimit: 500 });
+    expect(state(id).extensions!.map((e) => [e.from, e.to])).toEqual([
+      [1, 400],
+      [400, 500],
+    ]);
+    performAction(id, owner, { type: 'dev:undo' });
+    expect(loadGame(id)).toMatchObject({ status: 'finished', settings: { scoreLimit: 400 } });
+    expect(state(id).extensions).toHaveLength(1);
+    performAction(id, owner, { type: 'dev:undo' });
+    expect(loadGame(id)).toMatchObject({ status: 'finished', settings: { scoreLimit: 1 } });
+    expect(state(id).extensions).toBeUndefined();
+    // So a rematch from here starts from the first limit too.
+    expect(loadGame(rematchGame(id, owner))!.settings.scoreLimit).toBe(1);
   });
 
   it('an undo keeps the rematch link, so there is never a second rematch', () => {

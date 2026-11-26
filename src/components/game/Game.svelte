@@ -242,8 +242,11 @@
   function showShot() {
     const current = ending;
     if (!current) return;
+    // A download that stalls (a phone between networks) mustn't hold the hand end up: go on without the banner.
+    const giveUp = setTimeout(() => ending === current && endHand(), 3000);
     loadCelebration().then(
       (module) => {
+        clearTimeout(giveUp);
         // Skipped, or another hand ended, while it loaded.
         if (ending !== current) return;
         Celebration = module.default;
@@ -254,6 +257,7 @@
         endingTimer = setTimeout(endHand, prefersReducedMotion.current ? 1500 : 2200);
       },
       () => {
+        clearTimeout(giveUp);
         if (ending === current) endHand();
       },
     );
