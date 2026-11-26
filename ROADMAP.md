@@ -98,6 +98,15 @@ No change to how the game plays. The database gets one migration (v7, terms acce
 
 ### Phase 2: Read the table, and table moments
 
+**Status (2026-11-26): live.** Released with Get the app and keep playing / rematch as `release-2026-11-26.2` (Fly release v10), after volume snapshot `vs_xxm03p9lvbKtppwP5lDmRz3`.
+
+- **Checked:** 230 tests pass and budgets are met. In the browser:
+  - a 5-player hand with 32-char names, with moments, watches and a real Shoot the Sun celebration;
+  - the trick review;
+  - keep playing and rematch on a playtest.
+- **Not checked on real phones yet:** the look of the animations, the inspector on touch, and the install flow on the two Android phones.
+- **One design change:** a Sun or Moon shot is announced once, by the full-screen celebration, not also on the felt.
+
 All client code plus facts worked out in the view. No rule changes and no migration.
 
 - **S–M:** hover raises a trick card on desktop. Tapping the trick on a phone opens the inspector strip (play order, names, led card, winner).
@@ -112,8 +121,8 @@ All client code plus facts worked out in the view. No rule changes and no migrat
 
 ### Added 2026-11-26 (owner requests)
 
-- **S: Get the app.** A `/app` page with an Install button when the browser offers one, plus step-by-step instructions for iPhone, Android Chrome, Samsung Internet, Firefox and desktop. It's linked from the account menu and footer, with a dismissible nudge on /games on phones, all hidden inside the app. The service worker is registered on every page so browsers treat the site as installable. Built on `feature/get-the-app`.
-- **M: Finished games: keep playing or rematch** (host only). Built on `feature/finished-games`, branched from `feature/phase-2`.
+- **S: Get the app.** A `/app` page with an Install button when the browser offers one, plus step-by-step instructions for iPhone, Android Chrome, Samsung Internet, Firefox and desktop. It's linked from the account menu and footer, with a dismissible nudge on /games on phones, all hidden inside the app. The service worker is registered on every page so browsers treat the site as installable. **Live** in release-2026-11-26.2.
+- **M: Finished games: keep playing or rematch** (host only). **Live** in release-2026-11-26.2.
   - **Keep playing** continues the same game: totals carry on, as do hand numbers and the pass rotation. If the game ended on its score limit, the host picks a new limit above the highest total, or none. Anyone a cat was sitting in for gets their seat back, and the cats and the move timer start again.
   - **Rematch** opens a waiting room with the same players, seats and settings, with scores reset. Everyone's end screen links to it, and a second click returns the same rematch. A playtest rematch is dealt straight away.
   - Both go through the game action API (`extend` and `rematch`) and are stored in the existing game state (`rematchId`, and an `extensions` history of each limit change), so no migration is needed. Views gain one field, `rematchId`.
