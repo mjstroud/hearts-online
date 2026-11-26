@@ -41,7 +41,7 @@ const columns: { label: string; title: string; value: (s: PlayerStats) => string
         players.map((s) => (
           <tr class:list={{ me: s.userId === highlightId }}>
             <td>
-              <strong>{s.name}</strong>
+              <strong class="nm" title={s.name}>{s.name}</strong>
               {s.isBot && <span class="faint"> · bot</span>}
             </td>
             {columns.map((c) => (
@@ -61,5 +61,14 @@ const columns: { label: string; title: string; value: (s: PlayerStats) => string
 
   th[title] {
     cursor: help;
+  }
+
+  /* Keep the numbers in view on a phone: cut long names short. */
+  .nm {
+    display: inline-block;
+    max-width: 10em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: bottom;
   }
 </style>

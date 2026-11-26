@@ -56,20 +56,25 @@
     e.preventDefault();
   }
 
+  // A fixed width, so long names are cut short instead of stretching the tooltip across the chart.
+  const TIP_W = 240;
   const tip = $derived.by(() => {
     if (hover === null || !hands) return null;
     const rows = series
       .map((s, i) => ({ name: s.name, color: SERIES_COLORS[i % SERIES_COLORS.length], value: s.totals[hover! - 1], delta: s.totals[hover! - 1] - (s.totals[hover! - 2] ?? 0) }))
       .sort((a, b) => a.value - b.value);
-    const left = x(hover);
-    return { rows, left, flip: left > width - 200 };
+    const at = x(hover);
+    const w = Math.min(TIP_W, width);
+    // Beside the crosshair, on whichever side has room, and never past the chart's edges.
+    const left = at + 12 + w <= width ? at + 12 : at - 12 - w;
+    return { rows, w, left: Math.max(0, Math.min(width - w, left)) };
   });
 </script>
 
 <div class="chart" bind:clientWidth={width}>
   <ul class="legend">
     {#each series as s, i}
-      <li><span class="key" style={`background: ${SERIES_COLORS[i % SERIES_COLORS.length]}`}></span>{s.name}</li>
+      <li title={s.name}><span class="key" style={`background: ${SERIES_COLORS[i % SERIES_COLORS.length]}`}></span><span class="name">{s.name}</span></li>
     {/each}
   </ul>
 
@@ -82,6 +87,7 @@
       <svg
         {width}
         {height}
+        viewBox={`0 0 ${width} ${height}`}
         role="img"
         aria-label="Running score totals by hand. Use arrow keys to inspect each hand."
         tabindex="0"
@@ -120,7 +126,7 @@
       </svg>
 
       {#if tip}
-        <div class="tooltip" class:flip={tip.flip} style={`left: ${tip.left}px`}>
+        <div class="tooltip" style={`left: ${tip.left}px; width: ${tip.w}px`}>
           <div class="tip-title">After hand {hover}</div>
           {#each tip.rows as r}
             <div class="tip-row">
@@ -158,9 +164,19 @@
     display: inline-flex;
     align-items: center;
     gap: 7px;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .legend .name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .key {
+    flex: none;
     width: 14px;
     height: 2px;
     border-radius: 1px;
@@ -172,6 +188,8 @@
 
   svg {
     display: block;
+    /* Before the page hydrates, shrink the server-drawn chart to fit instead of overflowing. */
+    max-width: 100%;
     overflow: visible;
     outline: none;
     touch-action: pan-y;
@@ -208,8 +226,6 @@
   .tooltip {
     position: absolute;
     top: 6px;
-    transform: translateX(12px);
-    min-width: 170px;
     padding: 10px 12px;
     border-radius: 10px;
     background: color-mix(in srgb, var(--surface-2) 96%, transparent);
@@ -218,10 +234,6 @@
     pointer-events: none;
     font-size: 13px;
     z-index: 2;
-  }
-
-  .tooltip.flip {
-    transform: translateX(calc(-100% - 12px));
   }
 
   .tip-title {

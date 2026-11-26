@@ -3,6 +3,7 @@ import DeckToggle from '../components/DeckToggle.svelte';
 import PlayingCard from '../components/PlayingCard.svelte';
 import Layout from '../layouts/Layout.astro';
 import { SESSION_COOKIE, changePassword, deleteOtherSessions, takeAttempt, updateDisplayName } from '../lib/server/auth';
+import { DISPLAY_NAME_MAX, DISPLAY_NAME_MAX_UNITS, displayNameLength } from '../lib/names';
 import { readForm } from '../lib/server/http';
 
 const user = Astro.locals.user!;
@@ -13,11 +14,11 @@ let displayName = user.displayName;
 if (Astro.request.method === 'POST') {
   const form = await readForm(Astro.request);
   if (form.intent === 'profile') {
-    displayName = (form.displayName ?? '').slice(0, 32);
-    if (!displayName) error = 'Display name can’t be empty.';
+    displayName = form.displayName ?? '';
+    const res = updateDisplayName(user.id, displayName);
+    if ('error' in res) error = res.error;
     else {
-      updateDisplayName(user.id, displayName);
-      user.displayName = displayName; // so the header reflects it right away
+      displayName = user.displayName = res.name; // so the header reflects it right away
       saved = 'Name updated.';
     }
   } else if (form.intent === 'password') {
@@ -52,8 +53,13 @@ if (Astro.request.method === 'POST') {
         <h2 class="panel-title">Profile</h2>
         <label class="field">
           <span>Display name</span>
-          <input class="input" name="displayName" maxlength="32" required value={displayName} />
-          <small class="hint">Shown at the table, on scoreboards and in stats.</small>
+          <input class="input" name="displayName" maxlength={DISPLAY_NAME_MAX_UNITS} required value={displayName} />
+          <small class="hint">Up to {DISPLAY_NAME_MAX} characters. Shown at the table, on scoreboards and in stats.</small>
+          {
+            displayNameLength(user.displayName) > DISPLAY_NAME_MAX && (
+              <small class="hint warn">Your name is from before the {DISPLAY_NAME_MAX}-character limit, so it gets cut short in places. Pick a shorter one when you can.</small>
+            )
+          }
         </label>
         <div><button class="btn" type="submit">Save name</button></div>
       </form>
@@ -93,9 +99,17 @@ if (Astro.request.method === 'POST') {
   </div>
 </Layout>
 
+<script>
+  import '../lib/name-field';
+</script>
+
 <style>
   .small {
     font-size: 14px;
+  }
+
+  .warn {
+    color: var(--gold);
   }
 
   .preview {

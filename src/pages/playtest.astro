@@ -2,6 +2,7 @@
 import RuleSettings from '../components/RuleSettings.astro';
 import Layout from '../layouts/Layout.astro';
 import { DEFAULT_SETTINGS, normalizeSettings } from '../lib/engine/rules';
+import { GAME_NAME_MAX, clipToLength } from '../lib/names';
 import { settingsFromForm } from '../lib/server/forms';
 import { createPlaytest } from '../lib/server/games';
 import { readForm } from '../lib/server/http';
@@ -14,7 +15,7 @@ if (Astro.request.method === 'POST') {
   const form = await readForm(Astro.request);
   settings = normalizeSettings(settingsFromForm(form));
   players = form.players === '5' ? 5 : 4;
-  const name = (form.name ?? '').slice(0, 60) || 'Playtest';
+  const name = clipToLength(form.name ?? '', GAME_NAME_MAX) || 'Playtest';
   const id = createPlaytest(user.id, name, settings, players);
   return Astro.redirect(`/games/${id}`, 303);
 }

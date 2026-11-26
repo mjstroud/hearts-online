@@ -28,7 +28,7 @@
       tabindex="0"
       aria-label={`${item.label}: ${item.display}${item.detail ? `, ${item.detail}` : ''}`}
     >
-      <span class="label">{item.label}</span>
+      <span class="label" title={item.label}>{item.label}</span>
       <span class="track">
         <span class="bar" style={`width: ${Math.max(0, (100 * item.value) / top)}%; background: ${BAR_COLOR}`}></span>
         <span class="value num">{item.display}</span>

@@ -69,6 +69,13 @@
     font-size: clamp(30px, 5vw, 44px);
   }
 
+  /* Centered text spills off both sides if one long word can't wrap. */
+  h1,
+  .winner {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+
   .crown {
     font-size: 44px;
     color: var(--gold);
@@ -94,7 +101,7 @@
 
   .podium li {
     display: grid;
-    grid-template-columns: 44px 34px 1fr auto;
+    grid-template-columns: 44px 34px minmax(0, 1fr) auto;
     gap: 12px;
     align-items: center;
     padding: 10px 14px;
@@ -120,6 +127,8 @@
 
   .name {
     font-weight: 600;
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
 
   .center {

@@ -1,6 +1,7 @@
 import { createHash, randomBytes, scrypt, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
 import type { AstroCookies } from 'astro';
+import { displayNameError, normalizeDisplayName } from '../names';
 import { now, sql, transaction } from './db';
 
 const scryptAsync = promisify(scrypt) as (pw: string, salt: Buffer, keylen: number, opts: object) => Promise<Buffer>;
@@ -46,14 +47,17 @@ export const USERNAME_RE = /^[a-zA-Z0-9_.-]{3,24}$/;
 export function validateSignup(username: string, displayName: string, password: string): string | null {
   if (!USERNAME_RE.test(username)) return 'Usernames are 3–24 letters, numbers, dots, dashes or underscores.';
   if (/^bot-\d+$/i.test(username)) return 'That username is taken.';
-  if (!displayName || displayName.length > 32) return 'Display name must be 1–32 characters.';
+  const nameError = displayNameError(normalizeDisplayName(displayName));
+  if (nameError) return nameError;
   if (password.length < 8) return 'Passwords need at least 8 characters.';
   if (password.length > 200) return 'That password is too long.';
   return null;
 }
 
-export async function createUser(username: string, displayName: string, password: string): Promise<User | null> {
+/** Call validateSignup first. */
+export async function createUser(username: string, rawDisplayName: string, password: string): Promise<User | null> {
   if (sql('SELECT 1 FROM users WHERE username = ?').get(username)) return null;
+  const displayName = normalizeDisplayName(rawDisplayName);
   const hash = await hashPassword(password);
   try {
     const res = sql('INSERT INTO users (username, display_name, password_hash, created_at) VALUES (?, ?, ?, ?)').run(
@@ -82,8 +86,13 @@ export function getUser(id: number): User | null {
   return row ? toUser(row) : null;
 }
 
-export function updateDisplayName(userId: number, displayName: string) {
-  sql('UPDATE users SET display_name = ? WHERE id = ?').run(displayName, userId);
+/** Rename someone. Returns the name as saved, or why it can't be used. */
+export function updateDisplayName(userId: number, raw: string): { name: string } | { error: string } {
+  const name = normalizeDisplayName(raw);
+  const error = displayNameError(name);
+  if (error) return { error };
+  sql('UPDATE users SET display_name = ? WHERE id = ?').run(name, userId);
+  return { name };
 }
 
 export async function changePassword(userId: number, current: string, next: string): Promise<string | null> {

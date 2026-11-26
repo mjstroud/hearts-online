@@ -1,5 +1,7 @@
 /** Small presentation helpers shared by Astro pages and Svelte components. */
 
+import { graphemes } from './names';
+
 export const SITE_NAME = 'Shoot the Sun';
 
 const AVATAR_COLORS = ['#e2557a', '#e8894a', '#d4a72c', '#4caf7f', '#3aa6b9', '#5b7fe0', '#8a63d2', '#c45cb5', '#6f8f3a', '#d0644f'];
@@ -11,10 +13,11 @@ export function avatarColor(seed: string | number): string {
   return AVATAR_COLORS[h % AVATAR_COLORS.length];
 }
 
+/** Up to two characters for an avatar, without splitting an emoji or accented letter in half. */
 export function initials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
+  const parts = name.trim().split(/\s+/).filter(Boolean).map(graphemes);
   if (parts.length === 0) return '?';
-  if (parts.length === 1) return parts[0].slice(0, 2);
+  if (parts.length === 1) return parts[0].slice(0, 2).join('');
   return parts[0][0] + parts[parts.length - 1][0];
 }
 

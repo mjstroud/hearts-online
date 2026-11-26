@@ -614,6 +614,8 @@ select.input {
     0 1px 0 rgb(255 255 255 / 0.25) inset;
   text-transform: uppercase;
   letter-spacing: 0;
+  overflow: hidden;
+  white-space: nowrap;
 }
 
 /* ---------- Data tables ---------- */
@@ -677,6 +679,13 @@ table.data tbody tr:hover td {
   gap: 16px;
   flex-wrap: wrap;
   margin-bottom: 28px;
+}
+
+/* Headings here can hold a game name or a person's name: let a long word wrap instead of widening the page. */
+.page-head > * {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .page-head h1 {

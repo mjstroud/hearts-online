@@ -188,6 +188,11 @@ const handNumber = game.state?.hand?.number;
     border-color: rgb(240 71 91 / 0.18);
   }
 
+  /* These quote the game name, which can be one long word. */
+  .danger label {
+    overflow-wrap: anywhere;
+  }
+
   .small {
     font-size: 14px;
   }

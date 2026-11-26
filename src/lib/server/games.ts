@@ -17,6 +17,7 @@ import { type GameSettings, MAX_PLAYERS, MIN_PLAYERS, normalizeSettings, passCyc
 import type { HandRecord } from '../engine/scoring';
 import { summarizeHand, tableViewFor } from '../engine/view';
 import type { DevSettings, DevView, GameAction, GameListItem, GameMode, GameStatus, GameView } from '../types';
+import { GAME_NAME_MAX, clipToLength } from '../names';
 import { now, sql, transaction } from './db';
 import { onlineUsers, subscribers } from './hub';
 
@@ -633,7 +634,7 @@ export function updateSettings(gameId: string, userId: number, name: string, inp
     if (!game) throw new GameError('That game no longer exists.', 404);
     if (game.ownerId !== userId) throw new GameError('Only the game’s owner can change settings.', 403);
     if (game.status === 'finished') throw new GameError('This game is over.');
-    if (name) game.name = name.slice(0, 60);
+    if (name) game.name = clipToLength(name, GAME_NAME_MAX);
     const next = normalizeSettings({ ...game.settings, ...input });
     const timerChanged = next.moveTimer !== game.settings.moveTimer;
     // Once cards are dealt only the score limit and move timer can change, except at a playtest table.

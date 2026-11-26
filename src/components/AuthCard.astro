@@ -52,6 +52,13 @@ const { title, subtitle } = Astro.props;
     font-size: 30px;
   }
 
+  /* Centered, so an unbroken game or player name would spill off both sides. */
+  .head h1,
+  .head p {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+
   .below {
     text-align: center;
     margin-top: 18px;

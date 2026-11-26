@@ -4,17 +4,19 @@ import RuleSettings from '../../components/RuleSettings.astro';
 import Layout from '../../layouts/Layout.astro';
 import { DEFAULT_SETTINGS, normalizeSettings } from '../../lib/engine/rules';
 import { settingsFromForm } from '../../lib/server/forms';
+import { GAME_NAME_MAX, clipToLength } from '../../lib/names';
 import { createGame } from '../../lib/server/games';
 import { readForm } from '../../lib/server/http';
 
 const user = Astro.locals.user!;
 let error = '';
-let name = `${user.displayName.split(' ')[0]}’s Hearts`;
+const suffix = '’s Hearts';
+let name = clipToLength(user.displayName.split(' ')[0], GAME_NAME_MAX - suffix.length) + suffix;
 let settings = DEFAULT_SETTINGS;
 
 if (Astro.request.method === 'POST') {
   const form = await readForm(Astro.request);
-  name = (form.name ?? '').slice(0, 60);
+  name = clipToLength(form.name ?? '', GAME_NAME_MAX);
   settings = normalizeSettings(settingsFromForm(form));
   if (!name) error = 'Give your game a name.';
   else {
@@ -38,7 +40,7 @@ if (Astro.request.method === 'POST') {
       {error && <p class="alert" role="alert">{error}</p>}
       <label class="field">
         <span>Game name</span>
-        <input class="input" name="name" required maxlength="60" value={name} />
+        <input class="input" name="name" required maxlength={GAME_NAME_MAX} value={name} />
         <small class="hint">Something like “Stroud Family 2026”.</small>
       </label>
       <label class="field">

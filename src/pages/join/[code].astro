@@ -34,7 +34,7 @@ const open = game.status === 'lobby' && players.length < 5;
             <span class="avatar" style={`--size: 28px; --avatar: ${avatarColor(p.username)}`}>
               {p.isBot ? BOT_AVATAR : initials(p.displayName)}
             </span>
-            {p.displayName}
+            <span class="pname" title={p.displayName}>{p.displayName}</span>
           </li>
         ))
       }
@@ -75,5 +75,12 @@ const open = game.status === 'lobby' && players.length < 5;
     background: rgb(var(--hi) / 0.03);
     border: 1px solid var(--border);
     font-weight: 500;
+  }
+
+  .pname {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 </style>

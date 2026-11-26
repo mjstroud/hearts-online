@@ -63,7 +63,7 @@
             <td>
               <span class="who">
                 <span class="avatar" style={`--size: 24px; --avatar: ${avatarColor(p.username)}`}>{p.isBot ? BOT_AVATAR : initials(p.name)}</span>
-                {p.name}
+                <span class="nm" title={p.name}>{p.name}</span>
                 {#if summary.cribWinner === p.seat}<span class="badge" title="Won the crib">Crib</span>{/if}
               </span>
             </td>
@@ -133,6 +133,7 @@
   .banner div {
     display: flex;
     flex-direction: column;
+    min-width: 0;
   }
 
   .banner span:not(.icon) {
@@ -159,12 +160,21 @@
 
   .banner strong {
     color: var(--text);
+    overflow-wrap: anywhere;
   }
 
   .who {
     display: inline-flex;
     align-items: center;
     gap: 8px;
+  }
+
+  /* Keep the Hand and Total columns in view: cut long names short. */
+  .nm {
+    min-width: 0;
+    max-width: 9em;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   tr.best td {
@@ -189,6 +199,14 @@
     justify-content: space-between;
     gap: 16px;
     flex-wrap: wrap;
+  }
+
+  .crib > div {
+    min-width: 0;
+  }
+
+  .crib p {
+    overflow-wrap: anywhere;
   }
 
   .label {

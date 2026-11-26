@@ -394,6 +394,7 @@
   .who-text small {
     font-size: 11.5px;
     color: var(--faint);
+    overflow-wrap: anywhere;
   }
 
   .who-text small.act {

@@ -56,7 +56,7 @@ const deck = Astro.cookies.get(DECK_COOKIE)?.value === 'four' ? 'four' : 'two';
           {
             user ? (
               <details class="user-menu">
-                <summary aria-label="Account menu">
+                <summary aria-label="Account menu" title={user.displayName}>
                   <span class="avatar" style={`--size: 30px; --avatar: ${avatarColor(user.username)}`}>
                     {initials(user.displayName)}
                   </span>
@@ -162,6 +162,7 @@ const deck = Astro.cookies.get(DECK_COOKIE)?.value === 'four' ? 'four' : 'two';
     text-decoration: none;
     font-size: 14px;
     font-weight: 500;
+    white-space: nowrap;
     transition:
       color 0.15s,
       background 0.15s;
@@ -179,6 +180,7 @@ const deck = Astro.cookies.get(DECK_COOKIE)?.value === 'four' ? 'four' : 'two';
 
   .header-actions {
     margin-left: auto;
+    min-width: 0;
     display: flex;
     align-items: center;
     gap: 8px;
@@ -186,6 +188,7 @@ const deck = Astro.cookies.get(DECK_COOKIE)?.value === 'four' ? 'four' : 'two';
 
   .user-menu {
     position: relative;
+    min-width: 0;
   }
 
   .user-menu summary {
@@ -199,6 +202,13 @@ const deck = Astro.cookies.get(DECK_COOKIE)?.value === 'four' ? 'four' : 'two';
     font-size: 14px;
     font-weight: 500;
     border: 1px solid transparent;
+  }
+
+  .user-name {
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .user-menu summary::-webkit-details-marker {
@@ -216,6 +226,7 @@ const deck = Astro.cookies.get(DECK_COOKIE)?.value === 'four' ? 'four' : 'two';
     right: 0;
     top: calc(100% + 8px);
     min-width: 200px;
+    max-width: min(280px, calc(100vw - 24px));
     padding: 6px;
     border-radius: 14px;
     display: flex;
@@ -230,6 +241,7 @@ const deck = Astro.cookies.get(DECK_COOKIE)?.value === 'four' ? 'four' : 'two';
     font-size: 14px;
     border-bottom: 1px solid var(--border);
     margin-bottom: 4px;
+    overflow-wrap: anywhere;
   }
 
   .menu a,

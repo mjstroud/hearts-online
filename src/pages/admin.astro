@@ -47,7 +47,7 @@ const when = (t: number) => new Date(t).toLocaleDateString('en-US', { month: 'sh
         )
       }
 
-      <section class="panel">
+      <section class="panel accounts-wrap">
         <table class="accounts">
           <thead>
             <tr>
@@ -62,7 +62,7 @@ const when = (t: number) => new Date(t).toLocaleDateString('en-US', { month: 'sh
               accounts.map((a) => (
                 <tr>
                   <td>
-                    <strong>{a.displayName}</strong>
+                    <strong title={a.displayName}>{a.displayName}</strong>
                     <span class="faint small">@{a.username}</span>
                   </td>
                   <td class="faint small">{when(a.createdAt)}</td>
@@ -108,8 +108,18 @@ const when = (t: number) => new Date(t).toLocaleDateString('en-US', { month: 'sh
     vertical-align: middle;
   }
 
+  .accounts-wrap {
+    overflow-x: auto;
+  }
+
   .accounts td strong {
     display: block;
+  }
+
+  /* Let a long name or username wrap so the table fits the panel. */
+  .accounts td:first-child {
+    min-width: 9em;
+    overflow-wrap: anywhere;
   }
 
   .num {
@@ -131,5 +141,6 @@ const when = (t: number) => new Date(t).toLocaleDateString('en-US', { month: 'sh
 
   .made {
     border-color: rgb(242 196 109 / 0.35);
+    overflow-wrap: anywhere;
   }
 </style>

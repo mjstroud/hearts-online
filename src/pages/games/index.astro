@@ -88,7 +88,7 @@ const groups: { title: string; items: GameListItem[] }[] = [
                           {sorted.map((p, i) => (
                             <li class:list={{ me: p.isMe }}>
                               <span class="pos num">{i + 1}</span>
-                              <span class="pname">{p.isMe ? 'You' : p.name}</span>
+                              <span class="pname" title={p.name}>{p.isMe ? 'You' : p.name}</span>
                               <span class="num">{p.score}</span>
                             </li>
                           ))}
@@ -131,11 +131,14 @@ const groups: { title: string; items: GameListItem[] }[] = [
 
   .grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr));
     gap: 14px;
   }
 
   .game {
+    min-width: 0;
+    /* Game and player names: wrap a long word instead of spilling out of the card. */
+    overflow-wrap: anywhere;
     display: flex;
     flex-direction: column;
     gap: 14px;

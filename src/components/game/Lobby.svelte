@@ -69,7 +69,7 @@
             <span class="seat-no num">{p.seat + 1}</span>
             <span class="avatar" style={`--avatar: ${avatarColor(p.username)}`}>{p.isBot ? BOT_AVATAR : initials(p.name)}</span>
             <span class="who">
-              <strong>{p.name}</strong>
+              <strong title={p.name}>{p.name}</strong>
               <small class="faint">
                 {#if p.isBot}Computer player 🐾{:else}@{p.username}{/if}
                 {#if p.userId === view.ownerId} · Host{/if}
@@ -139,9 +139,10 @@
 </div>
 
 <style>
+  /* Zero minimums, so a long name ellipsizes instead of widening the columns. */
   .grid {
     display: grid;
-    grid-template-columns: 1fr 1.3fr;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr);
     gap: 20px;
     align-items: start;
   }
@@ -211,6 +212,7 @@
   }
 
   .seat-no {
+    flex: none;
     width: 22px;
     text-align: center;
     color: var(--faint);
@@ -226,13 +228,15 @@
     min-width: 0;
   }
 
-  .who strong {
+  .who strong,
+  .who small {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
   .dot {
+    flex: none;
     width: 8px;
     height: 8px;
     border-radius: 50%;
@@ -294,7 +298,7 @@
 
   @media (max-width: 860px) {
     .grid {
-      grid-template-columns: 1fr;
+      grid-template-columns: minmax(0, 1fr);
     }
 
     .seats,

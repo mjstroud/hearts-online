@@ -10,6 +10,7 @@ import {
   takeAttempt,
   validateSignup,
 } from '../lib/server/auth';
+import { DISPLAY_NAME_MAX, DISPLAY_NAME_MAX_UNITS } from '../lib/names';
 import { clientIp, isSecure, readForm, safeNext } from '../lib/server/http';
 
 const next = safeNext(Astro.url.searchParams.get('next'));
@@ -53,8 +54,8 @@ if (Astro.request.method === 'POST') {
       {error && <p class="alert" role="alert">{error}</p>}
       <label class="field">
         <span>Your name</span>
-        <input class="input" name="displayName" maxlength="32" required value={values.displayName} placeholder="Grandma Jo" autofocus />
-        <small class="hint">What everyone sees at the table.</small>
+        <input class="input" name="displayName" maxlength={DISPLAY_NAME_MAX_UNITS} required value={values.displayName} placeholder="Grandma Jo" autofocus />
+        <small class="hint">What everyone sees at the table. Up to {DISPLAY_NAME_MAX} characters.</small>
       </label>
       <label class="field">
         <span>Username</span>
@@ -93,3 +94,7 @@ if (Astro.request.method === 'POST') {
     <p slot="below">Already have an account? <a href={`/login${next !== '/games' ? `?next=${encodeURIComponent(next)}` : ''}`}>Sign in</a></p>
   </AuthCard>
 </Layout>
+
+<script>
+  import '../lib/name-field';
+</script>

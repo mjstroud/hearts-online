@@ -225,7 +225,9 @@
               {/each}
             </div>
             {#if showingWinner && shown.winner !== null}
-              <div class="takes" in:scale={{ start: 0.9, duration: 180 }}>{nameOf(shown.winner)} {shown.winner === me ? 'take' : 'takes'} it</div>
+              <div class="takes" in:scale={{ start: 0.9, duration: 180 }}>
+                <span class="takes-name">{nameOf(shown.winner)}</span><span class="takes-rest">&nbsp;{shown.winner === me ? 'take' : 'takes'} it</span>
+              </div>
             {/if}
           {:else if t.phase === 'passing'}
             <div class="center-note" in:fade>
@@ -276,7 +278,7 @@
               {#if !p.isBot}<span class="presence" class:on={p.online}></span>{/if}
             </span>
             <span class="plaque-text">
-              <span class="seat-name">{p.seat === me ? 'You' : p.name}</span>
+              <span class="seat-name" title={p.name}>{p.seat === me ? 'You' : p.name}</span>
               <span class="seat-score num">
                 <strong>{p.score}</strong>
                 {#if t.phase === 'playing'}
@@ -312,8 +314,8 @@
         {#if onAutopilot}
           <button class="btn btn-primary" disabled={busy} onclick={() => act({ type: 'resume' })}>I’m back, give me my seat</button>
         {:else if needPass}
-          <button class="btn btn-primary" disabled={busy || selected.length !== t.passCount} onclick={pass}>
-            Pass {selected.length}/{t.passCount} → {nameOf(t.passTarget)}
+          <button class="btn btn-primary pass-btn" disabled={busy || selected.length !== t.passCount} onclick={pass}>
+            Pass {selected.length}/{t.passCount} →&nbsp;<span class="btn-name">{nameOf(t.passTarget)}</span>
           </button>
         {:else if myTurn && !finePointer && selected.length === 1}
           <button class="btn btn-primary" disabled={busy} onclick={() => play(selected[0])}>Play {cardLabel(selected[0])}</button>
@@ -399,7 +401,7 @@
         <div class="last-hand">
           {#each view.players as p}
             <div class="lh-row">
-              <span>{p.seat === me ? 'You' : p.name}</span>
+              <span class="lh-name" title={p.name}>{p.seat === me ? 'You' : p.name}</span>
               <span class="lh-tags">
                 {#if view.lastHand.sun === p.seat}<span title="Shot the Sun">☀</span>{/if}
                 {#if view.lastHand.moon === p.seat}<span title="Shot the Moon">☾</span>{/if}
@@ -552,12 +554,25 @@
   .takes {
     position: absolute;
     bottom: 14%;
+    display: flex;
+    max-width: calc(100% - 24px);
+    white-space: nowrap;
     padding: 5px 12px;
     border-radius: 99px;
     background: rgb(0 0 0 / 0.6);
     color: var(--gold);
     font-size: 13px;
     font-weight: 600;
+  }
+
+  .takes-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .takes-rest {
+    flex: none;
   }
 
   .center-note {
@@ -899,8 +914,25 @@
   }
 
   .hint {
+    min-width: 0;
     color: var(--muted);
     font-size: 14.5px;
+    overflow-wrap: anywhere;
+  }
+
+  /* "Pass 0/3 → name": keep the button on screen by cutting the name short. */
+  .action-bar .btn {
+    max-width: 100%;
+  }
+
+  .pass-btn {
+    gap: 0;
+  }
+
+  .btn-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .hint.mine {
@@ -925,6 +957,7 @@
 
   /* ---------- Side ---------- */
   .side {
+    min-width: 0;
     display: flex;
     flex-direction: column;
     gap: 14px;
@@ -977,6 +1010,7 @@
     display: flex;
     flex-direction: column;
     gap: 6px;
+    overflow-wrap: anywhere;
   }
 
   .last-hand {
@@ -988,13 +1022,19 @@
 
   .lh-row {
     display: grid;
-    grid-template-columns: 1fr auto 44px;
+    grid-template-columns: minmax(0, 1fr) auto 44px;
     gap: 8px;
     align-items: center;
   }
 
   .lh-row strong {
     text-align: right;
+  }
+
+  .lh-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .lh-tags {
@@ -1019,7 +1059,7 @@
 
   @media (max-width: 1080px) {
     .layout {
-      grid-template-columns: 1fr;
+      grid-template-columns: minmax(0, 1fr);
     }
 
     .side {
