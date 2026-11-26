@@ -32,7 +32,7 @@ These are the "build it fast from the start" rules. They answer the performance 
 2. **Budgets, checked in CI** (`npm run check:budgets` and `view-size.test.ts`):
    - Game page JS: at most 45 KB gzipped (39.5 KB after Phase 1).
    - Any other JS file: at most 15 KB, and aim for 10.
-   - All CSS together: at most 11 KB (10.2 KB after Phase 1, with the font rules now in-house).
+   - All CSS together: at most 14 KB. It was 10.2 KB after Phase 1; the owner OK'd raising the cap from 11 KB for the Phase 2 visuals.
    - One player's live update: at most 4 KB (2.5–2.8 KB with 32-char names).
    A deploy that goes over fails. Raise a budget only with the owner's OK.
 3. **Load only what's needed.** The playtest panel currently ships to every player. Restaurant and taunt art should load only when switched on.
@@ -109,6 +109,14 @@ All client code plus facts worked out in the view. No rule changes and no migrat
 - **M:** the moments themselves (below).
 - **S:** a hand-end sequence: the final trick sits on the felt about 1.2s, then any Sun or Moon moment, then the result. Tap to skip. The hand result also shows the final trick.
 - **M:** a trick review after each hand, from the hand result and the scoreboard: each trick's cards, who led, who won, and the points.
+
+### Added 2026-11-26 (owner requests)
+
+- **S: Get the app.** A `/app` page with an Install button when the browser offers one, plus step-by-step instructions for iPhone, Android Chrome, Samsung Internet, Firefox and desktop. It's linked from the account menu and footer, with a dismissible nudge on /games on phones, all hidden inside the app. The service worker is registered on every page so browsers treat the site as installable. Built on `feature/get-the-app`.
+- **M: Finished games: keep playing or rematch** (host only). Built after Phase 2 on the same branch.
+  - **Keep playing** continues the same game: totals carry on, as do hand numbers and the pass rotation. If the game ended on its score limit, the host picks a new limit above the highest total, or none.
+  - **Rematch** opens a waiting room with the same players, seats and settings, with scores reset. Everyone's end screen links to it, and a second click returns the same rematch.
+  - Both go through the game action API and are stored in the existing game state, so no migration is needed. The reviewed spec lives with the build.
 
 ### Phase 3: Less waiting
 
