@@ -1,5 +1,6 @@
-// Shoot the Sun's service worker. It exists only to show turn alerts: Android Chrome won't
-// let a page construct a Notification itself. There is deliberately no fetch handler and no
+// Shoot the Sun's service worker. It shows turn alerts (Android Chrome won't let a page construct
+// a Notification itself), and every page registers it so browsers that want one before offering
+// to install the site get one (src/layouts/Layout.astro). There is deliberately no fetch handler and no
 // caching, so every request still goes to the server and a deploy is never stuck behind old files.
 
 self.addEventListener('install', () => self.skipWaiting());

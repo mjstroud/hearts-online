@@ -45,6 +45,32 @@ const deck = Astro.cookies.get(DECK_COOKIE)?.value === 'four' ? 'four' : 'two';
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <meta name="apple-mobile-web-app-title" content={devSite ? `${SITE_NAME} Dev` : SITE_NAME} />
+    {
+      /*
+       * Get the app (/app). Keep the browser's install offer for the /app page and the /games nudge, without
+       * preventDefault() so browsers that show their own offer still do. data-app marks the installed app, so
+       * .browser-only links hide before first paint. The service worker goes on every page because some
+       * browsers only offer to install a site that has one (it does nothing to requests: see public/sw.js).
+       */
+    }
+    <script is:inline>
+      addEventListener('beforeinstallprompt', (e) => {
+        window.heartsInstall = e;
+        dispatchEvent(new Event('hearts:install'));
+      });
+      addEventListener('appinstalled', () => {
+        window.heartsInstall = null;
+        try {
+          localStorage.setItem('hearts:app-nudge', 'installed');
+        } catch {}
+      });
+      if (matchMedia('(display-mode: standalone)').matches || navigator.standalone) document.documentElement.dataset.app = '';
+      addEventListener('load', () => {
+        try {
+          navigator.serviceWorker?.register('/sw.js', { scope: '/' }).catch(() => {});
+        } catch {}
+      });
+    </script>
     {devSite && <meta name="robots" content="noindex, nofollow" />}
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     {/* Fonts are self-hosted (src/styles/fonts.css). Preload the two every page uses so text doesn't reflow late. */}
@@ -77,6 +103,7 @@ const deck = Astro.cookies.get(DECK_COOKIE)?.value === 'four' ? 'four' : 'two';
                     <span class="faint">@{user.username}</span>
                   </div>
                   <a href="/account">Account</a>
+                  <a class="browser-only" href="/app">Get the app</a>
                   {isAdmin(user) && <a href="/admin">Admin</a>}
                   <form method="post" action="/logout">
                     <button type="submit">Sign out</button>
@@ -105,6 +132,7 @@ const deck = Astro.cookies.get(DECK_COOKIE)?.value === 'four' ? 'four' : 'two';
             <span class="faint">♥ {SITE_NAME} — one long game, wherever everyone is.</span>
             <nav class="row" style="--gap: 16px" aria-label="About this site">
               <a class="faint" href="/rules">House rules</a>
+              <a class="faint browser-only" href="/app">Get the app</a>
               <a class="faint" href="/terms">Terms</a>
               <a class="faint" href="/privacy">Privacy</a>
             </nav>

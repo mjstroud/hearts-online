@@ -150,6 +150,7 @@ describe('terms and privacy', () => {
       '/terms/',
       '/privacy',
       '/rules',
+      '/app',
       '/_astro/client.abc123.js',
       '/icons/icon-192.png',
       '/sw.js',

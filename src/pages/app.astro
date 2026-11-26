@@ -1,0 +1,201 @@
+---
+import Layout from '../layouts/Layout.astro';
+import { siteOrigin } from '../lib/server/http';
+import { SITE_NAME } from '../lib/ui';
+
+// How to put the site on a home screen, for every browser. It's a catch-all: some phones never
+// offer to install on their own. Open to everyone, signed in or not, and never behind the terms page.
+const here = `${new URL(siteOrigin(Astro.request)).host}/app`;
+---
+
+<Layout title="Get the app" description={`Put ${SITE_NAME} on your home screen, with its own icon and the whole screen for the table.`}>
+  <div class="container page" style="max-width: 640px">
+    <div class="page-head">
+      <div class="stack" style="--gap: 8px">
+        <span class="eyebrow">Get the app</span>
+        <h1 class="display">Put it on your home screen</h1>
+        <p class="muted lede">
+          {SITE_NAME} works like an app once it’s on your home screen: its own icon, the whole screen for the table, and no
+          browser bars. Same site, same account, and nothing to download from an app store.
+        </p>
+      </div>
+    </div>
+
+    {/* Without JavaScript the three step-by-step guides simply show in order. The script below puts the one that fits first. */}
+    <div id="ways" class="stack">
+      <h2 id="other-ways" class="eyebrow" hidden>Other ways to install</h2>
+
+      <section class="panel panel-pad way" data-way="app" hidden>
+        <h2>You’re already using the app.</h2>
+        <p class="muted">Nothing more to do here. To add it to another phone or computer, open <strong>{here}</strong> there.</p>
+      </section>
+
+      <section class="panel panel-pad way" data-way="install" hidden>
+        <h2>Install in one tap</h2>
+        <button class="btn btn-primary btn-lg btn-block" type="button">Install {SITE_NAME}</button>
+        <p class="muted" aria-live="polite"></p>
+      </section>
+
+      <section class="panel panel-pad way" data-way="ios">
+        <h2>iPhone or iPad</h2>
+        <ol>
+          <li>Open this page in <strong>Safari</strong>.</li>
+          <li>
+            Tap <strong>Share</strong>{' '}
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4M8 10H6v11h12V10h-2"></path></svg>.
+            In newer Safari, tap <strong>···</strong> first.
+          </li>
+          <li>
+            Tap <strong>Add to Home Screen</strong> (scroll down, or tap <strong>View More</strong>, if it isn’t showing).
+            If you see <strong>Open as Web App</strong>, leave it on.
+          </li>
+          <li>Tap <strong>Add</strong>.</li>
+        </ol>
+        <p class="hint">On iOS 16.4 or later, the Share menu in Chrome, Edge or Firefox can do it too.</p>
+      </section>
+
+      <section class="panel panel-pad way" data-way="android">
+        <h2>Android</h2>
+        <p data-browser="chrome">
+          <strong>Chrome:</strong> tap <strong>⋮</strong> at the top right, then <strong>Install app</strong> or{' '}
+          <strong>Add to Home screen</strong>. If it asks, choose <strong>Install</strong>.
+        </p>
+        <p data-browser="samsung">
+          <strong>Samsung Internet:</strong> tap the menu <strong>☰</strong> at the bottom right, then{' '}
+          <strong>Add page to</strong> → <strong>Home screen</strong>.
+        </p>
+        <p data-browser="firefox"><strong>Firefox:</strong> tap <strong>⋮</strong>, then <strong>Install</strong>.</p>
+      </section>
+
+      <section class="panel panel-pad way" data-way="desktop">
+        <h2>Computer</h2>
+        <p>
+          <strong>Chrome or Edge:</strong> click the install icon{' '}
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"
+            ><path d="M9 4H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1h-4M12 3v9m-3-3 3 3 3-3M8 20h8"></path></svg
+          >{' '}
+          at the right end of the address bar. No icon? In Chrome, use <strong>⋮</strong> →{' '}
+          <strong>Cast, save and share</strong> → <strong>Install page as app</strong>. In Edge, use <strong>···</strong> →{' '}
+          <strong>Apps</strong> → <strong>Install this site as an app</strong>.
+        </p>
+        <p><strong>Safari on a Mac:</strong> <strong>File</strong> → <strong>Add to Dock</strong>.</p>
+      </section>
+
+      {/* Runs as the page is read, before the guides are drawn, so nothing jumps once it's showing. */}
+      <script is:inline>
+        (() => {
+          const ways = document.getElementById('ways');
+          const others = document.getElementById('other-ways');
+          const way = (name) => ways.querySelector(`[data-way="${name}"]`);
+          const install = way('install');
+          const button = install.querySelector('button');
+          const note = install.querySelector('[aria-live]');
+          const ua = navigator.userAgent;
+          const inApp = document.documentElement.hasAttribute('data-app');
+          let top = null;
+
+          // The one path to follow goes first and stands out. The rest stay readable below it.
+          const lead = (el) => {
+            if (top === el) return;
+            if (top) {
+              top.classList.remove('primary');
+              others.after(top);
+            }
+            el.hidden = others.hidden = false;
+            el.classList.add('primary');
+            ways.prepend(el, others);
+            top = el;
+          };
+
+          // iPads ask for the desktop site, so they look like a Mac with a touch screen.
+          const ios = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+          lead(way(inApp ? 'app' : ios ? 'ios' : /Android/.test(ua) ? 'android' : 'desktop'));
+          // On Android, the browser in use goes first.
+          const browser = /SamsungBrowser/.test(ua) ? 'samsung' : /Firefox/.test(ua) ? 'firefox' : '';
+          const android = way('android');
+          if (browser) android.querySelector('h2').after(android.querySelector(`[data-browser="${browser}"]`));
+
+          // The browser offered to install (Layout.astro keeps the offer): one button beats the steps.
+          const offer = () => {
+            if (inApp || !window.heartsInstall) return;
+            button.hidden = false;
+            note.textContent = '';
+            lead(install);
+          };
+          const installed = () => {
+            button.hidden = true;
+            install.querySelector('h2').textContent = 'It’s installed';
+            note.textContent = 'Look for it on your home screen or with your other apps.';
+            lead(install);
+          };
+          button.onclick = async () => {
+            const event = window.heartsInstall;
+            // An offer can only be used once.
+            window.heartsInstall = null;
+            button.hidden = true;
+            try {
+              event.prompt();
+              if ((await event.userChoice).outcome === 'accepted') return installed();
+              note.textContent = 'No problem. You can install it any time from your browser’s menu: the steps are below.';
+            } catch {
+              note.textContent = 'Your browser didn’t open its installer. Its menu can do it instead: the steps are below.';
+            }
+          };
+          addEventListener('hearts:install', offer);
+          addEventListener('appinstalled', installed);
+          offer();
+        })();
+      </script>
+    </div>
+  </div>
+</Layout>
+
+<style>
+  .lede {
+    font-size: 17px;
+  }
+
+  .way {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .way[hidden],
+  .way [hidden] {
+    display: none;
+  }
+
+  .way.primary {
+    border-color: rgb(240 71 91 / 0.45);
+  }
+
+  .way h2 {
+    font-family: var(--font-display);
+    font-weight: 560;
+    font-size: 20px;
+  }
+
+  .way ol {
+    margin: 0;
+    padding-left: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  #other-ways {
+    margin-top: 12px;
+  }
+
+  .icon {
+    width: 1.15em;
+    height: 1.15em;
+    vertical-align: -0.2em;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+</style>

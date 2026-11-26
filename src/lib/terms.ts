@@ -44,10 +44,11 @@ const NEVER_GATED = [
   '/signup',
   '/reset',
   ACCEPT_TERMS_PATH,
-  // What people are agreeing to, plus the rules.
+  // What people are agreeing to, plus the rules and how to install the app.
   '/terms',
   '/privacy',
   '/rules',
+  '/app',
   // Static files.
   '/_astro',
   '/icons',
