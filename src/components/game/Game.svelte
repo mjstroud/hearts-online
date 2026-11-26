@@ -1,11 +1,15 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { prefersReducedMotion } from 'svelte/motion';
   import { fly } from '../../lib/motion';
   import { isPenaltyCard } from '../../lib/engine/cards';
+  import type { HandSummary } from '../../lib/engine/view';
   import { type MoveTiming, timeMove } from '../../lib/latency.svelte';
+  import { finalTrickHoldMs } from '../../lib/moments';
   import type { GameAction, GameView } from '../../lib/types';
   import { SITE_NAME } from '../../lib/ui';
   import FinalResults from './FinalResults.svelte';
+  import HandEndCelebration from './HandEndCelebration.svelte';
   import HandResult from './HandResult.svelte';
   import Lobby from './Lobby.svelte';
   import Table from './Table.svelte';
@@ -62,8 +66,11 @@
     if (!next) return;
     if (pendingBase !== null && next.version <= pendingBase) return;
     if (next.version >= view.version) {
+      const before = view;
       view = next;
       clockEndsAt = deadlineOf(next);
+      const hand = next.lastHand;
+      if (hand && hand.number > (before.lastHand?.number ?? 0)) handEnded(hand, endedLive(before, hand) ? before : null);
     }
   }
 
@@ -168,17 +175,95 @@
     }
   }
 
-  // Show the end-of-hand summary once per hand (remembered in memory even if storage is blocked).
+  // ----- The end of a hand
+  // Watched live: the final trick stays on the felt for a moment, then any Sun or Moon, then the result.
+  // On a page load or reconnect it goes straight to the result, after a Sun or Moon this device hasn't
+  // celebrated yet. A tap anywhere skips ahead. Both are remembered per device (in memory too, in case
+  // storage is blocked), so each result opens once and each Sun or Moon plays once.
+  const shotKey = $derived(`hearts:seen-shot:${view.id}`);
   let seenInMemory = 0;
-  $effect(() => {
-    const n = view.lastHand?.number ?? 0;
-    if (!n) return;
-    let seen = seenInMemory;
+  let shotInMemory = 0;
+  function seen(key: string, inMemory: number): number {
     try {
-      seen = Math.max(seen, Number(localStorage.getItem(seenKey) ?? 0));
+      return Math.max(inMemory, Number(localStorage.getItem(key) ?? 0));
+    } catch {
+      return inMemory;
+    }
+  }
+  function remember(key: string, n: number) {
+    try {
+      localStorage.setItem(key, String(n));
     } catch {}
-    if (n > seen) resultOpen = true;
-  });
+  }
+
+  /**
+   * How far the hand end has got. `held` is the view from before the last card, when we watched it
+   * land: after a game's last hand the server sends no table, so the felt stays up from that.
+   */
+  let ending = $state.raw<{ hand: HandSummary; stage: 'trick' | 'shot'; held: GameView | null } | null>(null);
+  let endingTimer: ReturnType<typeof setTimeout> | undefined;
+  /** A hand ended while the tab was hidden; it plays as a page load when the tab is back. */
+  let endedHidden = false;
+
+  /** True when `before` was this hand's last trick, so we saw it finish rather than loading in after. */
+  function endedLive(before: GameView, hand: HandSummary): boolean {
+    const t = before.table;
+    return before.status === 'active' && !!t && t.handNumber === hand.number && t.phase === 'playing' && t.trickNumber === t.totalTricks;
+  }
+
+  function handEnded(hand: HandSummary, before: GameView | null) {
+    if (document.visibilityState === 'hidden') {
+      endedHidden = true;
+      return;
+    }
+    clearTimeout(endingTimer);
+    resultOpen = false;
+    const shot = hand.number > seen(seenKey, seenInMemory) && (hand.sun ?? hand.moon) !== null && hand.number > seen(shotKey, shotInMemory);
+    ending = { hand, stage: 'trick', held: before };
+    if (before && hand.finalTrick) {
+      // Long enough for each of the final trick's messages (the Queen, the Jack, a watch ending) to show.
+      const who = { names: view.players.map((p) => p.name), me: view.me.seat, jack: view.settings.jackOfDiamonds };
+      const hold = finalTrickHoldMs(before.table, hand.finalTrick, hand, who);
+      endingTimer = setTimeout(() => (shot ? showShot() : endHand()), hold);
+    }
+    else if (shot) showShot();
+    else endHand();
+  }
+
+  function showShot() {
+    if (!ending) return;
+    ending = { ...ending, stage: 'shot' };
+    shotInMemory = ending.hand.number;
+    remember(shotKey, shotInMemory);
+    // Reduced motion gets a still banner, so it needn't stay as long.
+    endingTimer = setTimeout(endHand, prefersReducedMotion.current ? 1500 : 2200);
+  }
+
+  /** The last step (or a skip straight to it): the result, unless this device has already seen it. */
+  function endHand() {
+    if (!ending) return;
+    clearTimeout(endingTimer);
+    const { hand } = ending;
+    ending = null;
+    // A skipped Sun or Moon doesn't come back on the next page load.
+    if ((hand.sun ?? hand.moon) !== null && hand.number > shotInMemory) {
+      shotInMemory = hand.number;
+      remember(shotKey, shotInMemory);
+    }
+    if (hand.number > seen(seenKey, seenInMemory)) resultOpen = true;
+  }
+
+  // The tap that skips does nothing else, so it can't also pick a card or land on the result's backdrop.
+  function skipEnding(e: Event) {
+    if (!ending) return;
+    e.preventDefault();
+    e.stopPropagation();
+    endHand();
+  }
+
+  // After a game's last hand, the felt (and its final trick) stays up until the hand end has played.
+  const tableView = $derived(view.status === 'active' && view.table ? view : ending?.held?.table ? ending.held : null);
+  const shooter = $derived(ending?.stage === 'shot' ? (ending.hand.sun ?? ending.hand.moon) : null);
 
   function closeResult() {
     resultOpen = false;
@@ -189,7 +274,8 @@
   }
 
   // Alerts go through a service worker (public/sw.js), because Android Chrome won't let a page
-  // construct a Notification. Registered only once alerts are on, which implies permission.
+  // construct a Notification. Every page also registers it (Layout.astro) so the site can be installed;
+  // registering again here is harmless and gives us the registration to show alerts with.
   let alertWorker: Promise<ServiceWorkerRegistration | null> | null = null;
   function registerAlertWorker(): Promise<ServiceWorkerRegistration | null> {
     try {
@@ -311,11 +397,18 @@
 
     const onVisible = () => {
       if (document.visibilityState !== 'visible') return;
+      if (endedHidden && view.lastHand) {
+        endedHidden = false;
+        handEnded(view.lastHand, null);
+      }
       if (!es || es.readyState === EventSource.CLOSED) connect();
       refresh();
     };
     document.addEventListener('visibilitychange', onVisible);
+    // Opening the page, the last hand's result shows once (and its Sun or Moon) as before.
+    if (view.lastHand) handEnded(view.lastHand, null);
     return () => {
+      clearTimeout(endingTimer);
       clearTimeout(retryTimer);
       es?.close();
       document.removeEventListener('visibilitychange', onVisible);
@@ -333,16 +426,35 @@
   </button>
 {/if}
 
+<svelte:window onclickcapture={skipEnding} onkeydowncapture={(e) => (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') && skipEnding(e)} />
+
 {#if view.status === 'lobby'}
   <Lobby {view} {act} {leave} {busy} />
-{:else if view.status === 'active' && view.table}
-  <Table {view} {act} {busy} {notify} {toggleNotify} {clockEndsAt} onShowResult={() => (resultOpen = true)} />
+{:else if tableView}
+  <!-- A held table is a picture of the past: nothing on it can be played. -->
+  <Table
+    view={tableView}
+    {act}
+    busy={busy || tableView !== view}
+    {notify}
+    {toggleNotify}
+    {clockEndsAt}
+    finalTrick={ending?.held ? ending.hand.finalTrick : null}
+    onShowResult={() => (resultOpen = true)}
+  />
 {:else}
-  <FinalResults {view} {act} {busy} />
+  <FinalResults {view} {act} {busy} onShowResult={() => (resultOpen = true)} />
+{/if}
+
+{#if ending && shooter !== null}
+  <HandEndCelebration
+    kind={ending.hand.sun !== null ? 'sun' : 'moon'}
+    name={shooter === view.me.seat ? 'You' : (view.players[shooter]?.name ?? `Seat ${shooter + 1}`)}
+  />
 {/if}
 
 {#if resultOpen && view.lastHand}
-  <HandResult summary={view.lastHand} players={view.players} onclose={closeResult} />
+  <HandResult gameId={view.id} summary={view.lastHand} players={view.players} onclose={closeResult} />
 {/if}
 
 {#if toast}
