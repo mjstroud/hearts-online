@@ -355,6 +355,8 @@
   // A gentle fan: a little rotation and a shallow arc (the CSS curves it by 0.3px per card from the middle, squared).
   const spread = $derived(Math.min(1.5, 15 / Math.max(handCount, 1)));
   const arcDrop = $derived(mid ** 2 * 0.3);
+  /** Playtest only: the face-up crib's height, measured to pick the small-card style. */
+  let cribH = $state(0);
 
   // Everyone holds the same number of cards, so one counter covers the whole table.
   const tricksLeft = $derived(t.phase === 'playing' ? t.totalTricks - t.trickNumber + 1 : t.totalTricks);
@@ -489,8 +491,14 @@
           {:else if t.cribWinner === null}
             <div class="crib" in:fade title="The crib goes to whoever wins the first trick">
               {#if view.dev && showCrib}
-                <div class="crib-open">
-                  {#each view.dev.crib as c (c)}<PlayingCard card={c} width="calc(var(--tw) * 0.62)" jackScored={view.settings.jackOfDiamonds} />{/each}
+                <!-- The row is one card tall, so its height says whether the cards are under 56px wide (78.4px tall). -->
+                <div class="crib-open" bind:clientHeight={cribH}>
+                  {#each view.dev.crib as c (c)}<PlayingCard
+                      card={c}
+                      width="calc(var(--tw) * 0.62)"
+                      compact={cribH ? cribH < 78.4 : undefined}
+                      jackScored={view.settings.jackOfDiamonds}
+                    />{/each}
                 </div>
               {:else}
                 <div class="crib-stack">
