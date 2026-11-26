@@ -2,7 +2,7 @@
 import Layout from '../../layouts/Layout.astro';
 import { listGamesForUser } from '../../lib/server/games';
 import type { GameListItem } from '../../lib/types';
-import { timeAgo } from '../../lib/ui';
+import { SITE_NAME, timeAgo } from '../../lib/ui';
 
 const user = Astro.locals.user!;
 const games = listGamesForUser(user.id);
@@ -43,6 +43,50 @@ const groups: { title: string; items: GameListItem[] }[] = [
     </div>
 
     {notice && <p class="alert" style="margin-bottom: 20px">{notice}</p>}
+
+    <aside id="app-nudge" class="panel panel-pad spread app-nudge" aria-label="Get the app" hidden>
+      <div class="stack" style="--gap: 2px">
+        <strong>Play from your home screen</strong>
+        <span class="muted small">Add {SITE_NAME} as an app, with its own icon and the whole screen for the table.</span>
+      </div>
+      <div class="row" style="--gap: 8px">
+        <a class="btn btn-primary btn-sm" href="/app">Get the app</a>
+        <button class="btn btn-ghost btn-sm" type="button">Not now</button>
+      </div>
+    </aside>
+    {/* Decided as the page is read, before the games below it are drawn, so the list never jumps down. */}
+    <script is:inline>
+      (() => {
+        const nudge = document.getElementById('app-nudge');
+        let seen = null;
+        try {
+          seen = localStorage.getItem('hearts:app-nudge');
+        } catch {}
+        // Phones and tablets only, never inside the app, and never again once dismissed or installed.
+        if (seen || document.documentElement.hasAttribute('data-app') || !matchMedia('(pointer: coarse)').matches) return;
+        nudge.hidden = false;
+        const hide = (why) => {
+          nudge.hidden = true;
+          try {
+            localStorage.setItem('hearts:app-nudge', why);
+          } catch {}
+        };
+        nudge.querySelector('button').onclick = () => hide('dismissed');
+        // With the browser's install offer in hand (Layout.astro), install right here. Otherwise /app has the steps.
+        nudge.querySelector('a').onclick = async (e) => {
+          const offer = window.heartsInstall;
+          if (!offer) return;
+          e.preventDefault();
+          window.heartsInstall = null;
+          try {
+            offer.prompt();
+            if ((await offer.userChoice).outcome === 'accepted') hide('installed');
+          } catch {
+            location.href = '/app';
+          }
+        };
+      })();
+    </script>
 
     {
       games.length === 0 ? (
@@ -211,6 +255,15 @@ const groups: { title: string; items: GameListItem[] }[] = [
 
   .small {
     font-size: 14px;
+  }
+
+  .app-nudge {
+    margin-bottom: 24px;
+  }
+
+  /* .spread would otherwise show it before the script decides. */
+  .app-nudge[hidden] {
+    display: none;
   }
 
   .mono {

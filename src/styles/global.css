@@ -216,6 +216,11 @@ summary,
   color: var(--heart);
 }
 
+/* Links to /app, hidden in the installed app (Layout.astro sets data-app). !important beats `all: unset` in menus. */
+[data-app] .browser-only {
+  display: none !important;
+}
+
 /*
  * Safe areas: viewport-fit=cover lets the page run under a notch or rounded corner in landscape
  * (and under the status bar in a home-screen app). The insets are 0 everywhere else, so the
