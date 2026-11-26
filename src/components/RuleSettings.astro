@@ -17,6 +17,14 @@ const toggles: { name: keyof GameSettings; title: string; body: string }[] = [
     body: 'Hearts and the Q♠ can’t be dumped on trick one unless that’s all you hold.',
   },
 ];
+const pace: { name: keyof GameSettings; title: string; body: string }[] = [
+  { name: 'autoPlayLast', title: 'Last trick plays itself', body: 'Everyone’s last card is played for them after the usual pause.' },
+  {
+    name: 'autoFinish',
+    title: 'End hands early',
+    body: 'Once nobody can take any more points, as everyone can see from the cards played, the rest is played out at once.',
+  },
+];
 ---
 
 {
@@ -31,6 +39,23 @@ const toggles: { name: keyof GameSettings; title: string; body: string }[] = [
   </span>
 </label>
 <input type="hidden" name="watchesForm" value="1" />
+
+{/* Never disabled, for the same reason: these can change mid-game. */}
+<fieldset class="stack pace">
+  <legend class="label">Pace {locked && <span class="faint">· you can change these during the game</span>}</legend>
+  {
+    pace.map((t) => (
+      <label class="toggle">
+        <input type="checkbox" name={t.name} checked={settings[t.name] as boolean} />
+        <span>
+          <strong>{t.title}</strong>
+          <small>{t.body}</small>
+        </span>
+      </label>
+    ))
+  }
+</fieldset>
+<input type="hidden" name="paceForm" value="1" />
 
 <fieldset class="stack rules" disabled={locked}>
   <legend class="label">House rules {locked && <span class="faint">· locked once cards are dealt</span>}</legend>

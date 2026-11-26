@@ -2,10 +2,10 @@
   import { onMount } from 'svelte';
   import { prefersReducedMotion } from 'svelte/motion';
   import { fly } from '../../lib/motion';
-  import { isPenaltyCard } from '../../lib/engine/cards';
+  import { type Card, cardLabel, isPenaltyCard } from '../../lib/engine/cards';
   import type { HandSummary } from '../../lib/engine/view';
   import type { MoveTiming, TimedMove } from '../../lib/latency.svelte';
-  import { finalTrickHoldMs } from '../../lib/moments';
+  import { endedLive, finalTrickHoldMs } from '../../lib/moments';
   import type { GameAction, GameView } from '../../lib/types';
   import { SITE_NAME } from '../../lib/ui';
   import FinalResults from './FinalResults.svelte';
@@ -32,9 +32,11 @@
   });
 
   const seenKey = $derived(`hearts:seen-hand:${view.id}`);
-  // "Your turn" (tab title, alerts) means the table is waiting on you. While a cat plays your
-  // seat and someone else is still at the table, it isn't, so don't nag.
+  // "Your turn" (tab title, alerts) means the table is waiting on you. The server says so, leaving out
+  // seats it's about to play (a cat sitting in for you, or the last trick playing itself). A view from
+  // a server older than this page has no yourTurn, so fall back to working it out.
   const myTurn = $derived.by(() => {
+    if (typeof view.yourTurn === 'boolean') return view.yourTurn;
     const seat = view.me.seat;
     if (seat === null || !view.toAct.includes(seat)) return false;
     const mine = view.players.find((p) => p.seat === seat);
@@ -66,10 +68,12 @@
     if (pendingBase !== null && next.version <= pendingBase) return;
     if (next.version >= view.version) {
       const before = view;
-      view = next;
-      clockEndsAt = deadlineOf(next);
+      const shown = withPremove(next);
+      view = shown;
+      // A queued card shown played is a guess, like your own play: wait for the next player's real deadline.
+      clockEndsAt = shown.moveClock ? deadlineOf(next) : null;
       const hand = next.lastHand;
-      if (hand && hand.number > (before.lastHand?.number ?? 0)) handEnded(hand, endedLive(before, hand) ? before : null);
+      if (hand && hand.number > (before.lastHand?.number ?? 0)) handEnded(hand, endedLive(before.table, hand) ? before : null);
     }
   }
 
@@ -77,16 +81,16 @@
    * Predict the result of your own pass or play so the table reacts instantly.
    * The server's response (or the next live update) replaces the guess.
    */
-  function predict(action: GameAction): GameView | null {
-    const t = view.table;
-    const seat = view.me.seat;
+  function predict(action: GameAction, base: GameView = view): GameView | null {
+    const t = base.table;
+    const seat = base.me.seat;
     if (!t || seat === null) return null;
-    const n = view.players.length;
+    const n = base.players.length;
     if (action.type === 'play' && t.phase === 'playing' && t.turn === seat && t.current && t.legal.includes(action.card)) {
       const plays = [...t.current.plays, { seat, card: action.card }];
       const next = plays.length === n ? null : (seat + 1) % n;
       return {
-        ...view,
+        ...base,
         table: {
           ...t,
           myHand: t.myHand.filter((c) => c !== action.card),
@@ -97,18 +101,83 @@
           heartsBroken: t.heartsBroken || isPenaltyCard(action.card),
         },
         toAct: next === null ? [] : [next],
+        yourTurn: false,
+        premove: null,
         // The next player's clock starts on the server; wait for its real deadline.
         moveClock: null,
       };
     }
     if (action.type === 'pass' && t.phase === 'passing' && !t.myPass) {
       return {
-        ...view,
+        ...base,
         table: { ...t, myPass: action.cards, passed: t.passed.map((p, s) => p || s === seat) },
-        toAct: view.toAct.filter((s) => s !== seat),
+        toAct: base.toAct.filter((s) => s !== seat),
+        yourTurn: false,
       };
     }
     return null;
+  }
+
+  // ----- Queued cards. Queuing (or cancelling) shows at once: while the request is out, the card
+  // is laid over every view that arrives, and if one of them puts you on turn, it's shown played,
+  // as the server will play it the moment the request lands.
+  let pendingPremove: { hand: number; trick: number; card: Card | null; id: number } | null = null;
+  let premoveId = 0;
+
+  function withPremove(next: GameView): GameView {
+    const p = pendingPremove;
+    const t = next.table;
+    const seat = next.me.seat;
+    if (!p || !t || seat === null || t.phase !== 'playing' || t.handNumber !== p.hand || t.trickNumber !== p.trick) return next;
+    if (!t.current || t.current.plays.some((x) => x.seat === seat)) return next;
+    if (p.card === null) return { ...next, premove: null };
+    if (!t.myHand.includes(p.card)) return next;
+    if (t.turn === seat) return (t.current.plays.length > 0 && predict({ type: 'play', card: p.card }, next)) || next;
+    return { ...next, premove: p.card };
+  }
+
+  /** Whether `card`, from hand number `hand`, has been played by the time of `v`. */
+  function playedBy(v: GameView, hand: number, card: Card): boolean {
+    const t = v.table;
+    if (t && t.handNumber === hand) return !t.myHand.includes(card);
+    return (v.lastHand?.number ?? 0) >= hand;
+  }
+
+  async function premove(action: Extract<GameAction, { type: 'premove' }>): Promise<boolean> {
+    const t = view.table;
+    if (!t) return false;
+    const id = ++premoveId;
+    const hand = action.hand ?? t.handNumber;
+    // The card a cancel is for, to say so if it was played before the cancel landed.
+    const was = view.premove;
+    pendingPremove = { hand, trick: action.trick ?? t.trickNumber, card: action.card, id };
+    view = withPremove(view);
+    try {
+      const res = await fetch(`/api/games/${view.id}/action`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(action),
+        signal: AbortSignal.timeout?.(15_000),
+      });
+      const data = await res.json().catch(() => ({}));
+      // A newer queue or cancel may be on its way; it keeps its own overlay.
+      if (pendingPremove?.id === id) pendingPremove = null;
+      if (!res.ok) {
+        showToast(data.error ?? 'Something went wrong.');
+        refresh();
+        return false;
+      }
+      if (action.card === null && was && typeof data?.version === 'number' && playedBy(data, hand, was)) {
+        showToast(`Too late: your ${cardLabel(was)} was already played.`);
+      }
+      apply(data);
+      return true;
+    } catch {
+      if (pendingPremove?.id === id) pendingPremove = null;
+      showToast('Network hiccup — please try again.');
+      refresh();
+      return false;
+    }
   }
 
   /** Your latest play or pass, timed for the playtest panel's latency readout (playtest tables only). */
@@ -117,6 +186,8 @@
   let timeMove: ((action: TimedMove) => MoveTiming) | null = null;
 
   async function act(action: GameAction): Promise<boolean> {
+    // Quiet, and never blocks the table: you can change your mind straight away.
+    if (action.type === 'premove') return premove(action);
     const timer = view.dev && timeMove && (action.type === 'play' || action.type === 'pass') ? timeMove(action.type) : null;
     if (timer) timing = timer;
     busy = true;
@@ -212,12 +283,6 @@
   let celebration: Promise<CelebrationModule> | undefined;
   const loadCelebration = () => (celebration ??= import('./HandEndCelebration.svelte'));
   let Celebration = $state.raw<CelebrationModule['default'] | null>(null);
-
-  /** True when `before` was this hand's last trick, so we saw it finish rather than loading in after. */
-  function endedLive(before: GameView, hand: HandSummary): boolean {
-    const t = before.table;
-    return before.status === 'active' && !!t && t.handNumber === hand.number && t.phase === 'playing' && t.trickNumber === t.totalTricks;
-  }
 
   function handEnded(hand: HandSummary, before: GameView | null) {
     if (document.visibilityState === 'hidden') {
@@ -465,6 +530,8 @@
     {toggleNotify}
     {clockEndsAt}
     finalTrick={ending?.held ? ending.hand.finalTrick : null}
+    finalBefore={ending?.held?.table ?? null}
+    finalHand={ending?.held ? ending.hand : null}
     onShowResult={() => (resultOpen = true)}
   />
 {:else}
@@ -474,7 +541,7 @@
 {#if ending && shooter !== null && Celebration}
   <Celebration
     kind={ending.hand.sun !== null ? 'sun' : 'moon'}
-    name={shooter === view.me.seat ? 'You' : (view.players[shooter]?.name ?? `Seat ${shooter + 1}`)}
+    name={shooter === view.me.seat ? 'You' : (ending.hand.names?.[shooter] ?? view.players[shooter]?.name ?? `Seat ${shooter + 1}`)}
   />
 {/if}
 

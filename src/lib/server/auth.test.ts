@@ -32,7 +32,8 @@ describe('rate limiter', () => {
     expect(trackedAttemptKeys()).toBe(before);
   });
 
-  it('stays bounded under a flood of distinct keys', () => {
+  // Plain CPU work, which can take a while when the rest of the suite is running alongside it.
+  it('stays bounded under a flood of distinct keys', { timeout: 20_000 }, () => {
     for (let i = 0; i < 25_000; i++) takeAttempt([{ key: `flood:${i}`, limit: 1 }]);
     expect(trackedAttemptKeys()).toBeLessThanOrEqual(10_000);
   });

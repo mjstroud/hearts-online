@@ -13,7 +13,7 @@ export const GET: APIRoute = ({ params, locals, request }) => {
   if (!isMember(gameId, userId)) return jsonError('Game not found.', 404);
 
   const encoder = new TextEncoder();
-  let cleanup = () => {};
+  let cleanup = (_announce = true) => {};
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -28,9 +28,11 @@ export const GET: APIRoute = ({ params, locals, request }) => {
       };
       const send = (event: string, data: unknown) => write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
 
-      const unsubscribe = subscribe(gameId, { userId, send });
+      // The server hangs up after 'removed' or 'deleted'. Nobody else needs telling: this person is
+      // no longer at the table (or there is no table).
+      const unsubscribe = subscribe(gameId, { userId, send, close: () => cleanup(false) });
       const heartbeat = setInterval(() => write(': keep-alive\n\n'), 25_000);
-      cleanup = () => {
+      cleanup = (announce = true) => {
         if (closed) return;
         closed = true;
         clearInterval(heartbeat);
@@ -40,7 +42,7 @@ export const GET: APIRoute = ({ params, locals, request }) => {
         } catch {
           /* already closed */
         }
-        publish(gameId); // update everyone's online indicators
+        if (announce) publish(gameId); // update everyone's online indicators
       };
       request.signal.addEventListener('abort', () => cleanup());
       if (request.signal.aborted) return cleanup();

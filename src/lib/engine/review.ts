@@ -1,6 +1,6 @@
 import { type Card, JACK_OF_DIAMONDS, penaltyPoints } from './cards';
 import { JACK_VALUE, passLabel } from './rules';
-import type { HandRecord } from './scoring';
+import { type HandRecord, tableTricks } from './scoring';
 
 /** One finished trick, as the table saw it. */
 export interface ReviewTrick {
@@ -26,6 +26,10 @@ export interface HandReview {
   scores: number[];
   moon: number | null;
   sun: number | null;
+  /** The first trick the server played out because nothing left could score, or null. `tricks` stops before it. */
+  autoFrom: number | null;
+  /** Display names by seat for this hand's own players (filled by the server, as seats can change hands). */
+  names?: string[];
 }
 
 export function reviewHand(record: HandRecord): HandReview {
@@ -33,7 +37,8 @@ export function reviewHand(record: HandRecord): HandReview {
     number: record.number,
     numPlayers: record.numPlayers,
     passLabel: passLabel(record.passOffset, record.numPlayers),
-    tricks: record.tricks.map((t, i) => {
+    // Only the tricks the table saw played: the rest were played out with no points in them.
+    tricks: tableTricks(record).map((t, i) => {
       const cards = t.plays.map((p) => p.card);
       const jack = record.jackScored && cards.includes(JACK_OF_DIAMONDS) ? JACK_VALUE : 0;
       return {
@@ -50,5 +55,6 @@ export function reviewHand(record: HandRecord): HandReview {
     scores: record.scores,
     moon: record.moon,
     sun: record.sun,
+    autoFrom: record.autoFrom ?? null,
   };
 }

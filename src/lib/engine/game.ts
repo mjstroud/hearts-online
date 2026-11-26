@@ -1,6 +1,7 @@
+import { canAutoFinish } from './autofinish';
 import { chooseBotPass, chooseBotPlay } from './bot';
 import { type Card, type Rng, secureRng } from './cards';
-import { type DealOptions, type HandState, RuleError, dealHand, playCard, submitPass } from './hand';
+import { type DealOptions, type HandState, RuleError, dealHand, legalPlays, playCard, submitPass } from './hand';
 import type { GameSettings } from './rules';
 import { type HandRecord, scoreHand } from './scoring';
 
@@ -66,9 +67,16 @@ export function gamePass(game: GameState, seat: number, cards: Card[]): void {
 export function gamePlay(game: GameState, seat: number, card: Card, settings: GameSettings, rng: Rng = secureRng): ActionResult {
   const hand = requireHand(game);
   const outcome = playCard(hand, seat, card, settings);
-  if (!outcome.handComplete) return { completedHand: null, gameOver: false };
+  let autoFrom: number | undefined;
+  if (outcome.trickComplete && !outcome.handComplete && autoFinishes(hand, settings)) {
+    // Nothing left can score, so play out the rest at once. Which cards go where can't change the result.
+    autoFrom = hand.tricks.length + 1;
+    while (hand.phase === 'playing') playCard(hand, hand.turn!, legalPlays(hand, hand.turn!, settings)[0], settings);
+  }
+  if (hand.phase !== 'done') return { completedHand: null, gameOver: false };
 
-  const record = scoreHand(hand, settings);
+  // autoFrom goes on the record only: the next hand is dealt in this same call, so the hand itself is never saved again.
+  const record = scoreHand(hand, settings, autoFrom);
   game.scores = game.scores.map((total, s) => total + record.scores[s]);
   game.handsPlayed += 1;
   game.lastHand = record;
@@ -82,6 +90,16 @@ export function gamePlay(game: GameState, seat: number, card: Card, settings: Ga
   }
   game.hand = dealHand(hand.number + 1, game.numPlayers, rng);
   return { completedHand: record, gameOver: false };
+}
+
+/**
+ * Whether to end the hand early after a trick. A lone final trick is left to autoPlayLast when
+ * that's on, so the table still sees its cards played (after the usual pause) and counts it.
+ */
+function autoFinishes(hand: HandState, settings: GameSettings): boolean {
+  if (!settings.autoFinish) return false;
+  const left = hand.dealt[0].length - hand.tricks.length;
+  return (left >= 2 || !settings.autoPlayLast) && canAutoFinish(hand.tricks, hand.numPlayers, settings);
 }
 
 /** Deal on after a finished game: totals carry over, and hand numbers and the pass rotation continue. */

@@ -66,6 +66,10 @@ export interface GameView {
   updatedAt: number;
   /** The rematch of this finished game, if you have a seat at it. */
   rematchId: string | null;
+  /** The table is waiting on you: your seat is on turn and the server isn't about to play it. */
+  yourTurn: boolean;
+  /** Your queued card for the trick in progress. Only ever in your own view. */
+  premove: Card | null;
 }
 
 export type DevMove = { type: 'pass'; cards: Card[] } | { type: 'play'; card: Card };
@@ -87,6 +91,13 @@ export type GameAction =
   | { type: 'extend'; scoreLimit?: number | null; handsPlayed?: number }
   /** Host of a finished game: a waiting room with the same players, seats and settings. Answers with this game's view and its `rematchId`. */
   | { type: 'rematch' }
+  /**
+   * Queue a card to play the moment your turn arrives, or cancel with `card: null`. With a card,
+   * `hand` (the hand number) and `trick` (1-based) are required: the trick your screen showed.
+   */
+  | { type: 'premove'; card: Card | null; hand?: number; trick?: number }
+  /** Host only: change the game's settings, like the settings page form. Answers with the view. */
+  | { type: 'settings'; settings: Partial<Record<keyof GameSettings, unknown>>; name?: string }
   // Playtest tools (owner of a playtest table only)
   | { type: 'dev:act'; seat: number; move: DevMove }
   | { type: 'dev:ai'; scope: 'move' | 'trick' | 'hand'; /** For a single move: which seat (default: bots first). */ seat?: number }

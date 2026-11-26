@@ -7,15 +7,19 @@ import HandReviewDialog from '../../../components/game/HandReviewDialog.svelte';
 import Layout from '../../../layouts/Layout.astro';
 import { avatarSrc } from '../../../lib/avatars';
 import { passLabel } from '../../../lib/engine/rules';
-import { isMember, loadGame } from '../../../lib/server/games';
+import { isMember, loadGame, wasRemoved } from '../../../lib/server/games';
 import { avg, gameStats } from '../../../lib/server/stats';
 import { fmtAvg, signed } from '../../../lib/ui';
 
 const user = Astro.locals.user!;
 const game = loadGame(Astro.params.id!);
-if (!game || !isMember(game.id, user.id)) return Astro.redirect('/games?notice=missing');
+if (!game || !isMember(game.id, user.id)) {
+  return Astro.redirect(game && wasRemoved(game.id, user.id) ? '/games?notice=removed' : '/games?notice=missing');
+}
 
-const { series, hands, seated } = gameStats(game.id);
+const { series, hands, seated, removed } = gameStats(game.id);
+// A seat that changed hands mid-game says who had it before (someone removed before a hand finished never played one).
+const earlier = (seat: number) => removed.filter((r) => r.seat === seat && r.throughHand > 0);
 const totals = seated.map((p) => series[p.seat].totals.at(-1) ?? 0);
 const standings = seated
   .map((p) => ({ ...p, total: totals[p.seat], rank: 1 + totals.filter((t) => t < totals[p.seat]).length }))
@@ -93,6 +97,12 @@ for (const p of seated) names[p.seat] = p.displayName;
                         <span class="line-key" style={`background: ${SERIES_COLORS[p.seat % SERIES_COLORS.length]}`} />
                         <span class="nm" title={p.displayName}>{p.displayName}</span>
                       </span>
+                      {earlier(p.seat).map((r) => (
+                        <span class="was" title={`${r.displayName} until hand ${r.throughHand}`}>
+                          <span class="nm">{r.displayName}</span>
+                          <span class="until">until hand {r.throughHand}</span>
+                        </span>
+                      ))}
                     </th>
                   ))}
                 </tr>
@@ -212,6 +222,29 @@ for (const p of seated) names[p.seat] = p.displayName;
     width: 12px;
     height: 2px;
     border-radius: 1px;
+  }
+
+  /* "Alice until hand 6": the name gives way so the hand number always shows. */
+  .was {
+    display: flex;
+    gap: 4px;
+    max-width: 12em;
+    margin-top: 2px;
+    padding-left: 19px;
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: none;
+    letter-spacing: 0;
+    color: var(--faint);
+    white-space: nowrap;
+  }
+
+  .was .nm {
+    min-width: 0;
+  }
+
+  .until {
+    flex: none;
   }
 
   .hand-no {

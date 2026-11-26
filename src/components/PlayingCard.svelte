@@ -19,6 +19,8 @@
     /** Card width in px. */
     width?: number;
     selected?: boolean;
+    /** Queued to play the moment your turn arrives. */
+    queued?: boolean;
     dimmed?: boolean;
     /** Just received in the pass. */
     fresh?: boolean;
@@ -34,6 +36,7 @@
     card = null,
     width = 84,
     selected = false,
+    queued = false,
     dimmed = false,
     fresh = false,
     showValue = true,
@@ -66,17 +69,19 @@
   class:ace
   class:compact
   class:selected
+  class:queued
   class:dimmed
-  class:fresh
+  class:fresh={fresh && !queued}
   class:interactive={!!onclick}
   style={`--w: ${width}px`}
   {onclick}
   disabled={onclick ? disabled : undefined}
-  aria-label={name}
+  aria-label={queued ? `${name}, plays next` : name}
   aria-pressed={onclick ? selected : undefined}
   title={title ?? (card ? name : undefined)}
   role={onclick ? undefined : 'img'}
 >
+  {#if queued}<span class="next" aria-hidden="true">Next</span>{/if}
   {#if card}
     <span class="index" aria-hidden="true"
       ><b class:ten={rank === '10'}>{rank}</b><svg class="sym" viewBox="0 0 100 100"><path d={shape} /></svg></span
@@ -311,8 +316,15 @@
       var(--card-lift-shadow);
   }
 
-  .fresh::after {
-    content: 'new';
+  /* Raised a little less than a picked card, with a sky outline: outline isn't in the transition list, so only the lift moves. */
+  .queued {
+    transform: translateY(-12%);
+    outline: 2px solid var(--sky);
+    outline-offset: 2px;
+  }
+
+  .fresh::after,
+  .next {
     position: absolute;
     top: -10px;
     left: 2px;
@@ -329,8 +341,17 @@
     text-transform: uppercase;
   }
 
+  .fresh::after {
+    content: 'new';
+  }
+
+  .next {
+    background: var(--sky);
+    color: #04182e;
+  }
+
   @media (hover: hover) {
-    .interactive:not(:disabled):not(.selected):hover {
+    .interactive:not(:disabled):not(.selected):not(.queued):hover {
       transform: translateY(-10%);
       box-shadow:
         0 0 0 2px color-mix(in srgb, var(--gold) 70%, transparent),

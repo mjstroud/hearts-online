@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { cardsPerPlayer } from '../../lib/engine/rules';
   import type { HandSummary } from '../../lib/engine/view';
+  import { playedOutNote } from '../../lib/moments';
   import { fade, scale } from '../../lib/motion';
   import type { PlayerView } from '../../lib/types';
   import { signed } from '../../lib/ui';
@@ -16,10 +18,12 @@
   }
   let { gameId, summary, players, onclose }: Props = $props();
 
-  const name = (seat: number) => players[seat]?.name ?? `Seat ${seat + 1}`;
-  const names = $derived(players.map((p) => p.name));
+  // Who played the hand: after the host removes someone, their hands stay theirs (the server says so).
+  const name = (seat: number) => summary.names?.[seat] ?? players[seat]?.name ?? `Seat ${seat + 1}`;
+  const names = $derived(players.map((p) => name(p.seat)));
   const best = $derived(Math.min(...summary.scores));
   const final = $derived(summary.finalTrick);
+  const playedOut = $derived(playedOutNote(summary.autoFrom, cardsPerPlayer(summary.scores.length)));
 
   // The trick review (its code and its data) loads only when asked. It remembers which hand it was
   // opened for, so a newer hand closes it but a live update (someone passing) doesn't.
@@ -68,11 +72,17 @@
       </thead>
       <tbody>
         {#each players as p}
+          {@const nm = name(p.seat)}
           <tr class:best={summary.scores[p.seat] === best}>
             <td>
               <span class="who">
-                <Avatar name={p.name} seed={p.username} isBot={p.isBot} src={p.avatar} size={24} />
-                <span class="nm" title={p.name}>{p.name}</span>
+                <!-- Someone removed since keeps their initials, not the face of whoever sits there now. -->
+                {#if nm === p.name}
+                  <Avatar name={p.name} seed={p.username} isBot={p.isBot} src={p.avatar} size={24} />
+                {:else}
+                  <Avatar name={nm} seed={nm} size={24} />
+                {/if}
+                <span class="nm" title={nm}>{nm}</span>
                 {#if summary.cribWinner === p.seat}<span class="badge" title="Won the crib">Crib</span>{/if}
               </span>
             </td>
@@ -88,10 +98,13 @@
     </table>
   </div>
 
+  {#if playedOut}<p class="faint small">{playedOut}</p>{/if}
+
   {#if final && final.winner !== null}
     <div class="pile">
       <div>
-        <span class="label">Final trick</span>
+        <!-- When the server finished the hand, this is the last trick anyone saw played, not the hand's last. -->
+        <span class="label">{summary.autoFrom ? 'Last trick played' : 'Final trick'}</span>
         <p class="faint small">Won by {name(final.winner)}</p>
       </div>
       <TrickCards plays={final.plays} winner={final.winner} {names} />

@@ -1,6 +1,7 @@
 import {
   type Card,
   type Rng,
+  type Suit,
   cardLabel,
   isPenaltyCard,
   rankValue,
@@ -186,16 +187,40 @@ export function legalPlays(state: HandState, seat: number, settings: GameSetting
     return hand.slice();
   }
 
-  const leadSuit = suitOf(plays[0].card);
+  return followPlays(hand, suitOf(plays[0].card), isFirstTrick(state), settings);
+}
+
+/**
+ * What a seat may play once a card is led. It depends only on the lead suit, the seat's own cards,
+ * the first-trick flag and the settings, which is what lets a follower queue a card early.
+ */
+export function followPlays(hand: readonly Card[], leadSuit: Suit, firstTrick: boolean, settings: GameSettings): Card[] {
   const following = hand.filter((c) => suitOf(c) === leadSuit);
   if (following.length) return following;
 
-  if (isFirstTrick(state) && settings.noPointsOnFirstTrick) {
+  if (firstTrick && settings.noPointsOnFirstTrick) {
     // Points can't be dumped on trick one, unless point cards are all you hold.
     const safe = hand.filter((c) => !isPenaltyCard(c));
     if (safe.length) return safe;
   }
   return hand.slice();
+}
+
+/**
+ * The lead suit a seat may queue a card against right now, or null if it can't queue: it's on turn,
+ * it has played in this trick already, or it's leading. Trick 1 is always opened with a club, so
+ * followers know the suit before it's down. Only the suit, never the opening card itself: that
+ * would tell the table which low clubs are in the crib.
+ */
+export function queueSuit(current: Trick | null, firstTrick: boolean, seat: number, turn: number | null): Suit | null {
+  if (!current || seat === turn || current.plays.some((p) => p.seat === seat)) return null;
+  if (current.plays.length) return suitOf(current.plays[0].card);
+  return firstTrick && seat !== current.leader ? 'C' : null;
+}
+
+/** The last trick of the hand is being played: every card in it is forced. */
+export function isFinalTrick(state: HandState): boolean {
+  return state.phase === 'playing' && state.tricks.length === state.dealt[0].length - 1;
 }
 
 export function trickWinner(trick: Trick): number {

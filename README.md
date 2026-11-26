@@ -17,6 +17,13 @@ Built with [Astro](https://astro.build) (server-rendered), [Svelte](https://svel
 - **Table moments.** Short messages when hearts break, the Q♠ is played and eaten, or the J♦ is grabbed, and when a Sun or Moon watch starts or ends. When someone shoots the Moon or the Sun, a sunrise or moonrise plays before the results.
 - **Trick review.** Every finished hand's tricks can be replayed from the results screen ("See the tricks") or by tapping a hand number on the scoreboard. They load on demand from `/api/games/:id/hands/:number`.
 - **Terms and privacy.** Short Terms and Privacy pages. New players agree at sign-up, and existing players agree once on their next visit.
+- **Less waiting.**
+  - **Queue your card.** Once the lead card is down (on the first trick, as soon as play starts), tap a card you could follow with and it goes down the moment your turn arrives. Tap it again to cancel. Nobody else can tell you queued it until it's played.
+  - **The last trick plays itself.** Everyone's last card is forced, so after the usual pause the server plays the whole trick in one go. A late tap on your last card still works.
+  - **Hands end early** once nobody can take any more points, as everyone can see from the cards played face up. The server plays out the rest at once. Those tricks are left out of trick counts and the trick review. It never looks at hidden hands or the crib, so it fires only once every heart, the Q♠ and the J♦ have been played.
+  - The tab title, turn alerts and the "Your move" list on /games only count moves you actually have to make, not a card a cat or the server is about to play for you.
+  - The host can switch the last trick and early ending off on the game's Settings page, mid-game too. Both are on by default.
+- **Removing a player.** The host can remove anyone but themselves from the game's Settings page at any time. In a waiting room the seat empties. Mid-game a cat takes the seat for good and plays out the hand in progress, and the hands the person finished stay theirs in the stats, scoreboard and trick review.
 - **Optional move timer** (30 s to 5 min, off by default). When someone runs out of time, a cat sits in for them until they tap "I'm back" or play a card. If every person at the table is away, the table pauses instead of playing itself.
 - **House rules** (configurable per game):
   - Jack of Diamonds is **−10**.
@@ -188,7 +195,7 @@ src/
 1. The browser POSTs `{type: "play", card: "QS"}` to `/api/games/:id/action`.
 2. The server loads the game and checks that the player is seated and the move is legal. It applies the move and saves it in one SQLite transaction. A finished hand is appended to the `hands` table, and every stat is computed from that table.
 3. Each connected player's `/api/games/:id/events` stream receives **their own** view of the table. Other players' cards, and the crib unless you won it, never leave the server.
-4. If a computer player is next, the server plays for it after a short pause.
+4. If a computer player is next, the server plays for it after a short pause. If the next person has queued a card, it goes down in the same transaction. Queued cards live in server memory, apart from the game's saved state, so queueing changes nothing the rest of the table can see.
 
 ## Security notes
 

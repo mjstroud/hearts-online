@@ -13,5 +13,10 @@ export function settingsFromForm(form: Record<string, string>): Partial<Record<k
   }
   // Its own marker: this switch sits outside the house-rules fieldset, which is disabled mid-game.
   if (form.watchesForm) out.showWatches = form.showWatches === 'on';
+  // Likewise the pace options, which can change mid-game too.
+  if (form.paceForm) {
+    out.autoPlayLast = form.autoPlayLast === 'on';
+    out.autoFinish = form.autoFinish === 'on';
+  }
   return out;
 }
