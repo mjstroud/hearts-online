@@ -1,5 +1,17 @@
 <script lang="ts">
-  import { type Card, RANK_LABEL, SUIT_NAME, rankOf, suitOf } from '../lib/engine/cards';
+  import { type Card, RANK_LABEL, SUIT_NAME, type Suit, rankOf, suitOf } from '../lib/engine/cards';
+
+  /**
+   * Suit shapes on a 100-unit square, drawn as inline SVG. They used to be CSS masks over a solid
+   * colour, but Firefox leaves a hairline of that colour along a masked symbol's edge when the card is
+   * rotated, as trick cards are. The club's circles all wind the same way, so they merge.
+   */
+  const SUIT_PATH: Record<Suit, string> = {
+    S: 'M50 4C56 18 94 36 94 60 94 74 83 82 72 82 64 82 57 78 54 73 55 83 58 90 66 96H34C42 90 45 83 46 73 43 78 36 82 28 82 17 82 6 74 6 60 6 36 44 18 50 4z',
+    H: 'M50 93C46 87 7 63 5 36 4 18 17 6 31 6c9 0 16 5 19 13 3-8 10-13 19-13 14 0 27 12 26 30-2 27-41 51-45 57z',
+    D: 'M50 3C59 21 71 37 88 50 71 63 59 79 50 97 41 79 29 63 12 50 29 37 41 21 50 3z',
+    C: 'M30 27a20 20 0 1 0 40 0 20 20 0 1 0-40 0M7 57a20 20 0 1 0 40 0 20 20 0 1 0-40 0M53 57a20 20 0 1 0 40 0 20 20 0 1 0-40 0M38 50a12 12 0 1 0 24 0 12 12 0 1 0-24 0M47 58C47 78 43 88 33 96H67C57 88 53 78 53 58z',
+  };
 
   interface Props {
     /** Omit (or null) to show the card back. */
@@ -38,6 +50,8 @@
   /** Small cards (side panels, playtest rows) drop the big art and show a giant index instead. */
   const compact = $derived(width < 56);
   const tag = $derived(card === 'QS' ? '+13' : card === 'JD' && jackScored ? '−10' : null);
+  // The back's emblem is a heart.
+  const shape = $derived(SUIT_PATH[card ? suitOf(card) : 'H']);
   const name = $derived(
     card
       ? `${rank === 'J' ? 'Jack' : rank === 'Q' ? 'Queen' : rank === 'K' ? 'King' : rank === 'A' ? 'Ace' : rank} of ${SUIT_NAME[suitOf(card)]}`
@@ -64,9 +78,11 @@
   role={onclick ? undefined : 'img'}
 >
   {#if card}
-    <span class="index" aria-hidden="true"><b class:ten={rank === '10'}>{rank}</b><i class="sym"></i></span>
+    <span class="index" aria-hidden="true"
+      ><b class:ten={rank === '10'}>{rank}</b><svg class="sym" viewBox="0 0 100 100"><path d={shape} /></svg></span
+    >
     {#if compact}
-      <span class="big-suit sym" aria-hidden="true"></span>
+      <svg class="big-suit sym" viewBox="0 0 100 100" aria-hidden="true"><path d={shape} /></svg>
     {:else}
       <!-- One giant symbol (a crown on face cards), cropped by the corner like a watermark. -->
       <span class="art" aria-hidden="true">
@@ -85,7 +101,7 @@
             <rect x="4" y="22" width="32" height="4" rx="1.2" />
           </svg>
         {:else}
-          <i class="sym"></i>
+          <svg class="sym" viewBox="0 0 100 100"><path d={shape} /></svg>
         {/if}
       </span>
       {#if showValue && tag}
@@ -93,7 +109,7 @@
       {/if}
     {/if}
   {:else}
-    <span class="emblem" aria-hidden="true"></span>
+    <svg class="emblem" viewBox="0 0 100 100" aria-hidden="true"><path d={shape} /></svg>
   {/if}
 </svelte:element>
 
@@ -124,19 +140,15 @@
   /* Each card is a solid tile of its suit colour. */
   .suit-S {
     --tile: var(--suit-s);
-    --suit-mask: var(--mask-s);
   }
   .suit-H {
     --tile: var(--suit-h);
-    --suit-mask: var(--mask-h);
   }
   .suit-D {
     --tile: var(--suit-d);
-    --suit-mask: var(--mask-d);
   }
   .suit-C {
     --tile: var(--suit-c);
-    --suit-mask: var(--mask-c);
   }
 
   .sym {
@@ -144,9 +156,7 @@
     flex: none;
     width: 1em;
     height: 1em;
-    background-color: currentColor;
-    -webkit-mask: var(--suit-mask) center / contain no-repeat;
-    mask: var(--suit-mask) center / contain no-repeat;
+    fill: currentColor;
   }
 
   /* ----- Corner index: big and bold so a fanned hand reads at a glance. Sizes are in cqi, hundredths of the card's width. ----- */
@@ -255,7 +265,6 @@
   /* ----- Card back ----- */
   .back {
     background: var(--card-face);
-    --suit-mask: var(--mask-h);
   }
 
   .back::before {
@@ -273,9 +282,7 @@
     width: 22cqi;
     height: 22cqi;
     transform: translate(-50%, -50%);
-    background: var(--card-face);
-    -webkit-mask: var(--suit-mask) center / contain no-repeat;
-    mask: var(--suit-mask) center / contain no-repeat;
+    fill: var(--card-face);
   }
 
   /* ----- States ----- */
