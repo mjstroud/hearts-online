@@ -5,7 +5,7 @@
   "private": true,
   "description": "Shoot the Sun: private online Hearts for family games that last all year.",
   "engines": {
-    "node": ">=22.13.0"
+    "node": ">=22.23.4"
   },
   "scripts": {
     "dev": "node --env-file-if-exists=.env ./node_modules/astro/bin/astro.mjs dev",

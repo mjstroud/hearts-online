@@ -40,7 +40,7 @@ Built with [Astro](https://astro.build) (server-rendered), [Svelte](https://svel
 
 ## Running locally
 
-Requires **Node 22.13+** (Node 24 recommended).
+Requires **Node 22.23.4+** (Node 24 recommended).
 
 ```bash
 npm install
