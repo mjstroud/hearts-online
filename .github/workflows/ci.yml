@@ -15,8 +15,11 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: npm test
+      # --silent=false keeps the console output of passing tests, such as the live-update sizes.
+      - run: npm test -- --silent=false
       - run: npm run build
+      # Fails the job (and so the deploy) when the browser bundle grows past its budgets.
+      - run: npm run check:budgets
 
   # Ship to Fly.io once tests pass on main. Needs the FLY_API_TOKEN repo secret.
   deploy:

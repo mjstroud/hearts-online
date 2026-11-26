@@ -2,6 +2,7 @@ import { createHash, randomBytes, scrypt, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
 import type { AstroCookies } from 'astro';
 import { displayNameError, normalizeDisplayName } from '../names';
+import { TERMS_VERSION } from '../terms';
 import { now, sql, transaction } from './db';
 
 const scryptAsync = promisify(scrypt) as (pw: string, salt: Buffer, keylen: number, opts: object) => Promise<Buffer>;
@@ -18,6 +19,8 @@ export interface User {
   isBot: boolean;
   /** The current profile photo (see avatarSrc), or null. Always null for the cats. */
   avatarId: string | null;
+  /** The version of the Terms and Privacy Policy they last agreed to, or null if they never have. */
+  termsVersion: number | null;
 }
 
 interface UserRow {
@@ -27,6 +30,7 @@ interface UserRow {
   password_hash: string | null;
   is_bot: number;
   avatar_id: string | null;
+  terms_version: number | null;
 }
 
 const toUser = (r: UserRow): User => ({
@@ -35,6 +39,7 @@ const toUser = (r: UserRow): User => ({
   displayName: r.display_name,
   isBot: !!r.is_bot,
   avatarId: r.is_bot ? null : r.avatar_id,
+  termsVersion: r.terms_version ?? null,
 });
 
 export async function hashPassword(password: string): Promise<string> {
@@ -63,19 +68,22 @@ export function validateSignup(username: string, displayName: string, password: 
   return null;
 }
 
-/** Call validateSignup first. */
-export async function createUser(username: string, rawDisplayName: string, password: string): Promise<User | null> {
+/** Call validateSignup first. Pass the terms version they just agreed to, if any, to record it with the time. */
+export async function createUser(
+  username: string,
+  rawDisplayName: string,
+  password: string,
+  termsVersion: number | null = null,
+): Promise<User | null> {
   if (sql('SELECT 1 FROM users WHERE username = ?').get(username)) return null;
   const displayName = normalizeDisplayName(rawDisplayName);
   const hash = await hashPassword(password);
   try {
-    const res = sql('INSERT INTO users (username, display_name, password_hash, created_at) VALUES (?, ?, ?, ?)').run(
-      username,
-      displayName,
-      hash,
-      now(),
-    );
-    return { id: Number(res.lastInsertRowid), username, displayName, isBot: false, avatarId: null };
+    const t = now();
+    const res = sql(
+      'INSERT INTO users (username, display_name, password_hash, created_at, terms_version, terms_accepted_at) VALUES (?, ?, ?, ?, ?, ?)',
+    ).run(username, displayName, hash, t, termsVersion, termsVersion === null ? null : t);
+    return { id: Number(res.lastInsertRowid), username, displayName, isBot: false, avatarId: null, termsVersion };
   } catch {
     return null; // lost a race for the same username
   }
@@ -204,6 +212,40 @@ export function signupCodeValid(code: string): boolean {
   if (!expected) return true;
   const digest = (s: string) => createHash('sha256').update(s).digest();
   return timingSafeEqual(digest(code.trim()), digest(expected));
+}
+
+export const TERMS_REQUIRED = 'Please tick the box to agree to the Terms and the Privacy Policy.';
+
+export interface SignupForm {
+  username: string;
+  displayName: string;
+  password: string;
+  confirmPassword: string;
+  signupCode: string;
+  /** The "I agree to the Terms and the Privacy Policy" box was ticked. */
+  agreedToTerms: boolean;
+}
+
+/**
+ * Every sign-up check, in order: the fields, the terms box, the rate limit (only counted once the
+ * form is otherwise fine), then the invite code. A new account records the terms version it agreed to.
+ */
+export async function signUp(form: SignupForm, ip: string): Promise<{ user: User } | { error: string }> {
+  const fieldError = validateSignup(form.username, form.displayName, form.password);
+  if (fieldError) return { error: fieldError };
+  if (form.password !== form.confirmPassword) return { error: 'Those passwords don’t match.' };
+  if (!form.agreedToTerms) return { error: TERMS_REQUIRED };
+  if (!takeAttempt([{ key: `signup:ip:${ip}`, limit: 20 }])) {
+    return { error: 'Too many sign-up attempts. Please wait a few minutes and try again.' };
+  }
+  if (!signupCodeValid(form.signupCode)) return { error: 'That family invite code isn’t right.' };
+  const user = await createUser(form.username, form.displayName, form.password, TERMS_VERSION);
+  return user ? { user } : { error: 'That username is already taken.' };
+}
+
+/** Record that someone agreed to the current Terms and Privacy Policy, and when. */
+export function acceptTerms(userId: number) {
+  sql('UPDATE users SET terms_version = ?, terms_accepted_at = ? WHERE id = ? AND is_bot = 0').run(TERMS_VERSION, now(), userId);
 }
 
 /** Sign out every other session, e.g. after a password change. */

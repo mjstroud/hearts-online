@@ -1,0 +1,197 @@
+---
+import Layout from '../layouts/Layout.astro';
+import { SITE_NAME } from '../lib/ui';
+import { CONTACT_EMAIL, MIN_AGE, TERMS_UPDATED, TERMS_VERSION, contactHref } from '../lib/terms';
+
+const mailto = contactHref();
+---
+
+<Layout title="Terms" description={`The terms for using ${SITE_NAME}, a free hobby site for playing Hearts.`}>
+  <div class="container page" style="max-width: 760px">
+    <div class="page-head">
+      <div class="stack" style="--gap: 8px">
+        <span class="eyebrow">Terms of use</span>
+        <h1 class="display">The rules of the house</h1>
+        <p class="muted lede">The card rules are on the <a href="/rules">How to play</a> page. These are the rules for using the site itself.</p>
+        <p class="faint small">Version {TERMS_VERSION} · Updated {TERMS_UPDATED}</p>
+      </div>
+    </div>
+
+    <article class="stack doc" style="--gap: 20px">
+      <section class="panel panel-pad">
+        <h2>The short version</h2>
+        <ul>
+          <li>{SITE_NAME} is a free hobby project. It comes as-is, with no promises, and it might change or close.</li>
+          <li>Be kind, don’t break things, and never play for real money.</li>
+          <li>What you post stays yours, but you let us show it to the other players.</li>
+        </ul>
+        <p class="muted">The rest of this page says the same thing at more length. By creating an account or using the site, you agree to all of it.</p>
+      </section>
+
+      <section class="panel panel-pad">
+        <h2>Who runs this</h2>
+        <p>
+          {SITE_NAME} (“the site”) is run as a personal, non-commercial hobby. “We” and “us” mean the people who run it. It’s
+          not a business, and nobody is paid to keep it running. If you don’t agree to these terms, please don’t use the site.
+        </p>
+      </section>
+
+      <section class="panel panel-pad">
+        <h2>No warranty</h2>
+        <p>
+          The site is free and provided <strong>“as is” and “as available”</strong>, without warranties of any kind, whether
+          express or implied. That includes any warranty that it’s fit for a particular purpose, that it will always be up,
+          that it’s free of bugs, or that games, scores and stats will never be lost.
+        </p>
+        <p>Features can change or disappear, and the whole site may shut down at any time, with or without notice.</p>
+      </section>
+
+      <section class="panel panel-pad">
+        <h2>Limits on liability</h2>
+        <p>
+          To the fullest extent the law allows, the people who run the site and anyone who helps them are not liable for any
+          indirect, incidental, special, consequential or punitive damages, or for lost data, lost games or lost bragging
+          rights, however they come about. If we’re found liable for something anyway, the most we’ll owe you in total is
+          US$10.
+        </p>
+        <p>
+          If someone makes a claim against us because of something you posted or did on the site against these terms, you
+          agree to take responsibility for it.
+        </p>
+        <p class="muted">Some places don’t allow some of these limits. Where that’s the case, they apply as far as the law allows.</p>
+      </section>
+
+      <section class="panel panel-pad">
+        <h2>Playing fair</h2>
+        <p>When you use the site, please don’t:</p>
+        <ul>
+          <li>harass, bully, threaten or demean anyone;</li>
+          <li>post anything illegal, hateful or sexually explicit, or anything you don’t have the right to share;</li>
+          <li>pretend to be someone you’re not (the cats are allowed to be cats);</li>
+          <li>
+            attack the site: try to break in, get into accounts or games that aren’t yours, get around its limits, or overload
+            it;
+          </li>
+          <li>scrape it, or play or collect data with bots or scripts of your own;</li>
+          <li>
+            use it for <strong>real-money gambling</strong>: no betting on games, no stakes, no cash prizes. The points are
+            worth bragging rights and nothing else.
+          </li>
+        </ul>
+      </section>
+
+      <section class="panel panel-pad">
+        <h2>Your account</h2>
+        <p>
+          Keep your password to yourself, and use one account per person. You’re responsible for what happens on your account.
+          If you think someone else has been using it, let us know.
+        </p>
+      </section>
+
+      <section class="panel panel-pad">
+        <h2>Your content</h2>
+        <p>
+          Your display name, the names you give games, your profile photo and anything else you post (such as chat, if the site
+          gets it) stay <strong>yours</strong>.
+        </p>
+        <p>
+          By posting them, you give us a free, non-exclusive, worldwide permission to store them, copy them as needed to run the
+          site, and show them to other players. That lasts while they’re on the site, and for a short time afterwards in
+          backups.
+        </p>
+        <p>
+          You must have the right to post what you post. Use a photo of yourself, or one you have permission to use. We may
+          remove anything that breaks these terms.
+        </p>
+        <p>
+          You’re responsible for what you post. Nobody reviews it before other players see it, and we’re not responsible for
+          what other players post.
+        </p>
+      </section>
+
+      <section class="panel panel-pad">
+        <h2>Suspending and removing accounts</h2>
+        <p>
+          We can suspend, limit or remove any account or content that breaks these terms or puts the site or other players at
+          risk. We may do this without warning. You can stop using the site whenever you like.
+          The <a href="/privacy">Privacy Policy</a> explains how to have your account deleted.
+        </p>
+      </section>
+
+      <section class="panel panel-pad">
+        <h2>Age</h2>
+        <p>
+          You must be at least <strong>{MIN_AGE}</strong> to create an account. If you’re under 18, or under the age of
+          adulthood where you live, check with a parent or guardian first. We’ll remove any account we learn belongs to someone
+          under {MIN_AGE}.
+        </p>
+      </section>
+
+      <section class="panel panel-pad">
+        <h2>Changes to these terms</h2>
+        <p>
+          We may update these terms or the Privacy Policy. When a change matters, the version number above goes up, and
+          you’ll be asked to agree again the next time you open the site. If you don’t agree to the new version, please stop
+          using the site.
+        </p>
+      </section>
+
+      <section class="panel panel-pad">
+        <h2>The legal bits</h2>
+        <p>
+          If part of these terms can’t be enforced, the rest still applies. If we don’t enforce something straight away, we
+          haven’t given up the right to. These terms and the <a href="/privacy">Privacy Policy</a> are the whole agreement
+          between you and us about the site.
+        </p>
+      </section>
+
+      <section class="panel panel-pad">
+        <h2>Contact</h2>
+        <p>
+          Questions about these terms? {mailto ? <>Email us at <a href={mailto}>{CONTACT_EMAIL}</a>.</> : 'Ask a site admin, or whoever invited you to the site.'}
+        </p>
+      </section>
+    </article>
+  </div>
+</Layout>
+
+<style>
+  .lede {
+    font-size: 17px;
+    max-width: 620px;
+  }
+
+  .small {
+    font-size: 13.5px;
+  }
+
+  .doc {
+    overflow-wrap: anywhere;
+  }
+
+  .doc section {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .doc h2 {
+    font-family: var(--font-display);
+    font-weight: 560;
+    font-size: 22px;
+  }
+
+  .doc p,
+  .doc li {
+    font-size: 15.5px;
+    line-height: 1.65;
+  }
+
+  .doc ul {
+    margin: 0;
+    padding-left: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+</style>

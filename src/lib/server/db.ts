@@ -101,6 +101,11 @@ const MIGRATIONS: string[] = [
   CREATE INDEX avatars_user ON avatars(user_id);
   ALTER TABLE users ADD COLUMN avatar_id TEXT;
   `,
+  // v7: which version of the Terms and Privacy Policy each person agreed to, and when. Empty until they do.
+  `
+  ALTER TABLE users ADD COLUMN terms_version INTEGER;
+  ALTER TABLE users ADD COLUMN terms_accepted_at INTEGER;
+  `,
 ];
 
 function migrate(db: DatabaseSync) {

@@ -188,6 +188,18 @@ a:hover {
   border-radius: 6px;
 }
 
+/* Quick taps (like tapping a card twice to play it) never count as a double-tap zoom. Pinch zoom still works. */
+a,
+button,
+input,
+select,
+textarea,
+label,
+summary,
+[role='button'] {
+  touch-action: manipulation;
+}
+
 .num {
   font-variant-numeric: tabular-nums;
 }
@@ -204,11 +216,18 @@ a:hover {
   color: var(--heart);
 }
 
+/*
+ * Safe areas: viewport-fit=cover lets the page run under a notch or rounded corner in landscape
+ * (and under the status bar in a home-screen app). The insets are 0 everywhere else, so the
+ * usual gutters win there.
+ */
 .container {
   width: 100%;
   max-width: 1120px;
   margin: 0 auto;
   padding: 0 20px;
+  padding-left: max(20px, env(safe-area-inset-left, 0px));
+  padding-right: max(20px, env(safe-area-inset-right, 0px));
 }
 
 .container.wide {
@@ -407,7 +426,8 @@ select.input {
   background: rgb(var(--lo) / 0.25);
   color: var(--text);
   font: inherit;
-  font-size: 15px;
+  /* 16px or more, or iPhones zoom the page in when the box is tapped. */
+  font-size: 16px;
   transition:
     border-color 0.15s,
     box-shadow 0.15s;
@@ -686,6 +706,8 @@ table.data tbody tr:hover td {
 
 .page {
   padding: 40px 0 80px;
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
 }
 
 .page-head {
@@ -725,14 +747,19 @@ table.data tbody tr:hover td {
 
   .container {
     padding: 0 16px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
   }
 }
 
+/* Reduced motion: everything jumps to its end state, and looping animations play once and stop. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
   }
 }

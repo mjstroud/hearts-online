@@ -123,10 +123,12 @@ const groups: { title: string; items: GameListItem[] }[] = [
     gap: 8px;
   }
 
+  /* 16px so iPhones don't zoom in on tap; tighter spacing keeps the code about as wide as at 14px. */
   .join .input {
     width: 130px;
     height: 40px;
-    font-size: 14px;
+    font-size: 16px;
+    letter-spacing: 0.15em;
   }
 
   .grid {

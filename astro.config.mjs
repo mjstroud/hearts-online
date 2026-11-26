@@ -3,6 +3,10 @@ import { defineConfig } from 'astro/config';
 import node from '@astrojs/node';
 import svelte from '@astrojs/svelte';
 
+// One id per build, baked into the server and the browser code alike, so a tab left open across
+// a deploy can tell it's running old code. Kept on the env so every load of this file agrees.
+process.env.BUILD_ID ||= Date.now().toString(36);
+
 // https://astro.build/config
 export default defineConfig({
   output: 'server',
@@ -12,4 +16,15 @@ export default defineConfig({
   // We do our own proxy-aware same-origin check in src/middleware.ts.
   security: { checkOrigin: false },
   server: { port: 4321 },
+  vite: {
+    plugins: [
+      {
+        name: 'build-id',
+        // The dev server keeps one fixed id, so hot reloads and restarts never offer a refresh.
+        config: (_, { command }) => ({
+          define: { __BUILD_ID__: JSON.stringify(command === 'build' ? process.env.BUILD_ID : 'dev') },
+        }),
+      },
+    ],
+  },
 });

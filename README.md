@@ -8,7 +8,9 @@ Built with [Astro](https://astro.build) (server-rendered), [Svelte](https://svel
 
 - **Accounts and private games.** Username and password sign-in. Each game has a 6-character join code and invite link, and only seated players can see it. Leave and come back from any device. Site admins can make one-time password reset links from `/admin`.
 - **Profile photos.** Upload one from the Account page and it replaces your initials wherever players are shown. The browser crops it to a 256px square before uploading. It's stored in the SQLite file with camera and location metadata stripped. The cats always keep their 🐱.
-- **Live or at your own pace.** Moves sync instantly over Server-Sent Events. A game can also sit idle for days and resume where it left off. Optional browser alerts tell you when it's your turn.
+- **Live or at your own pace.** Moves sync instantly over Server-Sent Events. A game can also sit idle for days and resume where it left off. Optional browser alerts tell you when it's your turn, through a small service worker so they work on Android too. A tab left open across a deploy shows a "New version, tap to refresh" pill.
+- **Phone-first.** Built for phones: no zooming on text boxes or quick taps, notch-safe padding, an action bar that doesn't move the hand, and full reduced-motion support. Add it to your home screen for an app-style icon and full-screen window.
+- **Terms and privacy.** Short Terms and Privacy pages. New players agree at sign-up, and existing players agree once on their next visit.
 - **Optional move timer** (30 s to 5 min, off by default). When someone runs out of time, a cat sits in for them until they tap "I'm back" or play a card. If every person at the table is away, the table pauses instead of playing itself.
 - **House rules** (configurable per game):
   - Jack of Diamonds is **−10**.
@@ -25,7 +27,7 @@ Built with [Astro](https://astro.build) (server-rendered), [Svelte](https://svel
   - AI-step one move, finish a trick or a hand, and undo
   - stacked deals: Moon and Sun setups, the Q♠, J♦ or lowest club in the crib, or your own custom deck, with a choice of pass direction
 
-  Playtest games don't count toward lifetime stats.
+  The panel also shows latency: tap to screen, tap to server reply, and tap to live update. Playtest games don't count toward lifetime stats.
 - **Scoreboard.** Standings, a running-total chart, and a hand-by-hand score sheet marking who took the Q♠, the J♦, the crib, or shot the moon or sun.
 - **Advanced stats**, per game and lifetime:
   - average points per hand
@@ -53,10 +55,13 @@ The database is created at `./data/hearts.db` on first run. To try things out by
 Other scripts:
 
 ```bash
-npm test           # rules-engine unit tests (Vitest)
-npm run build      # production build into ./dist
-npm start          # run the production server
+npm test               # unit tests (Vitest)
+npm run build          # production build into ./dist
+npm run check:budgets  # after a build: fail if the game page's JS or the CSS goes over its size budget
+npm start              # run the production server
 ```
+
+In dev, `/dev/long-names?players=5` (or `4`) makes a playtest table full of 32-character names for checking layouts; add `&me=long` to lengthen your own. To try it on a real phone, run `npm run dev -- --host` and open the PC's network address on the same Wi-Fi (leave `SITE_URL` unset). `CLAUDE.md` has the project's ground rules and [ROADMAP.md](ROADMAP.md) the plan.
 
 ## Configuration
 

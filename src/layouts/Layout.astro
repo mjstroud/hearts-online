@@ -1,5 +1,8 @@
 ---
+import '../styles/fonts.css';
 import '../styles/global.css';
+import archivoLatin from '../assets/fonts/archivo-latin.woff2?url';
+import geistLatin from '../assets/fonts/geist-latin.woff2?url';
 import Avatar from '../components/Avatar.astro';
 import { avatarSrc } from '../lib/avatars';
 import { isAdmin } from '../lib/server/auth';
@@ -35,13 +38,14 @@ const deck = Astro.cookies.get(DECK_COOKIE)?.value === 'four' ? 'four' : 'two';
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="description" content={description} />
     <meta name="theme-color" content="#0f0e0d" />
+    {/* Home-screen app. iPhones prefer the two Apple tags to the manifest for the icon and name. */}
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-title" content={SITE_NAME} />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=Geist:wght@400..700&family=Geist+Mono:wght@500&display=swap"
-      rel="stylesheet"
-    />
+    {/* Fonts are self-hosted (src/styles/fonts.css). Preload the two every page uses so text doesn't reflow late. */}
+    <link rel="preload" href={archivoLatin} as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href={geistLatin} as="font" type="font/woff2" crossorigin />
     <title>{pageTitle}</title>
   </head>
   <body class:list={{ full }}>
@@ -94,7 +98,11 @@ const deck = Astro.cookies.get(DECK_COOKIE)?.value === 'four' ? 'four' : 'two';
         <footer class="site-footer">
           <div class="container spread">
             <span class="faint">♥ {SITE_NAME} — one long game, wherever everyone is.</span>
-            <a class="faint" href="/rules">House rules</a>
+            <nav class="row" style="--gap: 16px" aria-label="About this site">
+              <a class="faint" href="/rules">House rules</a>
+              <a class="faint" href="/terms">Terms</a>
+              <a class="faint" href="/privacy">Privacy</a>
+            </nav>
           </div>
         </footer>
       )
@@ -110,6 +118,8 @@ const deck = Astro.cookies.get(DECK_COOKIE)?.value === 'four' ? 'four' : 'two';
     /* Solid rather than backdrop-blurred: a live blur repaints on every scroll frame. */
     background: var(--header-bg);
     border-bottom: 1px solid var(--border);
+    /* Under the status bar in a home-screen app; 0 in a browser. The sides come from .container. */
+    padding-top: env(safe-area-inset-top, 0px);
   }
 
   .header-inner {
@@ -264,6 +274,8 @@ const deck = Astro.cookies.get(DECK_COOKIE)?.value === 'four' ? 'four' : 'two';
 
   .site-footer {
     padding: 28px 0 40px;
+    /* Clear of the home indicator. */
+    padding-bottom: calc(40px + env(safe-area-inset-bottom, 0px));
     border-top: 1px solid var(--border);
     font-size: 13px;
   }

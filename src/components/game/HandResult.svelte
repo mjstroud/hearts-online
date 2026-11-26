@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { fade, scale } from 'svelte/transition';
   import type { HandSummary } from '../../lib/engine/view';
+  import { fade, scale } from '../../lib/motion';
   import type { PlayerView } from '../../lib/types';
   import { signed } from '../../lib/ui';
   import Avatar from '../Avatar.svelte';
@@ -107,8 +107,9 @@
     left: 50%;
     top: 50%;
     translate: -50% -50%;
-    width: min(640px, calc(100vw - 24px));
-    max-height: calc(100dvh - 32px);
+    /* Centred, so shrinking by both insets leaves every edge clear of a notch, status bar or home indicator. */
+    width: min(640px, calc(100vw - 24px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)));
+    max-height: calc(100dvh - 32px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
     overflow-y: auto;
     padding: 24px;
     display: flex;

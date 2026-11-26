@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Card } from '../../lib/engine/cards';
   import { PRESETS, type PresetId } from '../../lib/engine/presets';
+  import { latency, median } from '../../lib/latency.svelte';
   import type { BotMode, BotSpeed, GameAction, GameView } from '../../lib/types';
   import Avatar from '../Avatar.svelte';
   import PlayingCard from '../PlayingCard.svelte';
@@ -71,6 +72,15 @@
     if (await act({ type: 'dev:act', seat, move: { type: 'pass', cards } })) passSel[seat] = [];
   }
 
+  // Timings of your own plays and passes (Game.svelte records them).
+  const TIMINGS = [
+    { key: 'paint', label: 'Screen', title: 'Tap to your move showing on screen' },
+    { key: 'post', label: 'Server', title: 'Tap to the server answering' },
+    { key: 'live', label: 'Live', title: 'Tap to the live update that includes your move' },
+  ] as const;
+  const lastTiming = $derived(latency.samples[latency.samples.length - 1]);
+  const ms = (v: number | null | undefined) => (v == null ? '—' : String(v));
+
   const SPEEDS: BotSpeed[] = ['fast', 'normal', 'slow'];
   const setBots = (botMode: BotMode) => act({ type: 'dev:bots', botMode });
   const setSpeed = (speed: BotSpeed) => act({ type: 'dev:bots', speed });
@@ -124,6 +134,22 @@
         <label class="chip"><input type="checkbox" bind:checked={showHands} /> All hands</label>
         <label class="chip"><input type="checkbox" bind:checked={showCrib} /> Crib</label>
       </div>
+    </div>
+
+    <div class="timings" role="group" aria-label="Your move timings">
+      <span class="label">Latency</span>
+      {#if lastTiming}
+        {#each TIMINGS as m (m.key)}
+          <span class="timing" title={m.title}>
+            <span class="faint">{m.label}</span>
+            <strong>{m.key === 'paint' && !lastTiming.guessed ? 'no guess' : ms(lastTiming[m.key])}</strong>
+            <span class="faint">med {ms(median(latency.samples.map((s) => s[m.key])))}</span>
+          </span>
+        {/each}
+        <span class="faint">ms, latest {lastTiming.action} · median of {latency.samples.length}</span>
+      {:else}
+        <span class="faint">Play or pass to time tap → screen, server and live update.</span>
+      {/if}
     </div>
 
     <div class="rows">
@@ -350,6 +376,28 @@
     accent-color: var(--sky);
   }
 
+  .timings {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 16px;
+    padding: 10px 18px;
+    border-bottom: 1px solid var(--border);
+    font-size: 12.5px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .timing {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 5px;
+    white-space: nowrap;
+  }
+
+  .timing strong {
+    font-weight: 600;
+  }
+
   .rows {
     display: flex;
     flex-direction: column;
@@ -451,9 +499,10 @@
     min-width: 150px;
   }
 
+  /* 16px or more, or iPhones zoom in when the box is focused. */
   .deal-controls .input {
     height: 38px;
-    font-size: 14px;
+    font-size: 16px;
   }
 
   .custom {
@@ -464,7 +513,7 @@
 
   .mono {
     font-family: var(--font-mono);
-    font-size: 13px;
+    font-size: 16px;
     height: 38px;
   }
 

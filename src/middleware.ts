@@ -2,6 +2,7 @@ import { defineMiddleware } from 'astro:middleware';
 import { SESSION_COOKIE, getSessionUser, setSessionCookie } from './lib/server/auth';
 import { resumeBots } from './lib/server/games';
 import { canonicalRedirect, isSecure } from './lib/server/http';
+import { ACCEPT_TERMS_PATH, isPageLoad, needsTerms, termsGatedPath } from './lib/terms';
 
 const g = globalThis as typeof globalThis & { __heartsBooted?: boolean };
 
@@ -58,6 +59,14 @@ export const onRequest = defineMiddleware(async (ctx, next) => {
       });
     }
     return ctx.redirect(`/login?next=${encodeURIComponent(path + ctx.url.search)}`);
+  }
+
+  // Anyone who hasn't agreed to the current terms is asked once, on their next page load. API calls,
+  // the live stream and photos are never redirected, so a game tab that's already open keeps working.
+  const user = ctx.locals.user;
+  const askTerms = !!user && !user.isBot && needsTerms(user.termsVersion);
+  if (askTerms && termsGatedPath(path) && isPageLoad(ctx.request.method, ctx.request.headers)) {
+    return ctx.redirect(`${ACCEPT_TERMS_PATH}?next=${encodeURIComponent(path + ctx.url.search)}`);
   }
 
   const response = await next();

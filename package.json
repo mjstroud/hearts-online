@@ -13,6 +13,7 @@
     "preview": "astro preview",
     "start": "node --env-file-if-exists=.env ./dist/server/entry.mjs",
     "test": "vitest run",
+    "check:budgets": "node scripts/check-budgets.mjs",
     "astro": "astro"
   },
   "allowScripts": {

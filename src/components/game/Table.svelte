@@ -1,14 +1,18 @@
 <script lang="ts">
-  import { fade, fly, scale } from 'svelte/transition';
   import { type Card, SUIT_SYMBOL, cardLabel, isPenaltyCard, suitOf } from '../../lib/engine/cards';
   import type { Trick } from '../../lib/engine/hand';
+  import { fade, fly, scale } from '../../lib/motion';
   import type { GameAction, GameView } from '../../lib/types';
   import { signed } from '../../lib/ui';
   import Avatar from '../Avatar.svelte';
   import PlayingCard from '../PlayingCard.svelte';
   import DeckToggle from '../DeckToggle.svelte';
-  import DevPanel from './DevPanel.svelte';
   import Standings from './Standings.svelte';
+
+  // The playtest panel loads only on playtest tables, so players never download it.
+  // One shared promise, so live updates never restart the load (or reset the panel).
+  let devPanel: Promise<typeof import('./DevPanel.svelte')> | undefined;
+  const loadDevPanel = () => (devPanel ??= import('./DevPanel.svelte'));
 
   interface Props {
     view: GameView;
@@ -305,19 +309,22 @@
     </div>
 
     <div class="hand-zone">
+      <!-- A hint and one slot in a fixed-height row: it never wraps, so the hand stays put between the select and confirm taps. -->
       <div class="action-bar">
-        <p class="hint" class:mine={myTurn || needPass || onAutopilot}>{hint}</p>
-        {#if me !== null && timed(me) && secondsLeft !== null}
-          <span class="my-clock num" class:low={secondsLeft <= 10} title="Time left before a cat sits in for you">⏱ {clockText(secondsLeft)}</span>
-        {/if}
+        <p class="hint" class:mine={myTurn || needPass || onAutopilot} aria-live="polite">{hint}</p>
         {#if onAutopilot}
-          <button class="btn btn-primary" disabled={busy} onclick={() => act({ type: 'resume' })}>I’m back, give me my seat</button>
+          <button class="btn btn-primary act" disabled={busy} onclick={() => act({ type: 'resume' })}>
+            I’m back<span class="act-long">, give me my seat</span>
+          </button>
         {:else if needPass}
-          <button class="btn btn-primary pass-btn" disabled={busy || selected.length !== t.passCount} onclick={pass}>
+          <button class="btn btn-primary act" disabled={busy || selected.length !== t.passCount} onclick={pass}>
             Pass {selected.length}/{t.passCount} →&nbsp;<span class="btn-name">{nameOf(t.passTarget)}</span>
           </button>
         {:else if myTurn && !finePointer && selected.length === 1}
-          <button class="btn btn-primary" disabled={busy} onclick={() => play(selected[0])}>Play {cardLabel(selected[0])}</button>
+          <button class="btn btn-primary act" disabled={busy} onclick={() => play(selected[0])}>Play {cardLabel(selected[0])}</button>
+        {:else if me !== null && timed(me) && secondsLeft !== null}
+          <!-- While a button holds the slot, your plaque's clock tag still counts down. -->
+          <span class="my-clock num act" class:low={secondsLeft <= 10} title="Time left before a cat sits in for you">⏱ {clockText(secondsLeft)}</span>
         {/if}
       </div>
 
@@ -345,7 +352,9 @@
     </div>
 
     {#if view.dev}
-      <DevPanel {view} {act} {busy} bind:showHands bind:showCrib />
+      {#await loadDevPanel() then { default: DevPanel }}
+        <DevPanel {view} {act} {busy} bind:showHands bind:showCrib />
+      {/await}
     {/if}
   </div>
 
@@ -417,20 +426,26 @@
 
     <div class="prefs">
       <DeckToggle compact />
-      <button class="btn btn-ghost btn-sm" onclick={toggleNotify}>
-        {notify ? '🔔 Turn alerts on' : '🔕 Alert me when it’s my turn'}
+      <!-- The wording says what a tap does; aria-pressed carries the on/off state. -->
+      <button class="btn btn-ghost btn-sm" aria-pressed={notify} onclick={toggleNotify}>
+        {#if notify}
+          <span aria-hidden="true">🔔</span> Alerts on · Turn off
+        {:else}
+          <span aria-hidden="true">🔕</span> Alert me when it’s my turn
+        {/if}
       </button>
     </div>
   </aside>
 </div>
 
 <style>
+  /* The container keeps the sides clear of a notch; the bottom clears the home indicator. */
   .layout {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 300px;
     gap: 24px;
     padding-top: 18px;
-    padding-bottom: 28px;
+    padding-bottom: calc(28px + env(safe-area-inset-bottom, 0px));
   }
 
   .main {
@@ -487,8 +502,10 @@
     place-items: center;
   }
 
+  /* Isolated, so the cards' z-indexes stay inside the trick and never paint over the plaques or "takes it". */
   .trick {
     position: relative;
+    isolation: isolate;
     width: var(--tw);
     height: calc(var(--tw) * 1.4);
   }
@@ -499,6 +516,20 @@
     transition:
       transform 0.3s var(--ease),
       opacity 0.3s;
+  }
+
+  /* Stacked by seat, not play order, so every card's rank corner stays in view. */
+  .played.at-top,
+  .played.at-left,
+  .played.at-top-left,
+  .played.at-top-right {
+    z-index: 1;
+  }
+  .played.at-right {
+    z-index: 2;
+  }
+  .played.at-bottom {
+    z-index: 3;
   }
 
   .played.at-bottom {
@@ -535,11 +566,8 @@
     transform: translate(0, 46%) rotate(-2deg);
   }
 
-  /* Glow and fade with box-shadow/opacity rather than CSS filters, which are costly to repaint. */
-  .played.winner {
-    z-index: 5;
-  }
-
+  /* Glow and fade with box-shadow/opacity rather than CSS filters, which are costly to repaint.
+     The winner isn't raised: lifting it above the others would cover their ranks again. */
   .played.winner :global(.pc) {
     box-shadow:
       0 0 0 2px var(--gold),
@@ -550,8 +578,10 @@
     opacity: 0.75;
   }
 
+  /* Above the whole trick; the plaques and the counter still sit on top of it, as before. */
   .takes {
     position: absolute;
+    z-index: 1;
     bottom: 14%;
     display: flex;
     max-width: calc(100% - 24px);
@@ -780,6 +810,15 @@
     }
   }
 
+  /* Reduced motion: no spin, just a solid gold ring to match the gold plaque. */
+  @media (prefers-reduced-motion: reduce) {
+    .acting .seat-avatar::before {
+      animation: none;
+      will-change: auto;
+      background: var(--gold);
+    }
+  }
+
   .presence {
     position: absolute;
     right: 1px;
@@ -894,17 +933,19 @@
   }
 
   /* ---------- Hand ---------- */
+  /* Quick taps on the cards and the action button never count as a double-tap zoom. */
   .hand-zone {
     margin-top: 22px;
+    touch-action: manipulation;
   }
 
+  /* One row, never wrapped: two lines of hint (2 × 18.9px) or a 40px button both fit in 44px. */
   .action-bar {
     min-height: 44px;
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 14px;
-    flex-wrap: wrap;
     text-align: center;
   }
 
@@ -912,15 +953,23 @@
     min-width: 0;
     color: var(--muted);
     font-size: 14.5px;
+    line-height: 1.3;
     overflow-wrap: anywhere;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
   }
 
-  /* "Pass 0/3 → name": keep the button on screen by cutting the name short. */
-  .action-bar .btn {
-    max-width: 100%;
+  /* The one slot: Pass, Play, I'm back, or your clock. It keeps its width (up to 60%); the hint gives way. */
+  .act {
+    flex: none;
+    max-width: 60%;
   }
 
-  .pass-btn {
+  /* "Pass 0/3 → name": past 60% the name is cut short. No gap, so "I'm back" and its tail read as one phrase. */
+  .act.btn {
     gap: 0;
   }
 
@@ -1079,10 +1128,10 @@
       inset: 30px 34px 26px;
     }
 
+    /* Bottom-left corner, as on desktop: the top-left one sat under the 5-player top-left plaque. */
     .counter {
       left: -2px;
-      bottom: auto;
-      top: -2px;
+      bottom: -2px;
       padding: 5px 9px 5px 8px;
     }
 
@@ -1090,7 +1139,26 @@
       font-size: 20px;
     }
 
+    /* "Tricks / left" on two short lines keeps the counter clear of a long name in the bottom seat. */
+    .counter-text > span:first-child {
+      width: min-content;
+    }
+
     .dots {
+      display: none;
+    }
+
+    /* Pull the 5-player side cards in so their ranks clear a long-name side plaque. Pulled in, the left
+       card's rank would sit under the top-left card, so it stacks above it (it only covers that card's pip). */
+    .five .played.at-left {
+      z-index: 2;
+      transform: translate(-96%, 10%) rotate(-6deg);
+    }
+    .five .played.at-right {
+      transform: translate(96%, 10%) rotate(6deg);
+    }
+
+    .act-long {
       display: none;
     }
 
@@ -1145,6 +1213,16 @@
 
     .game-name {
       font-size: 18px;
+    }
+  }
+
+  /* 360px phones: a little further in still, or a long-name left plaque reaches the left card's rank. */
+  @media (max-width: 374px) {
+    .five .played.at-left {
+      transform: translate(-84%, 10%) rotate(-6deg);
+    }
+    .five .played.at-right {
+      transform: translate(84%, 10%) rotate(6deg);
     }
   }
 </style>

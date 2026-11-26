@@ -1,15 +1,7 @@
 ---
 import AuthCard from '../components/AuthCard.astro';
 import Layout from '../layouts/Layout.astro';
-import {
-  createSession,
-  createUser,
-  setSessionCookie,
-  signupCodeRequired,
-  signupCodeValid,
-  takeAttempt,
-  validateSignup,
-} from '../lib/server/auth';
+import { createSession, setSessionCookie, signUp, signupCodeRequired } from '../lib/server/auth';
 import { DISPLAY_NAME_MAX, DISPLAY_NAME_MAX_UNITS } from '../lib/names';
 import { clientIp, isSecure, readForm, safeNext } from '../lib/server/http';
 
@@ -19,30 +11,32 @@ if (Astro.locals.user) return Astro.redirect(next);
 const needCode = signupCodeRequired();
 let error = '';
 let values = { username: '', displayName: '' };
+let agreed = false;
 if (Astro.request.method === 'POST') {
   const form = await readForm(Astro.request);
   values = { username: form.username ?? '', displayName: form.displayName ?? '' };
-  const password = form.password ?? '';
-  error = validateSignup(values.username, values.displayName, password) ?? '';
-  if (!error && password !== form.confirmPassword) error = 'Those passwords don’t match.';
-  if (!error) {
-    let addr = 'unknown';
-    try {
-      addr = Astro.clientAddress;
-    } catch {}
-    if (!takeAttempt([{ key: `signup:ip:${clientIp(Astro.request, addr)}`, limit: 20 }]))
-      error = 'Too many sign-up attempts. Please wait a few minutes and try again.';
+  // The browser insists on the box too, but the server is what counts.
+  agreed = form.agreeTerms === 'on';
+  let addr = 'unknown';
+  try {
+    addr = Astro.clientAddress;
+  } catch {}
+  const result = await signUp(
+    {
+      ...values,
+      password: form.password ?? '',
+      confirmPassword: form.confirmPassword ?? '',
+      signupCode: form.signupCode ?? '',
+      agreedToTerms: agreed,
+    },
+    clientIp(Astro.request, addr),
+  );
+  if ('user' in result) {
+    const { token, expires } = createSession(result.user.id);
+    setSessionCookie(Astro.cookies, token, expires, isSecure(Astro.request));
+    return Astro.redirect(safeNext(form.next), 303);
   }
-  if (!error && !signupCodeValid(form.signupCode ?? '')) error = 'That family invite code isn’t right.';
-  if (!error) {
-    const user = await createUser(values.username, values.displayName, password);
-    if (!user) error = 'That username is already taken.';
-    else {
-      const { token, expires } = createSession(user.id);
-      setSessionCookie(Astro.cookies, token, expires, isSecure(Astro.request));
-      return Astro.redirect(safeNext(form.next), 303);
-    }
-  }
+  error = result.error;
   Astro.response.status = 400;
 }
 ---
@@ -89,6 +83,12 @@ if (Astro.request.method === 'POST') {
           </label>
         )
       }
+      <label class="agree">
+        <input type="checkbox" name="agreeTerms" required checked={agreed} />
+        <span>
+          I agree to the <a href="/terms" target="_blank" rel="noopener">Terms</a> and the <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a>
+        </span>
+      </label>
       <button class="btn btn-primary btn-lg btn-block" type="submit">Create account</button>
     </form>
     <p slot="below">Already have an account? <a href={`/login${next !== '/games' ? `?next=${encodeURIComponent(next)}` : ''}`}>Sign in</a></p>
@@ -98,3 +98,23 @@ if (Astro.request.method === 'POST') {
 <script>
   import '../lib/name-field';
 </script>
+
+<style>
+  .agree {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    font-size: 14px;
+    line-height: 1.45;
+    cursor: pointer;
+  }
+
+  .agree input {
+    flex: none;
+    width: 18px;
+    height: 18px;
+    margin: 1px 0 0;
+    accent-color: var(--mint);
+    cursor: pointer;
+  }
+</style>

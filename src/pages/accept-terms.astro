@@ -1,0 +1,104 @@
+---
+import AuthCard from '../components/AuthCard.astro';
+import Layout from '../layouts/Layout.astro';
+import { TERMS_REQUIRED, acceptTerms } from '../lib/server/auth';
+import { readForm, safeNext } from '../lib/server/http';
+import { needsTerms } from '../lib/terms';
+
+/**
+ * Asked once of everyone who signed up before the terms existed (or before they last changed).
+ * The middleware sends people here from any page load; game actions and live updates never are.
+ */
+const user = Astro.locals.user;
+let next = safeNext(Astro.url.searchParams.get('next'));
+if (!user) return Astro.redirect(`/login?next=${encodeURIComponent(next)}`);
+
+let error = '';
+if (Astro.request.method === 'POST') {
+  const form = await readForm(Astro.request);
+  next = safeNext(form.next ?? next);
+  if (!needsTerms(user.termsVersion)) return Astro.redirect(next, 303);
+  if (form.agreeTerms === 'on') {
+    acceptTerms(user.id);
+    return Astro.redirect(next, 303);
+  }
+  error = TERMS_REQUIRED;
+  Astro.response.status = 400;
+} else if (!needsTerms(user.termsVersion)) {
+  return Astro.redirect(next);
+}
+Astro.response.headers.set('Cache-Control', 'no-store');
+---
+
+<Layout title="Terms and privacy">
+  <AuthCard title="One quick thing" subtitle="The site now has Terms and a Privacy Policy. Here’s the short version.">
+    <ul class="summary">
+      <li>It’s a free hobby site, provided as-is. Play nice, and never for real money.</li>
+      <li>We keep only what the game needs, like your account and your games. No ads, no analytics, nothing sold.</li>
+    </ul>
+    <form method="post" class="stack">
+      <input type="hidden" name="next" value={next} />
+      {error && <p class="alert" role="alert">{error}</p>}
+      <label class="agree">
+        <input type="checkbox" name="agreeTerms" required />
+        <span>
+          I agree to the <a href="/terms" target="_blank" rel="noopener">Terms</a> and the <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a>
+        </span>
+      </label>
+      <button class="btn btn-primary btn-lg btn-block" type="submit">Agree and continue</button>
+    </form>
+    <form slot="below" method="post" action="/logout" class="leave">
+      Not now? <button type="submit">Sign out</button>
+    </form>
+  </AuthCard>
+</Layout>
+
+<style>
+  .summary {
+    margin: 0;
+    padding-left: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    font-size: 14.5px;
+    line-height: 1.55;
+    color: var(--muted);
+  }
+
+  .agree {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    font-size: 14px;
+    line-height: 1.45;
+    cursor: pointer;
+  }
+
+  .agree input {
+    flex: none;
+    width: 18px;
+    height: 18px;
+    margin: 1px 0 0;
+    accent-color: var(--mint);
+    cursor: pointer;
+  }
+
+  /* Sign out is a POST, so it's a button dressed as a link. */
+  .leave button {
+    all: unset;
+    text-decoration: underline;
+    text-decoration-color: rgb(var(--hi) / 0.25);
+    text-underline-offset: 3px;
+    cursor: pointer;
+  }
+
+  .leave button:hover {
+    text-decoration-color: currentColor;
+  }
+
+  .leave button:focus-visible {
+    outline: 2px solid var(--gold);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+</style>

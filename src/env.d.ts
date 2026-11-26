@@ -5,3 +5,6 @@ declare namespace App {
     user: import('./lib/server/auth').User | null;
   }
 }
+
+/** This build's id (set in astro.config.mjs). "dev" under the dev server. */
+declare const __BUILD_ID__: string;

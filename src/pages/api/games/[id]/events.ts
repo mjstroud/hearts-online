@@ -1,7 +1,10 @@
 import type { APIRoute } from 'astro';
-import { getGameView, isMember, publish } from '../../../../lib/server/games';
+import { isMember, publish } from '../../../../lib/server/games';
 import { jsonError } from '../../../../lib/server/http';
 import { subscribe } from '../../../../lib/server/hub';
+
+// Tests run without the build's defines.
+const BUILD_ID = typeof __BUILD_ID__ === 'string' ? __BUILD_ID__ : 'dev';
 
 /** Server-Sent Events stream: pushes this player's view whenever the game changes. */
 export const GET: APIRoute = ({ params, locals, request }) => {
@@ -43,7 +46,9 @@ export const GET: APIRoute = ({ params, locals, request }) => {
       if (request.signal.aborted) return cleanup();
 
       write('retry: 3000\n\n');
-      send('state', getGameView(gameId, userId));
+      // Its own event rather than a view field, so old tabs simply ignore it.
+      send('build', BUILD_ID);
+      // One push does both: this stream's first state, and everyone else's online dot for us.
       publish(gameId);
     },
     cancel() {

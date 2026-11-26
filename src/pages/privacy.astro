@@ -1,0 +1,251 @@
+---
+import Layout from '../layouts/Layout.astro';
+import { SITE_NAME } from '../lib/ui';
+import { CONTACT_EMAIL, MIN_AGE, TERMS_UPDATED, TERMS_VERSION, contactHref } from '../lib/terms';
+
+// Everything here should match what the code actually stores. Check it again whenever storage changes.
+const mailto = contactHref();
+---
+
+<Layout title="Privacy" description={`What ${SITE_NAME} stores about you, who can see it, and how long it's kept.`}>
+  <div class="container page" style="max-width: 760px">
+    <div class="page-head">
+      <div class="stack" style="--gap: 8px">
+        <span class="eyebrow">Privacy policy</span>
+        <h1 class="display">What we keep, and why</h1>
+        <p class="muted lede">Only what the game needs to work. Here’s all of it.</p>
+        <p class="faint small">Version {TERMS_VERSION} · Updated {TERMS_UPDATED}</p>
+      </div>
+    </div>
+
+    <article class="stack doc" style="--gap: 20px">
+      <section class="panel panel-pad">
+        <h2>The short version</h2>
+        <ul>
+          <li>We never ask for your email address, real name, phone number or payment details.</li>
+          <li>No ads, no analytics, no tracking cookies.</li>
+          <li>We don’t sell or rent your data, or share it with anyone beyond what it takes to run the site.</li>
+        </ul>
+        <p class="muted">In this policy, “we” means the people who run {SITE_NAME}.</p>
+      </section>
+
+      <section class="panel panel-pad">
+        <h2>What we store</h2>
+        <dl>
+          <dt>Your account</dt>
+          <dd>
+            Your username, your display name, when you signed up, and which version of the Terms and this policy you agreed
+            to, and when. Your password is stored only as a salted scrypt hash, so nobody, us included, can read it back.
+          </dd>
+
+          <dt>Your sign-ins</dt>
+          <dd>
+            Signing in puts a random token in a cookie in your browser. We keep only a SHA-256 hash of that token, which
+            account it belongs to, and when it expires. A sign-in lasts 60 days and is extended while you keep using the site.
+            Signing out deletes it, and changing your password signs out your other devices. We don’t record your device or
+            location with it.
+          </dd>
+
+          <dt>Your games</dt>
+          <dd>
+            Each game’s name, join code and host, who sits in which seat, the house rules and table settings, and the full
+            state of the game: every card dealt, passed and played, including the crib. Every finished hand is saved too
+            (its tricks, points and scores), along with when things happened, because the scoreboard and stats are worked out
+            from them. Games are kept until the host deletes them.
+          </dd>
+
+          <dt>Your profile photo</dt>
+          <dd>
+            Only if you add one. Your browser crops it to a small square before it’s uploaded. The server then checks it,
+            strips its metadata (camera details, location, comments) and stores it in the site’s database. When you replace or
+            remove your photo, the old one is deleted from the site, though browsers that already showed it may keep a copy in
+            their cache.
+          </dd>
+
+          <dt>Password reset links</dt>
+          <dd>
+            If a site admin makes you a reset link, we store a hash of it, who made it, and when it expires. Each link works
+            once, for 24 hours.
+          </dd>
+        </dl>
+      </section>
+
+      <section class="panel panel-pad">
+        <h2>IP addresses</h2>
+        <p>
+          To slow down password guessing, the server counts sign-in, sign-up and password-reset attempts by IP address, and
+          sign-in attempts by username. Those counts are held only in the server’s memory for up to 15 minutes. They’re never
+          written to the database, and they’re forgotten whenever the server restarts. The site doesn’t keep a log of
+          visitors’ IP addresses.
+        </p>
+      </section>
+
+      <section class="panel panel-pad">
+        <h2>Who can see what</h2>
+        <ul>
+          <li>
+            <strong>Players at your tables</strong> see your display name, username and photo, your plays and scores, and
+            whether you have the game open. They never see the cards in your hand: the server only sends each player their own.
+          </li>
+          <li>
+            <strong>Anyone signed in with a game’s join code</strong> can see the game’s name and who’s sitting at it before
+            they join.
+          </li>
+          <li><strong>People you’ve shared a table with</strong> see your stats from the games you played together.</li>
+          <li>
+            <strong>Your photo</strong> can be seen by anyone signed in who has its web address. Each upload gets a new,
+            unguessable address. Photos are never shown to people who aren’t signed in.
+          </li>
+          <li>
+            <strong>Site admins</strong> can see the list of accounts (usernames, display names, sign-up dates, how many devices
+            are signed in, and whether a reset link is waiting) and can remove a photo.
+          </li>
+          <li>
+            <strong>The people who run the site</strong> have access to the server, so they can see everything listed on this
+            page.
+          </li>
+        </ul>
+        <p class="muted">We’d only hand anything to anyone else if the law required it.</p>
+      </section>
+
+      <section class="panel panel-pad">
+        <h2>Cookies and your browser</h2>
+        <p>The site sets two cookies, both its own:</p>
+        <dl>
+          <dt><code>hearts_session</code></dt>
+          <dd>Keeps you signed in, for up to 60 days. The page’s scripts can’t read it.</dd>
+          <dt><code>hearts_deck</code></dt>
+          <dd>Remembers whether you picked the two-color or four-color deck, for a year.</dd>
+        </dl>
+        <p>
+          Your browser also keeps a few small settings of its own, such as whether turn alerts are on and which hand results
+          you’ve already seen. Those stay on your device and are never sent to us. Turn alerts use your browser’s notification
+          permission, which we don’t store either.
+        </p>
+        <p class="muted">There are no advertising or analytics cookies, which is why there’s no cookie banner.</p>
+      </section>
+
+      <section class="panel panel-pad">
+        <h2>Other services</h2>
+        <dl>
+          <dt>Fly.io (hosting)</dt>
+          <dd>
+            The site and its database run on Fly.io, on servers in the United States. Every visit passes through Fly.io’s
+            network, so Fly.io sees your IP address, and its own privacy policy covers that.
+          </dd>
+        </dl>
+        <p class="muted">That’s the full list. No ad networks, analytics, social buttons or trackers.</p>
+      </section>
+
+      <section class="panel panel-pad">
+        <h2>Backups</h2>
+        <p>
+          Fly.io takes daily snapshots of the disk the database lives on and keeps them for a few days. Something you delete,
+          like an old photo or a deleted game, can stay in those snapshots until they expire.
+        </p>
+      </section>
+
+      <section class="panel panel-pad">
+        <h2>Your choices</h2>
+        <ul>
+          <li>Change your display name and password, or add or remove your photo, on the <a href="/account">Account</a> page.</li>
+          <li>
+            To delete your account, or to ask for a copy of what we hold about you, get in touch (see Contact below).
+            There’s no delete button yet, so it’s done by hand. Games belong to everyone who played in them, so their score
+            history may be kept for the other players.
+          </li>
+        </ul>
+      </section>
+
+      <section class="panel panel-pad">
+        <h2>Children</h2>
+        <p>
+          The site isn’t meant for anyone under {MIN_AGE}. If you think someone under {MIN_AGE} has an account, let us know and
+          we’ll delete it.
+        </p>
+      </section>
+
+      <section class="panel panel-pad">
+        <h2>Changes to this policy</h2>
+        <p>
+          If this policy changes in a way that matters, its version number goes up and you’ll be asked to agree again the next
+          time you open the site, just like the <a href="/terms">Terms</a>.
+        </p>
+      </section>
+
+      <section class="panel panel-pad">
+        <h2>Contact</h2>
+        <p>
+          Questions, or want something deleted? {mailto ? <>Email us at <a href={mailto}>{CONTACT_EMAIL}</a>.</> : 'Ask a site admin, or whoever invited you to the site.'}
+        </p>
+      </section>
+    </article>
+  </div>
+</Layout>
+
+<style>
+  .lede {
+    font-size: 17px;
+    max-width: 620px;
+  }
+
+  .small {
+    font-size: 13.5px;
+  }
+
+  .doc {
+    overflow-wrap: anywhere;
+  }
+
+  .doc section {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .doc h2 {
+    font-family: var(--font-display);
+    font-weight: 560;
+    font-size: 22px;
+  }
+
+  .doc p,
+  .doc li,
+  .doc dd {
+    font-size: 15.5px;
+    line-height: 1.65;
+  }
+
+  .doc ul {
+    margin: 0;
+    padding-left: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .doc dl {
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .doc dt {
+    font-weight: 600;
+  }
+
+  .doc dt:not(:first-child) {
+    margin-top: 10px;
+  }
+
+  .doc dd {
+    margin: 0;
+    color: var(--muted);
+  }
+
+  .doc code {
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+  }
+</style>

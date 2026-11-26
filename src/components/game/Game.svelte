@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { fly } from 'svelte/transition';
+  import { fly } from '../../lib/motion';
   import { isPenaltyCard } from '../../lib/engine/cards';
+  import { type MoveTiming, timeMove } from '../../lib/latency.svelte';
   import type { GameAction, GameView } from '../../lib/types';
   import { SITE_NAME } from '../../lib/ui';
   import FinalResults from './FinalResults.svelte';
@@ -18,6 +19,14 @@
   let toast = $state<{ id: number; text: string } | null>(null);
   let resultOpen = $state(false);
   let notify = $state(false);
+
+  // Tabs stay open for days and keep running old code after a deploy, so offer a refresh.
+  // Never reload on our own, and if a move is on its way, wait for it to land first.
+  let newVersion = $state(false);
+  let reloadAsked = $state(false);
+  $effect(() => {
+    if (reloadAsked && !busy) location.reload();
+  });
 
   const seenKey = $derived(`hearts:seen-hand:${view.id}`);
   // "Your turn" (tab title, alerts) means the table is waiting on you. While a cat plays your
@@ -96,7 +105,12 @@
     return null;
   }
 
+  /** Your latest play or pass, timed for the playtest panel's latency readout (playtest tables only). */
+  let timing: MoveTiming | null = null;
+
   async function act(action: GameAction): Promise<boolean> {
+    const timer = view.dev && (action.type === 'play' || action.type === 'pass') ? timeMove(action.type) : null;
+    if (timer) timing = timer;
     busy = true;
     const guess = predict(action);
     if (guess) {
@@ -106,6 +120,7 @@
       // (A pass doesn't move anyone's deadline, so the countdown keeps running.)
       if (action.type === 'play') clockEndsAt = null;
     }
+    timer?.applied(!!guess);
     try {
       const res = await fetch(`/api/games/${view.id}/action`, {
         method: 'POST',
@@ -115,6 +130,7 @@
         signal: AbortSignal.timeout?.(15_000),
       });
       const data = await res.json().catch(() => ({}));
+      timer?.answered(res.ok && typeof data?.version === 'number' ? data.version : null);
       pendingBase = null;
       if (!res.ok) {
         showToast(data.error ?? 'Something went wrong.');
@@ -125,6 +141,7 @@
       return true;
     } catch {
       // Timed out or offline. The move may or may not have landed, so ask the server.
+      timer?.answered(null);
       pendingBase = null;
       showToast('Network hiccup — please try again.');
       refresh();
@@ -171,12 +188,63 @@
     } catch {}
   }
 
-  // Tab title + optional desktop notification when it becomes your turn.
+  // Alerts go through a service worker (public/sw.js), because Android Chrome won't let a page
+  // construct a Notification. Registered only once alerts are on, which implies permission.
+  let alertWorker: Promise<ServiceWorkerRegistration | null> | null = null;
+  function registerAlertWorker(): Promise<ServiceWorkerRegistration | null> {
+    try {
+      if (!('serviceWorker' in navigator)) return Promise.resolve(null);
+      return (alertWorker ??= navigator.serviceWorker.register('/sw.js').catch(() => {
+        alertWorker = null; // try again next time
+        return null;
+      }));
+    } catch {
+      // Some privacy modes throw here instead of rejecting, and this runs inside an effect.
+      return Promise.resolve(null);
+    }
+  }
+  $effect(() => {
+    if (notify) registerAlertWorker();
+  });
+
+  async function showTurnAlert() {
+    const title = `Your turn in ${view.name}`;
+    // renotify: buzz again even if the last alert for this game is still in the tray.
+    const options = {
+      body: 'The table is waiting on you ♥',
+      icon: '/icons/icon-192.png',
+      tag: view.id,
+      renotify: true,
+      data: { url: `/games/${view.id}` },
+    };
+    try {
+      // The worker activates moments after registering, long before your turn comes round.
+      const reg = await registerAlertWorker();
+      if (reg?.active) return await reg.showNotification(title, options);
+    } catch {
+      /* fall back to a page notification */
+    }
+    try {
+      const n = new Notification(title, options);
+      n.onclick = () => {
+        window.focus();
+        n.close();
+      };
+    } catch {
+      /* no way to alert on this browser */
+    }
+  }
+
+  // Tab title + optional notification when it becomes your turn.
   let wasMyTurn = false;
   $effect(() => {
     document.title = `${myTurn ? '● Your turn · ' : ''}${view.name} · ${SITE_NAME}`;
-    if (myTurn && !wasMyTurn && notify && document.hidden && 'Notification' in window && Notification.permission === 'granted') {
-      new Notification(`Your turn in ${view.name}`, { body: 'The table is waiting on you ♥', icon: '/favicon.svg', tag: view.id });
+    try {
+      if (myTurn && !wasMyTurn && notify && document.hidden && 'Notification' in window && Notification.permission === 'granted') {
+        showTurnAlert();
+      }
+    } catch {
+      /* an alert is never worth breaking the page over */
     }
     wasMyTurn = myTurn;
   });
@@ -224,7 +292,15 @@
       });
       source.addEventListener('state', (e) => {
         connected = true;
-        apply(JSON.parse((e as MessageEvent).data));
+        const next = JSON.parse((e as MessageEvent).data);
+        timing?.live(next?.version);
+        apply(next);
+      });
+      // Each new stream says which build the server is running; a deploy shows up here on reconnect.
+      source.addEventListener('build', (e) => {
+        try {
+          newVersion = JSON.parse((e as MessageEvent).data) !== __BUILD_ID__;
+        } catch {}
       });
       source.addEventListener('removed', () => {
         if (!leaving) location.href = '/games?notice=removed';
@@ -251,6 +327,12 @@
   <div class="conn" transition:fly={{ y: -10, duration: 200 }}>Reconnecting…</div>
 {/if}
 
+{#if newVersion && connected}
+  <button class="new-version" disabled={reloadAsked} onclick={() => (reloadAsked = true)}>
+    {reloadAsked ? 'Refreshing…' : 'New version · tap to refresh'}
+  </button>
+{/if}
+
 {#if view.status === 'lobby'}
   <Lobby {view} {act} {leave} {busy} />
 {:else if view.status === 'active' && view.table}
@@ -273,7 +355,7 @@
   .toast {
     position: fixed;
     left: 50%;
-    bottom: 28px;
+    bottom: calc(28px + env(safe-area-inset-bottom, 0px));
     transform: translateX(-50%);
     z-index: 100;
     max-width: calc(100vw - 32px);
@@ -287,9 +369,10 @@
     box-shadow: var(--shadow-lg);
   }
 
+  /* The sticky header grows by the top safe-area inset in a home-screen app, so these pills move down with it. */
   .conn {
     position: fixed;
-    top: 72px;
+    top: calc(72px + env(safe-area-inset-top, 0px));
     left: 50%;
     transform: translateX(-50%);
     z-index: 60;
@@ -300,5 +383,44 @@
     background: var(--gold-soft);
     color: var(--gold);
     border: 1px solid rgb(242 196 109 / 0.3);
+  }
+
+  /* Takes the reconnecting pill's spot, which is free whenever we're connected. No animation. */
+  .new-version {
+    position: fixed;
+    top: calc(72px + env(safe-area-inset-top, 0px));
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 60;
+    max-width: calc(100vw - 32px);
+    padding: 7px 14px;
+    border-radius: 99px;
+    border: 1px solid var(--border-strong);
+    background: var(--surface-3);
+    color: var(--text);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.3;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+    touch-action: manipulation;
+    box-shadow: var(--shadow);
+  }
+
+  .new-version:hover:not(:disabled) {
+    border-color: rgb(var(--hi) / 0.25);
+  }
+
+  .new-version:disabled {
+    cursor: progress;
+    color: var(--muted);
+  }
+
+  .new-version:focus-visible {
+    outline: 2px solid var(--gold);
+    outline-offset: 2px;
   }
 </style>
