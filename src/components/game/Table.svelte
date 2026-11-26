@@ -348,20 +348,13 @@
   });
 
   // ----- Responsive sizing
-  let arenaW = $state(900);
-  let arenaH = $state(470);
-  let handW = $state(900);
-  // Trick cards grow with the table so the middle of the felt doesn't feel empty.
-  const trickW = $derived(Math.round(Math.max(56, Math.min(124, arenaW * 0.11, arenaH * 0.24))));
-  const cardW = $derived(handW < 520 ? 62 : handW < 760 ? 78 : 96);
+  // Card sizes and the fan's spacing come from container queries in the CSS, not measured widths, so the
+  // server-rendered page is already laid out for the phone it's on: nothing overflows or jumps on load.
   const handCount = $derived(t.myHand.length);
-  const step = $derived(Math.max(14, Math.min(cardW * 0.74, (handW - cardW - 8) / Math.max(1, handCount - 1))));
-  const handOffset = $derived((handW - (cardW + step * Math.max(0, handCount - 1))) / 2);
   const mid = $derived((handCount - 1) / 2);
-  // A gentle fan: a little rotation and a shallow arc.
+  // A gentle fan: a little rotation and a shallow arc (the CSS curves it by 0.3px per card from the middle, squared).
   const spread = $derived(Math.min(1.5, 15 / Math.max(handCount, 1)));
-  const ARC = 0.3;
-  const arcDrop = $derived(mid ** 2 * ARC);
+  const arcDrop = $derived(mid ** 2 * 0.3);
 
   // Everyone holds the same number of cards, so one counter covers the whole table.
   const tricksLeft = $derived(t.phase === 'playing' ? t.totalTricks - t.trickNumber + 1 : t.totalTricks);
@@ -449,7 +442,7 @@
       </div>
     </div>
 
-    <div class="arena" bind:clientWidth={arenaW} bind:clientHeight={arenaH} class:five={n === 5} style={`--tw: ${trickW}px`}>
+    <div class="arena" class:five={n === 5}>
       <div class="felt">
         {#if washFx}{#key washFx.id}<div class="fx" style={FX[washFx.kind][0]}></div>{/key}{/if}
 
@@ -482,7 +475,7 @@
                   in:fly|global={{ ...FROM[pos], duration: arrival.slide ? ARRIVE_MS : 0, opacity: wait ? 0 : 0.2, delay: wait }}
                   out:fade={{ duration: 160 }}
                 >
-                  <PlayingCard card={p.card} width={trickW} jackScored={view.settings.jackOfDiamonds} />
+                  <PlayingCard card={p.card} width="var(--tw)" jackScored={view.settings.jackOfDiamonds} />
                   {#if rippleFx?.card === p.card}{#key rippleFx.id}<span class="fx" style={FX.ripple[0]}></span>{/key}{/if}
                 </div>
               {/each}
@@ -497,12 +490,12 @@
             <div class="crib" in:fade title="The crib goes to whoever wins the first trick">
               {#if view.dev && showCrib}
                 <div class="crib-open">
-                  {#each view.dev.crib as c (c)}<PlayingCard card={c} width={trickW * 0.62} jackScored={view.settings.jackOfDiamonds} />{/each}
+                  {#each view.dev.crib as c (c)}<PlayingCard card={c} width="calc(var(--tw) * 0.62)" jackScored={view.settings.jackOfDiamonds} />{/each}
                 </div>
               {:else}
                 <div class="crib-stack">
                   {#each Array(Math.min(t.cribSize, 4)) as _, i}
-                    <span style={`--i: ${i}`}><PlayingCard width={trickW * 0.72} /></span>
+                    <span style={`--i: ${i}`}><PlayingCard width="calc(var(--tw) * 0.72)" /></span>
                   {/each}
                 </div>
               {/if}
@@ -552,7 +545,7 @@
         <div class={`seat at-${pos}`} class:acting class:me={p.seat === me}>
           <div class="plaque">
             <span class="seat-avatar">
-              <Avatar name={p.name} seed={p.username} isBot={p.isBot} src={p.avatar} size={arenaW < 520 ? 34 : 38} />
+              <Avatar name={p.name} seed={p.username} isBot={p.isBot} src={p.avatar} size="var(--av)" />
               {#if !p.isBot}<span class="presence" class:on={p.online}></span>{/if}
               {#if led && led.seat === p.seat}
                 {@const s = suitOf(led.card)}
@@ -642,17 +635,13 @@
         {/if}
       </div>
 
-      <div class="hand" bind:clientWidth={handW} style={`height: ${cardW * 1.4 + 34 + arcDrop}px`}>
+      <div class="hand" style={`--gaps: ${Math.max(1, handCount - 1)}; --spread: ${spread}deg; --arc: ${arcDrop}px`}>
         {#each t.myHand as card, i (card)}
           {@const canPick = (myTurn && t.legal.includes(card)) || (canQueue && queueable.includes(card))}
-          <div
-            class="slot"
-            style={`transform: translate(${handOffset + i * step}px, ${(i - mid) ** 2 * ARC}px) rotate(${(i - mid) * spread}deg); z-index: ${i}`}
-            out:fly={{ y: -60, duration: 200 }}
-          >
+          <div class="slot" style={`--i: ${i - mid}; z-index: ${i}`} out:fly={{ y: -60, duration: 200 }}>
             <PlayingCard
               {card}
-              width={cardW}
+              width="var(--cw)"
               selected={selected.includes(card) && card !== queuedCard}
               queued={card === queuedCard}
               dimmed={(myTurn || canQueue) && !canPick}
@@ -796,12 +785,16 @@
   }
 
   /* ---------- Arena ---------- */
+  /* A container, so the cards and avatars inside are sized from the arena in CSS. */
   .arena {
+    container: arena / size;
     position: relative;
     height: clamp(340px, calc(100dvh - 420px), 580px);
   }
 
   .felt {
+    /* Trick cards grow with the table so the middle of the felt doesn't feel empty. */
+    --tw: max(56px, min(124px, 11cqw, 24cqh));
     position: absolute;
     inset: 34px 64px 30px;
     border-radius: 34px;
@@ -1220,10 +1213,17 @@
   }
 
   .seat-avatar {
+    --av: 38px;
     position: relative;
     flex: none;
     border-radius: 50%;
     padding: 2px;
+  }
+
+  @container arena (width < 520px) {
+    .seat-avatar {
+      --av: 34px;
+    }
   }
 
   /* Spinning ring on a pseudo-element so the badges on the avatar stay upright. The avatar (position: relative) sits on top. */
@@ -1374,6 +1374,7 @@
   /* ---------- Hand ---------- */
   /* Quick taps on the cards and the action button never count as a double-tap zoom. */
   .hand-zone {
+    container: hand / inline-size;
     margin-top: 22px;
     touch-action: manipulation;
   }
@@ -1433,15 +1434,35 @@
     vertical-align: bottom;
   }
 
+  /* Card width (--cw) steps down with the zone's width. The cards overlap just enough to fit, at most
+     74% of a card apart and at least 14px. 100cqi is the zone's width. */
   .hand {
+    --cw: 96px;
+    --step: max(14px, min(var(--cw) * 0.74, (100cqi - var(--cw) - 8px) / var(--gaps)));
     position: relative;
     margin-top: 10px;
+    height: calc(var(--cw) * 1.4 + 34px + var(--arc));
   }
 
+  @container hand (width < 760px) {
+    .hand {
+      --cw: 78px;
+    }
+  }
+
+  @container hand (width < 520px) {
+    .hand {
+      --cw: 62px;
+    }
+  }
+
+  /* --i is the card's place counted from the middle of the hand. */
   .slot {
     position: absolute;
     top: 26px;
     left: 0;
+    transform: translate(calc(50cqi - var(--cw) / 2 + var(--i) * var(--step)), calc(var(--i) * var(--i) * 0.3px))
+      rotate(calc(var(--i) * var(--spread)));
     transform-origin: 50% 120%;
     /* Positioned with transform only, so re-fanning the hand never triggers layout. */
     transition: transform 0.25s var(--ease);
