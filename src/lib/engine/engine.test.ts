@@ -393,10 +393,15 @@ describe('crib secrecy', () => {
       for (const t of hand.tricks) visible[t.winner!] += penaltyPoints(t.plays.map((p) => p.card));
       const jackInTricks = hand.tricks.find((t) => t.plays.some((p) => p.card === 'JD'))?.winner ?? null;
       if (jackInTricks !== null) visible[jackInTricks] -= 10;
+      // Table facts: what someone not at the table would see.
+      const facts = (v: ReturnType<typeof tableViewFor>) => [v!.heartsBrokenBy, v!.sunWatch, v!.moonWatch];
+      const onlooker = facts(tableViewFor(game, null, S));
 
       for (let seat = 0; seat < players; seat++) {
         const view = tableViewFor(game, seat, S)!;
         const isWinner = hand.cribWinner === seat;
+        // The same for every seat, the crib winner included.
+        expect(facts(view)).toEqual(onlooker);
         if (!isWinner) {
           expect(view.myCrib).toBeNull();
           // No crib card appears anywhere in this seat's view of the current hand.

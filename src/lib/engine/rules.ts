@@ -17,6 +17,8 @@ export interface GameSettings {
    * (they can take the seat back at any time). `null` = no timer: the table waits as long as it takes.
    */
   moveTimer: number | null;
+  /** Mark a player who could still shoot the Moon or the Sun (worked out from face-up cards only). */
+  showWatches: boolean;
 }
 
 export const DEFAULT_SETTINGS: GameSettings = {
@@ -26,6 +28,7 @@ export const DEFAULT_SETTINGS: GameSettings = {
   shootTheSun: true,
   noPointsOnFirstTrick: true,
   moveTimer: null,
+  showWatches: true,
 };
 
 /** Move-timer choices offered to hosts, in seconds. */
@@ -60,7 +63,7 @@ export function normalizeSettings(input: Partial<Record<keyof GameSettings, unkn
   }
   const timer = Number(input.moveTimer);
   s.moveTimer = MOVE_TIMER_OPTIONS.includes(timer) ? timer : null;
-  for (const key of ['jackOfDiamonds', 'shootTheMoon', 'shootTheSun', 'noPointsOnFirstTrick'] as const) {
+  for (const key of ['jackOfDiamonds', 'shootTheMoon', 'shootTheSun', 'noPointsOnFirstTrick', 'showWatches'] as const) {
     if (typeof input[key] === 'boolean') s[key] = input[key] as boolean;
   }
   return s;

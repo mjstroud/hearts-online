@@ -661,11 +661,11 @@ export function updateSettings(gameId: string, userId: number, name: string, inp
     if (name) game.name = clipToLength(name, GAME_NAME_MAX);
     const next = normalizeSettings({ ...game.settings, ...input });
     const timerChanged = next.moveTimer !== game.settings.moveTimer;
-    // Once cards are dealt only the score limit and move timer can change, except at a playtest table.
+    // Once cards are dealt only the score limit, move timer and watches can change, except at a playtest table.
     game.settings =
       game.status === 'lobby' || game.mode === 'playtest'
         ? next
-        : { ...game.settings, scoreLimit: next.scoreLimit, moveTimer: next.moveTimer };
+        : { ...game.settings, scoreLimit: next.scoreLimit, moveTimer: next.moveTimer, showWatches: next.showWatches };
     if (timerChanged && game.state) {
       // A new allowance starts now. With the timer off, the table goes back to waiting for everyone.
       touchClock(game.state, true);
@@ -769,6 +769,12 @@ export function getHandRecords(gameId: string): HandRecord[] {
   return (sql('SELECT record FROM hands WHERE game_id = ? ORDER BY number').all(gameId) as { record: string }[]).map(
     (r) => JSON.parse(r.record) as HandRecord,
   );
+}
+
+/** One finished hand's record, or null if that hand hasn't finished (or never existed). */
+export function getHandRecord(gameId: string, number: number): HandRecord | null {
+  const row = sql('SELECT record FROM hands WHERE game_id = ? AND number = ?').get(gameId, number) as { record: string } | undefined;
+  return row ? (JSON.parse(row.record) as HandRecord) : null;
 }
 
 // ---------------------------------------------------------------------------
