@@ -121,6 +121,12 @@ All client code plus facts worked out in the view. No rule changes and no migrat
   - Size: the end-screen choices and the Sun/Moon banner now load with `import()`, and so does the playtest latency timer (ground rule 3). The game page's JS went from 44.3 KB to 44.0 KB.
   - Follow-up (XS): mark where a game was extended on the scoreboard, from `extensions`.
 
+### Follow-up: measure CSS per page
+
+Astro inlines small stylesheets into each page's HTML. That CSS is re-sent with every page load, and `check:budgets` doesn't count it: about 3 KB gzipped on the game page after Phase 2. Switching to `build.inlineStylesheets: 'never'` makes all CSS cacheable files. But then the "all CSS together" budget sums every page's CSS (23.7 KB) instead of what one page loads.
+
+So change `check:budgets` to read each route's `styles` list from the server build (`dist/server/entry.mjs`) and cap the largest page, then switch. **S.** Check every page's styles in the browser after the switch.
+
 ### Phase 3: Less waiting
 
 This changes the play loop. Take a Fly snapshot first (migration v8).

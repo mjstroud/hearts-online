@@ -28,7 +28,7 @@ npm start                 # run the production build
 - `src/lib/server/`: SQLite and migrations (`db.ts`), auth and sessions, game actions and `publish()` (`games.ts`), the live-update hub (`hub.ts`), stats.
 - `src/lib/types.ts`: `GameView` and the other shapes the browser receives.
 - `src/components/game/`: the live table island. `Game.svelte` is the entry, `Table.svelte` the felt, `DevPanel.svelte` the playtest tools.
-- `src/pages/`: routes, plus the JSON and SSE API under `api/games/[id]/` (`action`, `state`, `events`). `src/pages/dev/` holds dev-only routes.
+- `src/pages/`: routes, plus the JSON and SSE API under `api/games/[id]/` (`action`, `state`, `events`, and `hands/[number]` for the trick review). `src/pages/dev/` holds dev-only routes.
 - `src/middleware.ts`: sessions, sign-in for protected paths, same-origin checks, security headers.
 - `src/styles/global.css`: shared styles and theme variables. `scripts/check-budgets.mjs`: the size budgets.
 - Tests sit next to the code as `*.test.ts`. Server tests point `DATABASE_PATH` at a throwaway file before importing any server module (see the top of `src/lib/server/games.test.ts`).
