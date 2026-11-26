@@ -652,20 +652,38 @@ export type EndMode = 'after-hand' | 'cancel' | 'now';
 /**
  * End the game. The normal way is `after-hand`: the hand in progress is finished first.
  * `now` is the emergency option that throws away the unfinished hand.
+ *
+ * `forHand` is the hand number the host was looking at. The next hand is dealt the moment the
+ * last card falls, so a click can arrive one hand late. If the hand they meant to be the last is
+ * already scored and the new one hasn't really started, the game simply ends there.
  */
-export function endGame(gameId: string, userId: number, mode: EndMode) {
+export function endGame(gameId: string, userId: number, mode: EndMode, forHand?: number) {
   transaction(() => {
     const game = loadGame(gameId);
     if (!game) throw new GameError('That game no longer exists.', 404);
     if (game.ownerId !== userId) throw new GameError('Only the game’s owner can end the game.', 403);
     if (game.status !== 'active' || !game.state) throw new GameError('The game is not in progress.');
-    if (mode === 'now') {
-      game.state.hand = null;
-      game.state.over = true;
+    const state = game.state;
+    const current = state.hand?.number;
+    const stale = forHand !== undefined && Number.isInteger(forHand) && current !== undefined && forHand < current;
+    const finish = () => {
+      state.hand = null;
+      state.over = true;
       game.status = 'finished';
       game.finishedAt = now();
+    };
+    if (mode === 'now') {
+      if (stale) throw new GameError(`Hand ${forHand} is already over and hand ${current} has been dealt. Reload the page and try again.`);
+      finish();
+    } else if (mode === 'after-hand' && stale) {
+      const fresh = !!state.hand && state.hand.tricks.length === 0 && (state.hand.current?.plays.length ?? 0) === 0;
+      if (!fresh)
+        throw new GameError(
+          `Hand ${forHand} already finished and hand ${current} is under way. To stop with the scores so far, use “End now” below.`,
+        );
+      finish();
     } else {
-      game.state.endAfterHand = mode === 'after-hand';
+      state.endAfterHand = mode === 'after-hand';
     }
     saveGame(game);
   });
@@ -834,8 +852,23 @@ function botTurn(gameId: string): boolean {
   });
 }
 
-/** On boot, resume any games that were waiting on a computer player. */
+/**
+ * On boot, resume any games that were waiting on a computer player. Timed games get a fresh
+ * clock, so nobody is put on autopilot because the server was down for a deploy.
+ */
 export function resumeBots() {
   const rows = sql("SELECT id FROM games WHERE status = 'active'").all() as { id: string }[];
-  for (const r of rows) scheduleBots(r.id);
+  for (const r of rows) {
+    try {
+      transaction(() => {
+        const game = loadGame(r.id);
+        if (!game?.settings.moveTimer || !game.state) return;
+        touchClock(game.state, true);
+        saveGame(game);
+      });
+    } catch (err) {
+      console.error(`Failed to restart the move timer for game ${r.id}`, err);
+    }
+    scheduleBots(r.id);
+  }
 }

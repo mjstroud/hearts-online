@@ -7,7 +7,7 @@ import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearts-test-'));
 process.env.DATABASE_PATH = path.join(dir, 'test.db');
 const { sql } = await import('./db');
-const { createGame, getGameView, joinGame, loadGame, performAction, updateSettings } = await import('./games');
+const { createGame, endGame, getGameView, joinGame, loadGame, performAction, resumeBots, updateSettings } = await import('./games');
 const { normalizeSettings } = await import('../engine/rules');
 const { seatsToAct } = await import('../engine/game');
 
@@ -82,6 +82,44 @@ describe('move timer', () => {
     // Bob plays a card himself (or presses I'm back) to take his seat back.
     performAction(id, bob, { type: 'resume' });
     expect(state(id).autopilot?.[1]).toBe(false);
+  });
+
+  it('gives everyone a fresh clock after a restart instead of timing them out', () => {
+    const { id } = startTable(30);
+    vi.advanceTimersByTime(2_000);
+    // Pretend the server was down for a long deploy: the saved clock is now well past due.
+    vi.setSystemTime(Date.now() + 10 * 60_000);
+    // A fresh process: no pending timers anywhere.
+    vi.clearAllTimers();
+    (globalThis as { __heartsBotTimers?: Map<string, unknown> }).__heartsBotTimers?.clear();
+    resumeBots();
+    expect(state(id).autopilot ?? []).not.toContain(true);
+    vi.advanceTimersByTime(29_000);
+    expect(state(id).autopilot ?? []).not.toContain(true);
+    vi.advanceTimersByTime(2_000);
+    expect(state(id).autopilot).toEqual([true, true, false, false]);
+  });
+
+  it('a "final hand" click that arrives after that hand ended stops the game there', () => {
+    const { id, alice } = startTable(null);
+    const game = loadGame(id)!;
+    // The host's page still says hand 1, but hand 2 has just been dealt.
+    sql('UPDATE games SET state = ? WHERE id = ?').run(
+      JSON.stringify({ ...game.state, handsPlayed: 1, hand: { ...game.state!.hand!, number: 2 } }),
+      id,
+    );
+    endGame(id, alice, 'after-hand', 1);
+    expect(loadGame(id)!.status).toBe('finished');
+    expect(state(id).handsPlayed).toBe(1);
+
+    // A stale "end now" (which throws away a hand) is refused instead of guessing.
+    const other = startTable(null);
+    const g2 = loadGame(other.id)!;
+    sql('UPDATE games SET state = ? WHERE id = ?').run(JSON.stringify({ ...g2.state, hand: { ...g2.state!.hand!, number: 3 } }), other.id);
+    expect(() => endGame(other.id, other.alice, 'now', 2)).toThrow(/Reload/);
+    endGame(other.id, other.alice, 'after-hand', 3);
+    expect(loadGame(other.id)!.status).toBe('active');
+    expect(state(other.id).endAfterHand).toBe(true);
   });
 
   it('turning the timer off brings everyone back and stops the clock', () => {

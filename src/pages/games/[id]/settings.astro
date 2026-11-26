@@ -21,14 +21,16 @@ if (Astro.request.method === 'POST') {
       updateSettings(game.id, user.id, form.name ?? '', settingsFromForm(form));
       saved = 'Settings saved.';
     } else if (form.intent === 'end-after') {
-      endGame(game.id, user.id, 'after-hand');
+      endGame(game.id, user.id, 'after-hand', Number(form.hand));
+      // If that hand had already been scored, the game ended on the spot.
+      if (loadGame(game.id)?.status === 'finished') return Astro.redirect(`/games/${game.id}`, 303);
       saved = 'The game will end as soon as the current hand is finished.';
     } else if (form.intent === 'end-cancel') {
       endGame(game.id, user.id, 'cancel');
       saved = 'The game will keep going.';
     } else if (form.intent === 'end-now') {
       if (form.confirm !== 'on') throw new GameError('Tick the box to confirm throwing away the current hand.');
-      endGame(game.id, user.id, 'now');
+      endGame(game.id, user.id, 'now', Number(form.hand));
       return Astro.redirect(`/games/${game.id}`, 303);
     } else if (form.intent === 'delete') {
       if (form.confirmName !== game.name) throw new GameError('Type the game’s exact name to delete it.');
@@ -114,6 +116,7 @@ const handNumber = game.state?.hand?.number;
             ) : (
               <>
                 <input type="hidden" name="intent" value="end-after" />
+                <input type="hidden" name="hand" value={handNumber} />
                 <div>
                   <strong>End after this hand</strong>
                   <p class="muted small">
@@ -139,6 +142,7 @@ const handNumber = game.state?.hand?.number;
         game.status === 'active' && (
           <form method="post" class="panel panel-pad stack" style="--gap: 12px">
             <input type="hidden" name="intent" value="end-now" />
+            <input type="hidden" name="hand" value={handNumber} />
             <div>
               <strong>End immediately</strong>
               <p class="muted small">

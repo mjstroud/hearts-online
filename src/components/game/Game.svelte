@@ -32,8 +32,16 @@
     }, 3800);
   }
 
+  /**
+   * While your own move is on its way, the version the guess was built on. Live updates at that
+   * version (e.g. someone's online dot changing) would put your card back in your hand, so skip them.
+   */
+  let pendingBase: number | null = null;
+
   function apply(next: GameView | null) {
-    if (next && next.version >= view.version) view = next;
+    if (!next) return;
+    if (pendingBase !== null && next.version <= pendingBase) return;
+    if (next.version >= view.version) view = next;
   }
 
   /**
@@ -77,14 +85,20 @@
   async function act(action: GameAction): Promise<boolean> {
     busy = true;
     const guess = predict(action);
-    if (guess) view = guess;
+    if (guess) {
+      pendingBase = view.version;
+      view = guess;
+    }
     try {
       const res = await fetch(`/api/games/${view.id}/action`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(action),
+        // Don't leave the hand locked if a request hangs (say, a phone hopping from wifi to cellular).
+        signal: AbortSignal.timeout?.(15_000),
       });
       const data = await res.json().catch(() => ({}));
+      pendingBase = null;
       if (!res.ok) {
         showToast(data.error ?? 'Something went wrong.');
         if (guess) refresh();
@@ -93,8 +107,10 @@
       apply(data);
       return true;
     } catch {
+      // Timed out or offline. The move may or may not have landed, so ask the server.
+      pendingBase = null;
       showToast('Network hiccup — please try again.');
-      if (guess) refresh();
+      refresh();
       return false;
     } finally {
       busy = false;
@@ -166,19 +182,37 @@
     } catch {}
 
     let es: EventSource | null = null;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    let retries = 0;
     const connect = () => {
+      clearTimeout(retryTimer);
       es?.close();
-      es = new EventSource(`/api/games/${view.id}/events`);
-      es.addEventListener('open', () => (connected = true));
-      es.addEventListener('error', () => (connected = false));
-      es.addEventListener('state', (e) => {
+      const source = new EventSource(`/api/games/${view.id}/events`);
+      es = source;
+      source.addEventListener('open', () => {
+        connected = true;
+        retries = 0;
+      });
+      source.addEventListener('error', () => {
+        connected = false;
+        // Browsers retry a dropped stream on their own, but give up for good after an error
+        // response (like a 502 while the server restarts for a deploy). Keep trying ourselves.
+        if (source.readyState === EventSource.CLOSED && es === source) {
+          const delay = Math.min(30_000, 1000 * 2 ** retries++);
+          retryTimer = setTimeout(() => {
+            refresh();
+            connect();
+          }, delay);
+        }
+      });
+      source.addEventListener('state', (e) => {
         connected = true;
         apply(JSON.parse((e as MessageEvent).data));
       });
-      es.addEventListener('removed', () => {
+      source.addEventListener('removed', () => {
         if (!leaving) location.href = '/games?notice=removed';
       });
-      es.addEventListener('deleted', () => (location.href = '/games?notice=deleted'));
+      source.addEventListener('deleted', () => (location.href = '/games?notice=deleted'));
     };
     connect();
 
@@ -189,6 +223,7 @@
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => {
+      clearTimeout(retryTimer);
       es?.close();
       document.removeEventListener('visibilitychange', onVisible);
     };

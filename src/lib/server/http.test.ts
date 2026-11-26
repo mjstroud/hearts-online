@@ -1,5 +1,32 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { canonicalRedirect, clientIp, siteOrigin } from './http';
+import { canonicalRedirect, clientIp, safeNext, siteOrigin } from './http';
+
+describe('redirects after sign-in', () => {
+  it('keeps paths on this site', () => {
+    expect(safeNext('/games/abc?tab=1')).toBe('/games/abc?tab=1');
+    expect(safeNext('/join/ABC123')).toBe('/join/ABC123');
+    expect(safeNext(null)).toBe('/games');
+  });
+
+  it('refuses anything that would leave the site', () => {
+    for (const evil of [
+      '//evil.example/x',
+      'https://evil.example/',
+      '/\\evil.example',
+      '/.//evil.example/phish',
+      '/a/..//evil.example/y',
+      '/%2e%2e//evil.example',
+      '/%2e//evil.example',
+      '/./%2f/evil.example',
+      ' /games',
+      'javascript:alert(1)',
+    ]) {
+      const out = safeNext(evil);
+      expect(out, evil).toMatch(/^\/(?![/\\])/);
+      expect(new URL(out, 'https://shootthesun.com').host, evil).toBe('shootthesun.com');
+    }
+  });
+});
 
 const req = (url: string, headers: Record<string, string> = {}) => new Request(url, { headers });
 

@@ -46,7 +46,11 @@ export function safeNext(next: string | null | undefined, fallback = '/games'): 
     const base = 'http://local.invalid';
     const url = new URL(next, base);
     if (url.origin !== base) return fallback;
-    return url.pathname + url.search;
+    // Check the normalized path too: dot segments like "/.//evil.com" collapse into "//evil.com",
+    // which a browser treats as another site.
+    const path = url.pathname + url.search;
+    if (path.startsWith('//') || path.startsWith('/\\')) return fallback;
+    return path;
   } catch {
     return fallback;
   }

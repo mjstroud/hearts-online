@@ -87,7 +87,7 @@ A `fly.toml` is included. GitHub Actions does the deploying, so no machine needs
 **One-time setup**
 
 1. Pick a unique app name and set `app` in `fly.toml`.
-2. In the Fly dashboard, create an org token for `matthew-stroud`. Add it to the GitHub repo as the secret `FLY_ORG_TOKEN`.
+2. In the Fly dashboard, create an org token for your `personal` organization. Add it to the GitHub repo as the secret `FLY_ORG_TOKEN`.
 3. Optional: add a `SIGNUP_CODE` repo secret to keep sign-up family-only.
 4. In GitHub, go to Actions → **Fly launch** → Run workflow. It creates the app, the `hearts_data` volume, and the secret, then deploys.
 5. In the Fly dashboard, create a deploy token for the new app. Add it as the secret `FLY_API_TOKEN`, then delete `FLY_ORG_TOKEN` from GitHub and revoke it in Fly.
