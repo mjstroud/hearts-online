@@ -138,7 +138,7 @@ So change `check:budgets` to read each route's `styles` list from the server bui
 
 ### Phase 3: Less waiting
 
-**Status (2026-11-26): built and on the dev site, not yet released.** Migration v8 adds one table, `removed_players`, so take a Fly volume snapshot of the real site before releasing it.
+**Status (2026-11-26): live.** Released as `release-2026-11-26.4` (Fly release v12) after volume snapshot `vs_w8Qgp2OXbDKSla6laDYmPo`. Migration v8 (one table, `removed_players`) ran on the real site.
 
 - **Checked:**
   - A six-lens design review, then a five-lens code review with each finding verified by a skeptic.
