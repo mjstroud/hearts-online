@@ -13,8 +13,11 @@ import { gzipSync } from 'node:zlib';
 
 const KB = 1024;
 const BUDGETS = {
-  // Game.svelte, everything it imports statically, and the Svelte island loader. 39.8 KB on 2026-11-26.
-  gamePage: 45 * KB,
+  // Game.svelte, everything it imports statically, and the Svelte island loader. 39.8 KB after Phase 1,
+  // 44.3 KB after Phase 2 (table moments, trick inspector, hand-end sequence). Raised from 45 KB under the
+  // owner's "adjust as is consistent with best practices": still a small fraction of what a phone page
+  // usually ships. Keep rarely seen pieces lazy (dynamic import()) rather than growing this.
+  gamePage: 55 * KB,
   // Any other single JS file, so a new island can't quietly bloat.
   chunk: 15 * KB,
   // Every stylesheet together. 10.2 KB after Phase 1 (self-hosted font rules). Raised from 11 KB with the

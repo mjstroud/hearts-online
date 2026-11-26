@@ -30,7 +30,7 @@ These are the "build it fast from the start" rules. They answer the performance 
 
 1. **Your own actions show instantly.** Anything you do (play, pass, queue a card) appears on screen in the same frame, and the server's update confirms it a moment later. A dev-only readout in the playtest panel shows tap-to-screen and tap-to-server times.
 2. **Budgets, checked in CI** (`npm run check:budgets` and `view-size.test.ts`):
-   - Game page JS: at most 45 KB gzipped (39.5 KB after Phase 1).
+   - Game page JS: at most 55 KB gzipped (39.5 KB after Phase 1, 44.3 KB after Phase 2; raised from 45 KB with the owner's OK).
    - Any other JS file: at most 15 KB, and aim for 10.
    - All CSS together: at most 14 KB. It was 10.2 KB after Phase 1; the owner OK'd raising the cap from 11 KB for the Phase 2 visuals.
    - One player's live update: at most 4 KB (2.5–2.8 KB with 32-char names).

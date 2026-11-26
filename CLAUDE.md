@@ -37,7 +37,7 @@ npm start                 # run the production build
 
 1. **Your own actions show instantly.** A play, pass or queued card appears in the same frame it's tapped; the server's update confirms it a moment later.
 2. **Stay within the budgets** (gzipped; CI fails a change that goes over):
-   - Game page JS at most 45 KB (`npm run check:budgets`).
+   - Game page JS at most 55 KB (`npm run check:budgets`).
    - Any other single JS file at most 15 KB; aim for 10 KB or less for a new interactive component.
    - All CSS together at most 14 KB (also `npm run check:budgets`).
    - One player's live update at most 4 KB (`src/lib/server/view-size.test.ts`).
