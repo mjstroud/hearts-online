@@ -20,9 +20,20 @@
   let notify = $state(false);
 
   const seenKey = $derived(`hearts:seen-hand:${view.id}`);
-  const myTurn = $derived(view.me.seat !== null && view.toAct.includes(view.me.seat));
-  // The move timer's deadline on this device's clock, fixed when each new view arrives.
-  const clockEndsAt = $derived(view.moveClock ? Date.now() + view.moveClock.endsIn : null);
+  // "Your turn" (tab title, alerts) means the table is waiting on you. While a cat plays your
+  // seat and someone else is still at the table, it isn't, so don't nag.
+  const myTurn = $derived.by(() => {
+    const seat = view.me.seat;
+    if (seat === null || !view.toAct.includes(seat)) return false;
+    const mine = view.players.find((p) => p.seat === seat);
+    return !(mine?.autopilot && view.players.some((p) => !p.isBot && !p.autopilot));
+  });
+
+  // The move timer's deadline on this device's clock. Set only when a server view arrives, so a
+  // locally predicted view can't re-anchor it with a stale "time left".
+  const deadlineOf = (v: GameView) => (v.moveClock ? Date.now() + v.moveClock.endsIn : null);
+  // svelte-ignore state_referenced_locally
+  let clockEndsAt = $state<number | null>(deadlineOf(initial));
 
   function showToast(text: string) {
     const id = Date.now();
@@ -41,7 +52,10 @@
   function apply(next: GameView | null) {
     if (!next) return;
     if (pendingBase !== null && next.version <= pendingBase) return;
-    if (next.version >= view.version) view = next;
+    if (next.version >= view.version) {
+      view = next;
+      clockEndsAt = deadlineOf(next);
+    }
   }
 
   /**
@@ -88,6 +102,9 @@
     if (guess) {
       pendingBase = view.version;
       view = guess;
+      // After your card, the next player's clock starts on the server; wait for its real deadline.
+      // (A pass doesn't move anyone's deadline, so the countdown keeps running.)
+      if (action.type === 'play') clockEndsAt = null;
     }
     try {
       const res = await fetch(`/api/games/${view.id}/action`, {

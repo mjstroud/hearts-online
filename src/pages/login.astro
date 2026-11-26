@@ -1,7 +1,7 @@
 ---
 import AuthCard from '../components/AuthCard.astro';
 import Layout from '../layouts/Layout.astro';
-import { authenticate, clearAttempts, createSession, setSessionCookie, takeAttempt } from '../lib/server/auth';
+import { USERNAME_RE, authenticate, clearAttempts, createSession, setSessionCookie, takeAttempt } from '../lib/server/auth';
 import { clientIp, isSecure, readForm, safeNext } from '../lib/server/http';
 
 const next = safeNext(Astro.url.searchParams.get('next'));
@@ -11,21 +11,23 @@ let error = '';
 let username = '';
 if (Astro.request.method === 'POST') {
   const form = await readForm(Astro.request);
-  username = form.username ?? '';
+  username = (form.username ?? '').slice(0, 64);
   let addr = 'unknown';
   try {
     addr = Astro.clientAddress;
   } catch {}
-  const userKey = `login:user:${username.toLowerCase()}`;
+  // Only real-looking usernames get their own rate-limit counter, so junk can't pile up in memory.
+  const validName = USERNAME_RE.test(username);
+  const userKey = validName ? `login:user:${username.toLowerCase()}` : null;
   const allowed = takeAttempt([
-    { key: userKey, limit: 10 },
+    ...(userKey ? [{ key: userKey, limit: 10 }] : []),
     { key: `login:ip:${clientIp(Astro.request, addr)}`, limit: 40 },
   ]);
   if (!allowed) {
     error = 'Too many attempts. Please wait a few minutes and try again.';
   } else {
-    const user = await authenticate(username, form.password ?? '');
-    if (user) {
+    const user = validName ? await authenticate(username, form.password ?? '') : null;
+    if (user && userKey) {
       clearAttempts(userKey);
       const { token, expires } = createSession(user.id);
       setSessionCookie(Astro.cookies, token, expires, isSecure(Astro.request));

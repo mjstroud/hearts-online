@@ -7,7 +7,7 @@ import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearts-test-'));
 process.env.DATABASE_PATH = path.join(dir, 'test.db');
 const { sql } = await import('./db');
-const { createGame, endGame, getGameView, joinGame, loadGame, performAction, resumeBots, updateSettings } = await import('./games');
+const { createGame, createPlaytest, endGame, getGameView, joinGame, loadGame, performAction, resumeBots, updateSettings } = await import('./games');
 const { normalizeSettings } = await import('../engine/rules');
 const { seatsToAct } = await import('../engine/game');
 
@@ -42,11 +42,11 @@ describe('move timer', () => {
   });
 
   it('waits for people forever when the timer is off', () => {
-    const { id } = startTable(null);
+    const { id, bob } = startTable(null);
     vi.advanceTimersByTime(60 * 60_000);
     expect(seatsToAct(state(id))).toEqual([0, 1]);
     expect(state(id).autopilot ?? []).not.toContain(true);
-    expect(getGameView(id, userCount)!.moveClock).toBeNull();
+    expect(getGameView(id, bob)!.moveClock).toBeNull();
   });
 
   it('sits a cat in for whoever runs out of time, and lets them come back', () => {
@@ -92,8 +92,11 @@ describe('move timer', () => {
     // A fresh process: no pending timers anywhere.
     vi.clearAllTimers();
     (globalThis as { __heartsBotTimers?: Map<string, unknown> }).__heartsBotTimers?.clear();
+    const lastActivity = loadGame(id)!.updatedAt;
     resumeBots();
     expect(state(id).autopilot ?? []).not.toContain(true);
+    // The restart isn't "activity": the games list keeps its order.
+    expect(loadGame(id)!.updatedAt).toBe(lastActivity);
     vi.advanceTimersByTime(29_000);
     expect(state(id).autopilot ?? []).not.toContain(true);
     vi.advanceTimersByTime(2_000);
@@ -120,6 +123,19 @@ describe('move timer', () => {
     endGame(other.id, other.alice, 'after-hand', 3);
     expect(loadGame(other.id)!.status).toBe('active');
     expect(state(other.id).endAfterHand).toBe(true);
+  });
+
+  it('has no clock at a playtest table while the computer players are on manual', () => {
+    const owner = addUser();
+    const id = createPlaytest(owner, 'Sandbox', normalizeSettings({ moveTimer: 30 }), 4);
+    expect(getGameView(id, owner)!.moveClock).not.toBeNull();
+    performAction(id, owner, { type: 'dev:bots', botMode: 'manual' });
+    expect(getGameView(id, owner)!.moveClock).toBeNull();
+    vi.advanceTimersByTime(10 * 60_000);
+    expect(state(id).autopilot ?? []).not.toContain(true);
+    // Back on auto: a fresh 30 seconds, not an allowance that ran out while on manual.
+    performAction(id, owner, { type: 'dev:bots', botMode: 'auto' });
+    expect(getGameView(id, owner)!.moveClock!.endsIn).toBeGreaterThan(29_000);
   });
 
   it('turning the timer off brings everyone back and stops the clock', () => {

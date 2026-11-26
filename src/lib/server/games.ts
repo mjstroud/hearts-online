@@ -138,6 +138,8 @@ function autoSeat(game: GameRecord, players: SeatedPlayer[]): (seat: number) => 
 function moveDeadline(game: GameRecord, players: SeatedPlayer[]): number | null {
   const state = game.state;
   if (!game.settings.moveTimer || game.status !== 'active' || !state?.hand || state.turnSince === undefined) return null;
+  // At a playtest table with the computer players on manual, the owner drives every seat: no clock.
+  if (game.mode === 'playtest' && game.dev.botMode === 'manual') return null;
   const auto = autoSeat(game, players);
   if (!seatsToAct(state).some((s) => !auto(s))) return null;
   return state.turnSince + game.settings.moveTimer * 1000;
@@ -572,8 +574,11 @@ export function performAction(gameId: string, userId: number, action: GameAction
       }
       case 'dev:bots': {
         devOnly();
+        const wasManual = game.dev.botMode === 'manual';
         game.dev = normalizeDev({ ...game.dev, ...action });
         if (game.dev.botMode === 'manual') clearBotTimer(gameId);
+        // Back on auto: start a fresh allowance rather than one that ran down while on manual.
+        else if (wasManual) touchClock(game.state, true);
         break;
       }
       case 'dev:undo': {
@@ -864,7 +869,9 @@ export function resumeBots() {
         const game = loadGame(r.id);
         if (!game?.settings.moveTimer || !game.state) return;
         touchClock(game.state, true);
-        saveGame(game);
+        // Only the clock changes: leave updated_at alone so the games list doesn't show every
+        // timed game as "just now" after a deploy.
+        sql('UPDATE games SET state = ?, version = version + 1 WHERE id = ?').run(JSON.stringify(game.state), game.id);
       });
     } catch (err) {
       console.error(`Failed to restart the move timer for game ${r.id}`, err);

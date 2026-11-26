@@ -45,6 +45,7 @@ export const USERNAME_RE = /^[a-zA-Z0-9_.-]{3,24}$/;
 
 export function validateSignup(username: string, displayName: string, password: string): string | null {
   if (!USERNAME_RE.test(username)) return 'Usernames are 3–24 letters, numbers, dots, dashes or underscores.';
+  if (/^bot-\d+$/i.test(username)) return 'That username is taken.';
   if (!displayName || displayName.length > 32) return 'Display name must be 1–32 characters.';
   if (password.length < 8) return 'Passwords need at least 8 characters.';
   if (password.length > 200) return 'That password is too long.';
@@ -136,27 +137,43 @@ export function setSessionCookie(cookies: AstroCookies, token: string, expires: 
  * up front, before any slow password hashing, so parallel requests can't slip past.
  */
 const WINDOW = 15 * 60 * 1000;
+/** Hard ceiling on tracked keys, so a flood of distinct keys can't grow memory without bound. */
+const MAX_KEYS = 10_000;
 const attempts = new Map<string, { count: number; until: number }>();
 
 function prune() {
-  if (attempts.size < 5000) return;
+  if (attempts.size < MAX_KEYS / 2) return;
   const t = now();
   for (const [k, v] of attempts) if (v.until < t) attempts.delete(k);
+  // Still full of live windows? Drop the oldest first (a Map iterates in insertion order).
+  for (const k of attempts.keys()) {
+    if (attempts.size < MAX_KEYS) break;
+    attempts.delete(k);
+  }
 }
 
-/** Count an attempt for every key; returns false if any key is over its limit. */
+/**
+ * Count an attempt for every key; returns false if any key is already at its limit.
+ * A refused attempt isn't counted, so a blocked client stops adding entries.
+ */
 export function takeAttempt(keys: { key: string; limit: number }[]): boolean {
   prune();
   const t = now();
-  let ok = true;
-  for (const { key, limit } of keys) {
-    let a = attempts.get(key);
-    if (!a || a.until < t) attempts.set(key, (a = { count: 0, until: t + WINDOW }));
+  const live = (key: string) => {
+    const a = attempts.get(key);
+    return a && a.until >= t ? a : undefined;
+  };
+  if (keys.some(({ key, limit }) => (live(key)?.count ?? 0) >= limit)) return false;
+  for (const { key } of keys) {
+    let a = live(key);
+    if (!a) attempts.set(key, (a = { count: 0, until: t + WINDOW }));
     a.count += 1;
-    if (a.count > limit) ok = false;
   }
-  return ok;
+  return true;
 }
+
+/** For tests: how many keys the limiter is tracking. */
+export const trackedAttemptKeys = () => attempts.size;
 
 export function clearAttempts(key: string) {
   attempts.delete(key);

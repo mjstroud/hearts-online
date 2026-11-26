@@ -78,6 +78,17 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX password_resets_user ON password_resets(user_id);
   `,
+  // v5: create the cats up front (same names as CAT_NAMES in games.ts) so nobody can sign up as bot-1…bot-7.
+  `
+  INSERT OR IGNORE INTO users (username, display_name, password_hash, is_bot, created_at) VALUES
+    ('bot-1', 'Rosie', NULL, 1, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
+    ('bot-2', 'Raul', NULL, 1, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
+    ('bot-3', 'Pippi', NULL, 1, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
+    ('bot-4', 'Dash', NULL, 1, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
+    ('bot-5', 'Carlito', NULL, 1, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
+    ('bot-6', 'Serena', NULL, 1, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
+    ('bot-7', 'Cali', NULL, 1, CAST(strftime('%s', 'now') AS INTEGER) * 1000);
+  `,
 ];
 
 function migrate(db: DatabaseSync) {
