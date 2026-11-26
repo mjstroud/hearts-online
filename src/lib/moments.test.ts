@@ -103,17 +103,8 @@ describe('moments over whole hands', () => {
         const jTrick = hand.tricks.find((t) => t.plays.some((p) => p.card === 'JD'));
         expect(kinds(all, 'jack').map(text)).toEqual(jTrick && jackRule ? [`${NAMES[jTrick.winner!]} grabs the Jack · −10`] : []);
 
-        // Each watch starts and ends at most once, and only ends after it started.
-        const watch = texts(kinds(all, 'watch'));
-        for (const start of ['☀ Sun watch', '☾ Moon watch']) expect(watch.filter((m) => m.startsWith(start)).length).toBeLessThanOrEqual(1);
-        const down = watch.indexOf('☀ Sun’s down');
-        if (down >= 0) expect(watch.findIndex((m) => m.startsWith('☀ Sun watch'))).toBeLessThan(down);
-        const block = watch.findIndex((m) => m.startsWith('☾ Moon blocked'));
-        if (block >= 0) expect(watch.findIndex((m) => m.startsWith('☾ Moon watch'))).toBeLessThan(block);
-
-        // Nothing for the crib, ever: the hand's moments are the same if the crib held other cards.
-        const r = scoreHand(hand, settings);
-        if (r.sun !== null) expect(watch.some((m) => m === `☀ Sun watch: ${NAMES[r.sun!]}`)).toBe(true);
+        // Sun and Moon watches say nothing: the glow behind the watcher's avatar is the news.
+        expect(all.flatMap((a) => texts(a.messages)).filter((m) => /Sun|Moon/.test(m))).toEqual([]);
       }
     });
   }
@@ -136,33 +127,20 @@ describe('moments over whole hands', () => {
   });
 
   for (const players of [4, 5]) {
-    it(`a Sun run shows the Sun watch once and no Moon (${players} players)`, () => {
-      for (let seat = 0; seat < players; seat++) {
-        const rng = seeded(seat * 31 + players);
-        const hand = dealHand(1, players, rng, { spec: presetSpec('sun', players, seat), passOffset: 0 });
-        const all = playThrough(hand, (s) => {
-          const legal = legalPlays(hand, s, S);
-          return s === seat ? legal.reduce((a, b) => (rankValue(b) > rankValue(a) ? b : a)) : chooseBotPlay(hand, s, S);
-        });
-        const watch = all.flatMap((a) => texts(a.messages.filter((m) => m.kind === 'watch')));
-        expect(watch).toEqual([`☀ Sun watch: ${NAMES[seat]}`]);
-        // On the trick the watch starts: 4 of 12, 3 of 9.
-        expect(all.find((a) => a.messages.some((m) => m.kind === 'watch'))!.trick).toBe(players === 5 ? 3 : 4);
-      }
-    });
-
-    it(`a Moon run shows the Moon watch once, and it's never blocked (${players} players)`, () => {
+    it(`a Sun or Moon run has no messages: the glow is the news (${players} players)`, () => {
       let shots = 0;
-      for (let seat = 0; seat < players; seat++) {
-        const rng = seeded(seat * 17 + players);
-        const hand = dealHand(1, players, rng, { spec: presetSpec('moon', players, seat), passOffset: 0 });
-        const all = playThrough(hand, (s) => {
-          const legal = legalPlays(hand, s, S);
-          return s === seat ? legal.reduce((a, b) => (rankValue(b) > rankValue(a) ? b : a)) : chooseBotPlay(hand, s, S);
-        });
-        if (scoreHand(hand, S).moon !== seat) continue;
-        shots++;
-        expect(all.flatMap((a) => texts(a.messages.filter((m) => m.kind === 'watch')))).toEqual([`☾ Moon watch: ${NAMES[seat]}`]);
+      for (const preset of ['sun', 'moon'] as const) {
+        for (let seat = 0; seat < players; seat++) {
+          const rng = seeded(seat * 31 + players);
+          const hand = dealHand(1, players, rng, { spec: presetSpec(preset, players, seat), passOffset: 0 });
+          const all = playThrough(hand, (s) => {
+            const legal = legalPlays(hand, s, S);
+            return s === seat ? legal.reduce((a, b) => (rankValue(b) > rankValue(a) ? b : a)) : chooseBotPlay(hand, s, S);
+          });
+          const r = scoreHand(hand, S);
+          if ((r.sun ?? r.moon) === seat) shots++;
+          expect(all.flatMap((a) => texts(a.messages)).filter((m) => /Sun|Moon/.test(m))).toEqual([]);
+        }
       }
       expect(shots).toBeGreaterThan(0);
     });
@@ -211,23 +189,10 @@ describe('detectMoments', () => {
     expect(detectMoments(before, off, onlooker()).messages).toEqual([]);
   });
 
-  it('tells the Sun going down and the Moon being blocked, by who took the trick', () => {
-    const m = detectMoments(tv({ ...before, sunWatch: null }), closes(won(3, '6H', '7C', '8C', '9C')), onlooker());
-    expect(texts(m.messages)).toEqual(['☾ Moon blocked by Dee']);
-    const both = detectMoments(before, closes(won(3, '6H', '7C', '8C', '9C')), { names: NAMES, me: 3, jack: true });
-    // During a Sun run only the Sun was showing, so its end is the news.
-    expect(texts(both.messages)).toEqual(['☀ Sun’s down']);
-    const sunOnly = detectMoments(before, closes(won(3, '6C', '7C', '8C', '9C'), { moonWatch: 2 }), onlooker());
-    expect(texts(sunOnly.messages)).toEqual(['☀ Sun’s down', '☾ Moon watch: Cat']);
-  });
-
-  it('starts a watch when the trick closes', () => {
-    const m = detectMoments(tv({ trickNumber: 4 }), closes(won(1, '6C', '7C', '8C', '9C'), { trickNumber: 5, sunWatch: 1 }), {
-      names: NAMES,
-      me: 1,
-      jack: true,
-    });
-    expect(texts(m.messages)).toEqual(['☀ Sun watch: You']);
+  it('says nothing when a watch starts or ends: the glow is the news', () => {
+    expect(detectMoments(before, closes(won(3, '6H', '7C', '8C', '9C')), onlooker()).messages).toEqual([]);
+    const starts = closes(won(1, '6C', '7C', '8C', '9C'), { sunWatch: 1, sunRun: { seat: 1, tricks: 4 } });
+    expect(detectMoments(tv({ trickNumber: 6 }), starts, onlooker()).messages).toEqual([]);
   });
 
   it('breaks hearts the moment the card lands, with a wash, and ripples the Q♠', () => {
@@ -264,13 +229,13 @@ describe('the hand-end sequence', () => {
   const summary = (p: Partial<HandSummary>): HandSummary =>
     ({ number: 3, jackScored: true, sun: null, moon: null, finalTrick: won(1, '2D', 'QS', 'JD', '4D'), ...p }) as HandSummary;
 
-  const final = (before: TableView | null, s: HandSummary, w = onlooker()) => finalMoments(before, s.finalTrick!, s, w);
+  const final = (s: HandSummary, w = onlooker()) => finalMoments(s.finalTrick!, s, w);
 
   it('tells the final trick but leaves a shot to the full-screen celebration', () => {
-    const m = final(null, summary({ moon: 1 }));
+    const m = final(summary({ moon: 1 }));
     expect(texts(m)).toEqual(['Bob eats the Queen · +13', 'Bob grabs the Jack · −10']);
     expect(m.some((x) => x.kind === 'shot')).toBe(false);
-    expect(final(null, summary({ jackScored: false, sun: 0, finalTrick: won(0, '2D', '3D', '4D', '5D') }), { names: NAMES, me: 0, jack: false })).toEqual([]);
+    expect(final(summary({ jackScored: false, sun: 0, finalTrick: won(0, '2D', '3D', '4D', '5D') }), { names: NAMES, me: 0, jack: false })).toEqual([]);
   });
 
   it('holds the final trick long enough for its cards to land and each of its messages', () => {
@@ -284,41 +249,25 @@ describe('the hand-end sequence', () => {
     expect(finalTrickHoldMs(null, quiet.finalTrick!, quiet, onlooker())).toBe(3 * STAGGER_MS + FINAL_TRICK_MS);
   });
 
-  it('says an auto-finished hand is over, and tells watch endings on its last table trick', () => {
+  it('says an auto-finished hand is over', () => {
     // The server played out tricks 10-12, so trick 9 was the last the table saw.
     const s = summary({ autoFrom: 10 });
     const inPlay = { leader: 1, plays: s.finalTrick!.plays.slice(0, 2), winner: null };
     const at9 = tv({ trickNumber: 9, handSizes: [4, 3, 3, 4], current: inPlay, sunWatch: 0 });
-    const m = final(at9, s);
+    const m = final(s);
     expect(m[0].kind).toBe('auto');
-    expect(texts(m)).toEqual(['No points left · hand over', 'Bob eats the Queen · +13', 'Bob grabs the Jack · −10', '☀ Sun’s down']);
-    // A view of trick 12 would be a trick the table never saw.
-    expect(texts(final({ ...at9, trickNumber: 12 }, s))).not.toContain('☀ Sun’s down');
-    // Two cards still to land, then four messages.
-    expect(finalTrickHoldMs(at9, s.finalTrick!, s, onlooker())).toBe(STAGGER_MS + 4 * MIN_SHOW_MS);
+    expect(texts(m)).toEqual(['No points left · hand over', 'Bob eats the Queen · +13', 'Bob grabs the Jack · −10']);
+    // Two cards still to land, then three messages.
+    expect(finalTrickHoldMs(at9, s.finalTrick!, s, onlooker())).toBe(STAGGER_MS + 3 * MIN_SHOW_MS);
     // Without the summary there's no knowing the hand ended early.
-    expect(texts(finalMoments(at9, s.finalTrick!, null, onlooker()))).not.toContain('No points left · hand over');
-  });
-
-  it('tells a watch ending on the final trick, if this tab saw that trick in progress', () => {
-    // The final trick (Bob leads 2♦, then Q♠, J♦ and 4♦) with two cards down.
-    const inPlay = { leader: 1, plays: won(1, '2D', 'QS', 'JD', '4D').plays.slice(0, 2), winner: null };
-    const last = tv({ trickNumber: 12, handSizes: [1, 0, 0, 1], current: inPlay, sunWatch: 0, moonWatch: 0 });
-    expect(texts(final(last, summary({})))).toContain('☀ Sun’s down');
-    // A view from earlier in the hand, another hand, or another trick isn't enough to know.
-    expect(texts(final({ ...last, trickNumber: 10 }, summary({})))).not.toContain('☀ Sun’s down');
-    expect(texts(final({ ...last, handNumber: 2 }, summary({})))).not.toContain('☀ Sun’s down');
-    expect(texts(final({ ...last, current: { ...inPlay, plays: [{ seat: 1, card: '3D' }] } }, summary({})))).not.toContain('☀ Sun’s down');
-    const moon = tv({ trickNumber: 12, handSizes: [1, 0, 0, 1], current: inPlay, moonWatch: 2 });
-    expect(texts(final(moon, summary({})))).toContain('☾ Moon blocked by Bob');
+    expect(texts(finalMoments(s.finalTrick!, null, onlooker()))).not.toContain('No points left · hand over');
   });
 
   it('without the hand’s summary, tells only what the trick itself shows', () => {
     // After a game's last hand the felt holds a view whose lastHand is the hand before.
     const trick = won(1, '2D', 'QS', 'JD', '4D');
-    const last = tv({ trickNumber: 12, handSizes: [1, 0, 0, 1], current: { leader: 1, plays: trick.plays.slice(0, 3), winner: null }, sunWatch: 0 });
-    expect(texts(finalMoments(last, trick, null, onlooker(false)))).toEqual(['Bob eats the Queen · +13', '☀ Sun’s down']);
-    expect(texts(finalMoments(null, trick, null, onlooker(true)))).toEqual(['Bob eats the Queen · +13', 'Bob grabs the Jack · −10']);
+    expect(texts(finalMoments(trick, null, onlooker(false)))).toEqual(['Bob eats the Queen · +13']);
+    expect(texts(finalMoments(trick, null, onlooker(true)))).toEqual(['Bob eats the Queen · +13', 'Bob grabs the Jack · −10']);
   });
 
   it('works from a real game: the next hand is dealt with the last card', () => {
@@ -336,7 +285,7 @@ describe('the hand-end sequence', () => {
     expect(after.handNumber).toBe(2);
     // Across hands, detectMoments says nothing; the sequence uses the summary instead.
     expect(detectMoments(before, after, onlooker()).messages).toEqual([]);
-    const m = texts(finalMoments(before, s.finalTrick!, s, onlooker()));
+    const m = texts(finalMoments(s.finalTrick!, s, onlooker()));
     const q = s.finalTrick!.plays.some((p) => p.card === 'QS');
     expect(m.includes(`${NAMES[s.finalTrick!.winner!]} eats the Queen · +13`)).toBe(q);
   });
@@ -370,7 +319,7 @@ describe('the hand-end sequence', () => {
         expect(before.trickNumber).toBe(s.autoFrom - 1);
         expect(endedLive(before, s)).toBe(true);
         expect(s.finalTrick).toEqual(hand.tricks[s.autoFrom - 2]);
-        expect(finalMoments(before, s.finalTrick!, s, onlooker())[0].kind).toBe('auto');
+        expect(finalMoments(s.finalTrick!, s, onlooker())[0].kind).toBe('auto');
       }
     }
     expect(finished).toBeGreaterThan(0);
@@ -394,18 +343,14 @@ describe('the hand-end sequence', () => {
     expect(auto).toBeGreaterThan(0);
   });
 
-  it('a hand followed by a Keep hand keeps its watch endings', () => {
+  it('a hand followed by a Keep hand still ends live', () => {
     // 4 players pass left, right, across, then keep: hand 4 starts straight into play.
     const [, , { before, after, s }] = playHands(3, 3);
     expect(after?.handNumber).toBe(4);
     expect(after?.phase).toBe('playing');
     expect(endedLive(before, s)).toBe(true);
-    expect(endedLive(after, s)).toBe(false);
-    // Say someone other than the final trick's winner was on Sun watch going into it.
-    const watching = (s.finalTrick!.winner! + 1) % 4;
-    expect(texts(finalMoments({ ...before, sunWatch: watching }, s.finalTrick!, s, onlooker()))).toContain('☀ Sun’s down');
     // The next hand's first view, also mid-play, can't stand in for it.
-    expect(texts(finalMoments({ ...after!, sunWatch: watching }, s.finalTrick!, s, onlooker()))).not.toContain('☀ Sun’s down');
+    expect(endedLive(after, s)).toBe(false);
   });
 });
 
@@ -432,9 +377,9 @@ describe('message queue', () => {
   const m = (kind: Message['kind'], name: string, delay?: number): Message => ({ kind, pre: '', name, post: '', delay });
 
   it('orders by priority, then arrival, and keeps the first few', () => {
-    const q = enqueue([], [m('jack', 'j'), m('hearts', 'h'), m('watch', 'w1'), m('queen', 'q'), m('watch', 'w2')], 0);
-    expect(q.map((x) => x.name)).toEqual(['q', 'h', 'w1', 'w2']);
-    expect(enqueue(q, [m('shot', 's')], 0).map((x) => x.name)).toEqual(['s', 'q', 'h', 'w1']);
+    const q = enqueue([], [m('takes', 't'), m('hearts', 'h'), m('jack', 'j1'), m('queen', 'q'), m('jack', 'j2')], 0);
+    expect(q.map((x) => x.name)).toEqual(['q', 'h', 'j1', 'j2']);
+    expect(enqueue(q, [m('shot', 's')], 0).map((x) => x.name)).toEqual(['s', 'q', 'h', 'j1']);
   });
 
   it('holds a delayed message back until it is due', () => {

@@ -13,8 +13,9 @@ Built with [Astro](https://astro.build) (server-rendered), [Svelte](https://svel
 - **An easy-to-read table.**
   - Trick cards stack by seat, so the led card is never buried. A ring marks the led card and a glow marks the card currently winning.
   - The finished trick stays on the felt until the next lead, and a Last trick button brings it back. Tap a trick, or hover on a computer, to see who played what.
-  - A corner of the felt shows tricks left, whether hearts are broken, and a ☀ Sun or ☾ Moon watch on anyone who could still shoot. That's worked out from face-up cards only, so the crib stays secret. The host can turn the watches off.
-- **Table moments.** Short messages when hearts break, the Q♠ is played and eaten, or the J♦ is grabbed, and when a Sun or Moon watch starts or ends. When someone shoots the Moon or the Sun, a sunrise or moonrise plays before the results.
+  - A corner of the felt shows tricks left and whether hearts are broken.
+  - **Sun and Moon watches.** Anyone who could still shoot glows: sun rays behind the avatar of whoever has won every trick so far (from the first trick), and a pale Moon halo behind whoever has taken every point card so far (from the first heart). The glow grows in three steps as the run goes on, and from the second step (3 tricks in a row, or 5 hearts) the corner names them too. It's worked out from face-up cards only, so the crib stays secret. The host can turn the watches off.
+- **Table moments.** Short messages when hearts break, the Q♠ is played and eaten, or the J♦ is grabbed. A Sun or Moon watch has no message: its glow lights up, grows, and goes out when the run is broken. When someone shoots the Moon or the Sun, a sunrise or moonrise plays before the results.
 - **Trick review.** Every finished hand's tricks can be replayed from the results screen ("See the tricks") or by tapping a hand number on the scoreboard. They load on demand from `/api/games/:id/hands/:number`.
 - **Terms and privacy.** Short Terms and Privacy pages. New players agree at sign-up, and existing players agree once on their next visit.
 - **Less waiting.**

@@ -4,7 +4,7 @@
  * facts only. Never pointsTaken, queenTakenBy, jackTakenBy or myCrib: the crib winner's own view
  * counts the crib in those, and a moment must look the same from every seat.
  */
-import { type Card, JACK_OF_DIAMONDS, QUEEN_OF_SPADES, cardLabel, isPenaltyCard } from './engine/cards';
+import { type Card, JACK_OF_DIAMONDS, QUEEN_OF_SPADES, cardLabel } from './engine/cards';
 import type { Trick } from './engine/hand';
 import type { HandSummary, TableView } from './engine/view';
 
@@ -30,12 +30,12 @@ export function arrivalDelays(onFelt: readonly Card[], trick: Trick | null): Map
 
 /**
  * How long the hand-end sequence holds the final trick on the felt: long enough for its cards to
- * slide in and for each of its messages (auto-finished, the Queen, the Jack, a watch ending) to get
- * its turn in the slot.
+ * slide in and for each of its messages (auto-finished, the Queen, the Jack) to get its turn in the
+ * slot. FINAL_TRICK_MS also gives a Sun or Moon glow that goes out on the last trick time to fade.
  */
 export function finalTrickHoldMs(before: TableView | null, trick: Trick, s: HandSummary | null, w: Who): number {
   const landed = Math.max(0, ...arrivalDelays(before?.current?.plays.map((p) => p.card) ?? [], trick).values());
-  return landed + Math.max(FINAL_TRICK_MS, finalMoments(before, trick, s, w).length * MIN_SHOW_MS);
+  return landed + Math.max(FINAL_TRICK_MS, finalMoments(trick, s, w).length * MIN_SHOW_MS);
 }
 
 /** The trick review's note for a hand the server finished early ("Tricks 10–12 played out…"), or null. */
@@ -46,8 +46,11 @@ export function playedOutNote(autoFrom: number | null | undefined, totalTricks: 
     : `Tricks ${autoFrom}–${totalTricks} played out on their own: no points were left.`;
 }
 
-/** The message slot's order: lower goes first. "Takes it" and "your lead" are what it shows when nothing's queued. */
-export const PRIORITY = { shot: 0, auto: 1, queen: 2, hearts: 3, watch: 4, jack: 5, takes: 6, lead: 7 } as const;
+/**
+ * The message slot's order: lower goes first. "Takes it" and "your lead" are what it shows when nothing's queued.
+ * Sun and Moon watches have no messages: the glow behind the watcher's avatar is the news.
+ */
+export const PRIORITY = { shot: 0, auto: 1, queen: 2, hearts: 3, jack: 5, takes: 6, lead: 7 } as const;
 export type MessageKind = keyof typeof PRIORITY;
 
 /** A felt-wide wash: warm when hearts break. (A Sun or Moon shot gets HandEndCelebration instead.) */
@@ -89,7 +92,6 @@ const msg = (kind: MessageKind, pre: string, name: string, post: string, extra?:
 });
 
 const subject = (w: Who, seat: number) => (seat === w.me ? 'You' : (w.names[seat] ?? ''));
-const object = (w: Who, seat: number) => (seat === w.me ? 'you' : (w.names[seat] ?? ''));
 /** " eat" for you, " eats" for anyone else. */
 const verb = (w: Who, seat: number, v: string) => ` ${v}${seat === w.me ? '' : 's'}`;
 
@@ -102,16 +104,6 @@ const played = (v: TableView) => doneTricks(v) * v.handSizes.length + (v.current
 /** Face-up cards still on show: the trick in progress and the last finished one. */
 const faceUp = (v: TableView): Card[] =>
   [...(v.current?.plays ?? []), ...(doneTricks(v) > 0 ? (v.lastTrick?.plays ?? []) : [])].map((p) => p.card);
-/** The Moon watch as the table shows it: during a Sun run it's the same seat, and the Sun wins out. */
-const moonShown = (v: TableView) => {
-  const m = v.moonWatch ?? null;
-  return m !== null && m !== (v.sunWatch ?? null) ? m : null;
-};
-
-/** The sun as text, not emoji (iPhones draw a bare ☀ as a yellow emoji), as in the status cluster. */
-const SUN = '☀\uFE0E';
-const sunsDown = () => msg('watch', `${SUN} Sun’s down`, '', '');
-const blocked = (w: Who, by: number) => msg('watch', '☾ Moon blocked by ', object(w, by), '');
 
 /** The Q♠ and J♦ going to whoever took `trick`. */
 function taken(trick: Trick, w: Who, jack: boolean): Message[] {
@@ -141,19 +133,9 @@ export function detectMoments(prev: TableView | null, next: TableView, w: Who): 
     messages.push(msg('hearts', 'Hearts are broken: ', mine ? '' : (w.names[broke.seat] ?? ''), mine ? `your ${card}` : `’s ${card}`, { wash: 'hearts' }));
   }
 
-  // Exactly one trick closed. The watches only ever change here, so turning them off mid-hand says nothing.
+  // Exactly one trick closed.
   const closed = doneTricks(next) === doneTricks(prev) + 1 ? next.lastTrick : null;
-  if (closed && closed.winner !== null) {
-    messages.push(...taken(closed, w, w.jack));
-    const wasSun = prev.sunWatch ?? null;
-    const sun = next.sunWatch ?? null;
-    const wasMoon = moonShown(prev);
-    const moon = moonShown(next);
-    if (wasSun === null && sun !== null) messages.push(msg('watch', `${SUN} Sun watch: `, subject(w, sun), ''));
-    if (wasSun !== null && sun === null) messages.push(sunsDown());
-    if (wasMoon === null && moon !== null) messages.push(msg('watch', '☾ Moon watch: ', subject(w, moon), ''));
-    if (wasMoon !== null && (next.moonWatch ?? null) === null) messages.push(blocked(w, closed.winner));
-  }
+  if (closed && closed.winner !== null) messages.push(...taken(closed, w, w.jack));
 
   const ripple = faceUp(next).includes(QUEEN_OF_SPADES) && !faceUp(prev).includes(QUEEN_OF_SPADES) ? QUEEN_OF_SPADES : null;
   return { messages, ripple };
@@ -174,30 +156,14 @@ export function endedLive(before: TableView | null, s: HandSummary): boolean {
  * The moments for a hand's final trick, while the hand-end sequence holds it on the felt. The next
  * hand is dealt in the same update as the last card, so they can't come from consecutive views.
  * `trick` is the last trick the table saw played: when the server finished the hand early, that's
- * the one before `s.autoFrom`. `before` is the last view this tab saw before the trick finished:
- * watch endings are only told if it shows this very trick in progress. `s` is that hand's summary,
- * or null when this tab doesn't have it. A Sun or Moon shot isn't told here: Game.svelte's
- * full-screen celebration (HandEndCelebration) plays it once the final trick has had its moment, so
- * the table never announces it twice.
+ * the one before `s.autoFrom`. `s` is that hand's summary, or null when this tab doesn't have it.
+ * A Sun or Moon shot isn't told here: Game.svelte's full-screen celebration (HandEndCelebration)
+ * plays it once the final trick has had its moment, so the table never announces it twice.
  */
-export function finalMoments(before: TableView | null, trick: Trick, s: HandSummary | null, w: Who): Message[] {
+export function finalMoments(trick: Trick, s: HandSummary | null, w: Who): Message[] {
   if (trick.winner === null) return [];
   const out: Message[] = s?.autoFrom ? [msg('auto', 'No points left · hand over', '', '')] : [];
   out.push(...taken(trick, w, s ? s.jackScored : w.jack));
-  const seen = before?.current;
-  if (
-    before &&
-    seen &&
-    (!s || before.handNumber === s.number) &&
-    doneTricks(before) === lastTableTrick(s, before.totalTricks) - 1 &&
-    seen.leader === trick.leader &&
-    seen.plays.every((p, i) => trick.plays[i]?.card === p.card)
-  ) {
-    const sun = before.sunWatch ?? null;
-    const moon = moonShown(before);
-    if (sun !== null && sun !== trick.winner) out.push(sunsDown());
-    if (moon !== null && moon !== trick.winner && trick.plays.some((p) => isPenaltyCard(p.card))) out.push(blocked(w, trick.winner));
-  }
   return out;
 }
 
