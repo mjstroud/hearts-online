@@ -1,6 +1,6 @@
 # Roadmap
 
-Updated 2026-11-26 with the owner's answers, checked against the code. Phases 1 to 3 are live. Phase 4 was planned the same day, after a read of the code it touches, and a [phone pass](#phone-pass-before-phase-4) now comes before it. Every open question is answered (see [Decisions](#decisions)). Phase 4 will still ask the owner to OK a CSS budget increase and the starter taunt list.
+Updated 2026-11-26 with the owner's answers, checked against the code. Phases 1 to 3 are live. Phase 4 was planned the same day, after a read of the code it touches, with a [phone pass](#phone-pass-before-phase-4) before it. The phone pass went live on 2026-11-27, so Phase 4 is next. Every open question is answered (see [Decisions](#decisions)). Phase 4 will still ask the owner to OK a CSS budget increase and the starter taunt list.
 
 Sizes are in Claude Code working sessions:
 
@@ -200,7 +200,7 @@ So change `check:budgets` to read each route's `styles` list from the server bui
 
 The family nearly always plays on phones, and a player on Android Chrome had to scroll off the table to play in landscape. This comes before Phase 4 because Phase 4 adds bubbles, a taunt tray and a chat sheet to the same small screen, so the layout should settle first. No migration.
 
-**Status (2026-11-27): built and checked in the browser at every size; on the dev site, not released yet.**
+**Status (2026-11-27): live.** Released as `release-2026-11-27.1` (Fly release v15), after the real site's games had been quiet for 20 minutes. No migration, so no snapshot. Checked in the browser at every size, but not yet on a real phone.
 
 - **Sideways phones get their own layout:** `(orientation: landscape) and (max-height: 500px) and (min-width: 540px)`, in Table, WatchGlow, Game and Layout.
   - The table fills the screen. Three designs were prototyped and judged; this one won on playability and robustness.
