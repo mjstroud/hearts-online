@@ -1,6 +1,6 @@
 # Roadmap
 
-Updated 2026-11-26 with the owner's answers, checked against the code. Phase 1 is built (see its status). Every open question is answered (see [Decisions](#decisions)).
+Updated 2026-11-26 with the owner's answers, checked against the code. Phases 1 to 3 are live. Phase 4 was planned the same day, after a read of the code it touches, and a [phone pass](#phone-pass-before-phase-4) now comes before it. Every open question is answered (see [Decisions](#decisions)). Phase 4 will still ask the owner to OK a CSS budget increase and the starter taunt list.
 
 Sizes are in Claude Code working sessions:
 
@@ -19,10 +19,27 @@ Sizes are in Claude Code working sessions:
 - **New: table-wide moments** for hearts, the Q♠, the J♦, and Sun/Moon watches and shots (Phase 2).
 - **Performance moves to Phase 1** as guardrails, so new features can't quietly slow the game.
 - **Phones first.** Phone fixes and the home-screen basics move to Phase 1.
-- **Chat:** a simple saved text chat, plus a "Join call" button for voice. No calling built into the app.
+- **Chat:** a simple saved text chat. No calling built into the app. (The "Join call" button has since moved to [Someday](#someday).)
 - **Public lobbies:** anyone can ask to join a public table, and the host accepts, rejects or kicks.
-- **Restaurant mode, cartoony art, cat photos and thrown taunts** are planned (Phase 5).
-- **A store app** is a long-term goal (Phase 6), built on the same server and accounts.
+- **Restaurant mode, cartoony art, cat photos and thrown taunts** are planned (Phase 5). (Thrown taunts now get their workings in Phase 4 and their art in Phase 5.)
+- **A store app** is a long-term goal (Phase 7), built on the same server and accounts.
+
+## What changed when planning Phase 4
+
+Decided 2026-11-26:
+
+- **The "Join call" link is out** of Phase 4 and onto the [Someday](#someday) list.
+- **Taunts are emoji only:** emotes on your own avatar and throwables aimed at someone else's, with one 15s cooldown. No preset phrases, because chat covers words. Phase 4 builds how they work; Phase 5 draws them.
+- **The cats chatter lightly** in Phase 4. Each cat gets a personality later.
+- **Chat belongs to the game:** a removed player loses it, a rematch starts empty, and nobody can delete messages. Mute is per device and hides only the chat previews on avatars.
+- **A phone pass comes first.** A player on Android Chrome had to scroll off the table to play in landscape.
+- **Phase 4 ships in two releases:** 4a, taunts (no migration), then 4b, chat (migration v9). Measuring CSS per page comes first.
+- **New work:**
+  - personal themes, with presets and a theme builder (Phase 5);
+  - email sign-in, replacing usernames (Phase 6);
+  - a new last phase for more card games, starting with Euchre (Phase 8).
+- **Push and the store app move to Phase 7.**
+- **New sections:** [Thinking ahead](#thinking-ahead), for public players and paying for the site, and [Someday](#someday).
 
 ## Ground rules
 
@@ -35,8 +52,8 @@ These are the "build it fast from the start" rules. They answer the performance 
    - All CSS together: at most 14 KB. It was 10.2 KB after Phase 1; the owner OK'd raising the cap from 11 KB for the Phase 2 visuals.
    - One player's live update: at most 4 KB (2.5–2.8 KB with 32-char names).
    A deploy that goes over fails. Raise a budget only with the owner's OK.
-3. **Load only what's needed.** The playtest panel currently ships to every player. Restaurant and taunt art should load only when switched on.
-4. **Animation:** CSS keyframes on `transform` and `opacity` only. No animated shadows or filters, nothing that loops forever, one shared overlay layer, and reduced motion fully respected (Svelte transitions currently ignore it).
+3. **Load only what's needed.** The playtest panel loads only on playtest tables. Restaurant art should load only when the mode is on, and taunt art only when the first taunt arrives.
+4. **Animation:** CSS keyframes on `transform` and `opacity` only. No animated shadows or filters, nothing that loops forever, one shared overlay layer, and reduced motion fully respected (Svelte transitions go through src/lib/motion.ts so they respect it).
 5. **Chatter stays out of game updates.** Reactions and chat get their own broadcast, and chat history gets its own endpoint. Today every game update rebuilds every player's view and reorders /games.
 6. **Existing games are never at risk:**
    - Migrations only add things.
@@ -66,6 +83,7 @@ These are the "build it fast from the start" rules. They answer the performance 
 - **/stats re-reads every hand of every game on each view.** That cost keeps growing through the season.
 - **The alerts button reads backwards** ([Table.svelte:421](src/components/game/Table.svelte:421)).
 - **Open (2026-11-26): landscape phones.** At 667×375, a long-name "takes it" message overlaps the status cluster. Seen in a static mock of the real CSS, not yet on a phone.
+- **Open (2026-11-26): the hand is off screen on a phone turned sideways.** A player on Android Chrome could see the table but had to scroll off it to pick a card. A sideways phone is wider than 640px, so it gets the desktop layout. That layout needs at least 340px of height for the table alone, which pushes the hand below the bottom of the screen. Planned for the [phone pass](#phone-pass-before-phase-4).
 
 ## Phases
 
@@ -136,7 +154,7 @@ All client code plus facts worked out in the view. No rule changes and no migrat
 
 Astro inlines small stylesheets into each page's HTML. That CSS is re-sent with every page load, and `check:budgets` doesn't count it: about 3 KB gzipped on the game page after Phase 2. Switching to `build.inlineStylesheets: 'never'` makes all CSS cacheable files. But then the "all CSS together" budget sums every page's CSS (23.7 KB) instead of what one page loads.
 
-So change `check:budgets` to read each route's `styles` list from the server build (`dist/server/entry.mjs`) and cap the largest page, then switch. **S.** Check every page's styles in the browser after the switch.
+So change `check:budgets` to read each route's `styles` list from the server build (`dist/server/entry.mjs`) and cap the largest page, then switch. **S.** Check every page's styles in the browser after the switch. Scheduled as the first step of Phase 4.
 
 ### Phase 3: Less waiting
 
@@ -177,37 +195,145 @@ So change `check:budgets` to read each route's `styles` list from the server bui
 - **CI type-checks** every .astro, .ts and .svelte file (`npm run check`), and Svelte warnings fail it too. It was added after a stale call in a .svelte file reached the dev site: the build and the tests don't check types, and astro check never looks inside .svelte files. It reached `main` in `release-2026-11-26.6`, along with plain-text suns on iPhones.
 - **Not checked yet:** a real iPhone, and the owner's Firefox.
 
+### Phone pass (before Phase 4)
+
+The family nearly always plays on phones, and a player on Android Chrome had to scroll off the table to play in landscape. This comes before Phase 4 because Phase 4 adds bubbles, a taunt tray and a chat sheet to the same small screen, so the layout should settle first. No migration.
+
+- **S–M: a landscape layout for short screens.** A sideways phone (roughly 667–932 wide and 360–430 tall) is wider than 640px, so today it misses the phone rules. It gets the single-column layout, but keeps the desktop table and seat placement. The table alone needs 340px of height, so the hand ends up below the bottom of the screen.
+  - Give short landscape screens their own layout, for example `(orientation: landscape) and (max-height: 500px)`.
+  - Put the hand beside the table or over the bottom of the felt, with the action bar in reach, so you can see the trick and play without scrolling.
+  - It should also fix the open overlap between a long-name "takes it" message and the status cluster at 667×375 (see [Bugs found](#bugs-found)).
+- **S: clear the real-phone backlog.** These have only been checked in emulation so far:
+  - the zoom after rotating, and the first-load layout;
+  - Android turn alerts, and the Android install flow;
+  - adding to the home screen, and Get the app, on an iPhone;
+  - the new-version pill after a real deploy;
+  - the animations, and the inspector on touch;
+  - queueing a card (tap-tap, cancel) and the stagger, on touch;
+  - the last trick's pace, and the watch glows;
+  - uploading a profile photo in iPhone Safari.
+- **S: a fixed set of phone sizes**, written into CLAUDE.md's phone rule and the README, and checked before every release that touches phones. Each size in portrait and landscape, with 4 and 5 players and 32-character names:
+  - a small Android, 360×780;
+  - an iPhone SE, 375×667;
+  - a standard iPhone, 393×852;
+  - a large phone, 430×932.
+
+  A 32-character name must still fit from 375px up. At 360px nothing may overflow or overlap, but long names may be cut short with an ellipsis.
+- **XS: a five-minute checklist for the family** to run on their own phones on the dev site, because real phones catch what emulation misses.
+- **Optional:** the Android emulator that comes with Android Studio is free, runs on the owner's PC and has real Chrome for Android in it. Installing it needs the owner's OK.
+
 ### Phase 4: Talk and tease
 
-- **S:** a broadcast to seated players only, with rate limits. No database write and no game update.
-- **M:** reactions and short taunts in a bubble on the sender's avatar, plus a mute switch per device.
-- **M–L:** text chat (migration v9):
-  - Messages are kept for **24 hours**, reload on reconnect or page load, and older ones are deleted.
-  - On phones it's a bottom sheet with an unread badge, plus a preview bubble on the sender's avatar.
-  - 280 characters per message.
-- **S:** the host pastes a FaceTime, Meet or Discord link, and players get a "Join call" button.
-- **XS:** a Share invite button using the phone's share sheet.
+Planned 2026-11-26 after a read of the code it touches (see [Phase 4 code pointers](#phase-4-code-pointers)). It comes after the [phone pass](#phone-pass-before-phase-4) and ships in two releases.
+
+**First step, after the phone pass and before 4a: [measure CSS per page](#follow-up-measure-css-per-page).**
+- The budget check reports 12.3 of 14 KB of CSS, but that adds up every page's CSS files. The game page loads 10.1 KB of those files, plus about 3 KB gzipped of inline CSS that the check never counts, so it really loads about 13.1 KB.
+- Bubbles, throws, the taunt tray and the chat sheet won't fit in what's left. Measure per page first, then tell the owner the exact increase needed.
+- Game page JS is 48.0 of 55 KB. That's enough, as long as the chat sheet loads with `import()`.
+
+**Release 4a: taunts (no migration)**
+
+- **S: a broadcast to seated players only.** A new helper in games.ts beside `publishTo`, which already looks up the players and then calls the hub's `sendTo`. hub.ts knows nothing about seats.
+  - It looks up who is seated each time it sends, because a removed player's stream stays open until `publish()` hangs it up.
+  - It uses a new named live-stream event, which tabs running old code ignore.
+  - No database write, no version bump, and never through `publish()`.
+- **M: taunts.** Emoji only; words belong in chat.
+  - **Emotes** pop up in a bubble on the sender's avatar.
+  - **Throwables** are aimed at another player: tap your own avatar to open the tray, then tap theirs. The item arcs from avatar to avatar using one CSS keyframe on `transform` and `opacity`.
+  - **A fixed starter list** of about 8 emotes and 4 throwables, for the owner to veto. The server sends an id from the list, never the emoji itself, so Phase 5's art can replace the emoji without changing anything else. Characters with two forms (such as ❤) get a variation selector, so every phone draws them in colour.
+  - **One 15s cooldown per player** covers emotes and throws together. The server enforces it in memory, so it resets on a restart, which is fine. The button shows how long is left.
+  - **Taunts can't be muted.**
+  - **Layers:** bubbles and thrown items get one new layer above the message slot and below dialogs. That means renumbering the arena's z-indexes, since nothing fits between the message slot (4) and the inspector (5). Throws wait until big moments are over.
+- **S–M: the cats chatter, lightly.** Now and then a cat sends an emote or a throw, under the same 15s cooldown, with at most one cat reacting to any moment.
+  - **Triggers come only from face-up events:** a trick won, the Q♠ or J♦ taken in a trick, hearts broken, a Sun or Moon shot, or being hit by a throw.
+  - **Never from hidden cards:** not the cat's own hand, its pass, the crib, its legal plays or a queued card, or the table could read hidden cards from the reaction (ground rule 7).
+  - Reactions to the end of a hand wait until everyone's screen has shown the result.
+  - **Only real cats react.** A cat sitting in for an absent player doesn't, and neither does the server playing out the last trick.
+  - **Testable:** the chance comes from a random source passed in, so tests stay predictable.
+  - **Wiring:** reactions fire after the change is saved, from the two places that play cards: `performAction` and `runBots` (queued cards fire inside both, through `applyResult`). They use their own timers, never `botTimers`.
+  - Personalities come later (Phase 5).
+- **XS: Share invite** in the waiting room. It opens the phone's share sheet with the join link.
+
+**Release 4b: chat (migration v9; take a volume snapshot first)**
+
+- **M–L: text chat.**
+  - **It belongs to one game.** It carries on through Keep playing, and a rematch starts empty.
+  - It's open in the waiting room, during play and after the game ends.
+  - **Plain text:** one line, emoji allowed, up to 280 characters, counted and cleaned the way display names are. Links aren't clickable and nothing is drawn as HTML, because the site has no Content-Security-Policy to fall back on.
+  - **Kept 24 hours.** Older messages are deleted whenever a new one is written, and left out when history is read. There's no background job.
+  - **Its own JSON endpoints:** `GET` for history and `POST` to send. History is fetched on page load, on every reconnect and when the tab comes back, because the live stream doesn't replay anything a tab missed. New messages go out through the seated-only broadcast.
+  - **A mild spam limit:** about 5 messages in 10 seconds, not the 15s taunt cooldown.
+  - **Only seated players** can read or send.
+    - A removed player loses access straight away, and their earlier messages stay, under their name.
+    - Anyone who comes back sees the last 24 hours: after a reload, after "I'm back", or after leaving a waiting room and joining again.
+    - A player removed from a waiting room can still join again with the link, as today, and then sees the last 24 hours like anyone else who comes back.
+  - **Nobody deletes messages by hand:** not the sender, the host or an admin. Messages go only when they're 24 hours old or the game is deleted.
+  - Its table references `games(id) ON DELETE CASCADE`, so deleting a game deletes its chat.
+- **S: a chat button with an unread count** in the bar above the table, on every screen size.
+  - On phones it opens a bottom sheet. On desktop the same sheet opens as a panel beside the table.
+  - The sheet is drawn from Game.svelte, outside the arena, so chat lasts through the waiting room, the table and the end screen.
+  - New messages also show as a short preview bubble on the sender's avatar.
+  - The unread count is kept per device. Chat never sends notifications.
+- **XS: mute, per device,** in the chat sheet, so it can be reached in the waiting room, at the table and on the end screen. It's also in the panel below the hand, beside the deck and alerts switches. It hides only the chat previews on avatars. The unread count stays, and the sheet still shows everything.
+- **XS: the end of a hand doesn't interrupt typing.**
+  - Today the hand-end sequence swallows every tap, plus the Escape, Enter and Space keys, so a space or Enter typed in chat would be lost.
+  - The hand result takes focus when it opens, and closes on any Escape pressed anywhere.
+  - While the chat sheet is open, the result waits until it's closed.
+- **XS: the privacy page** gets a line about chat, kept 24 hours. The terms already cover chat, so the terms version stays the same and nobody is asked to accept again. The terms' line about removing offensive content is a right the site keeps; Phase 4 builds no tool for it.
 
 ### Phase 5: Personality
 
 - **S:** cat photos. An admin uploads them into the existing photo storage, so they stay out of the public repo, and the three "cats never have photos" checks are lifted.
-- **M:** a cartoony SVG set for moments, reactions, empty states and a link-preview image. It ships as one cached file, within budget.
-- **M:** poker-style thrown taunts. An item arcs from your avatar to theirs, one in flight per sender, held back during big moments.
+- **M:** a cartoony SVG set for moments, empty states and a link-preview image. It ships as one cached file, within budget, and loads only when needed.
+- **M: taunts, drawn.** The Phase 4 emotes and throwables swap their emoji for cartoony art from that set, and the throws get a fuller, poker-style flight. How they work (the list, the cooldown, waiting out big moments) stays as Phase 4 built it.
+- **M: cat personalities.** Each cat gets its own taunts and its own chattiness, building on Phase 4's light chatter. Key them by username (`bot-1` to `bot-7`), not display name. Goes well with the photos.
+- **M–L: themes.** A personal choice that changes only what you see, saved to your account so it follows you between devices.
+  - Presets, including restaurant mode, plus a theme builder with colour pickers for the table, the cards, each suit and the other parts of the page.
+  - The builder checks contrast, so the suits stay readable.
+  - The server draws the page in your theme, as it does for the 4-colour deck, so pages never flash the default look first.
+  - The default look stays Color Block.
+  - A head start: the October theme lab had six looks and a picker. Commit `c1f3a90` removed it.
+    - Its deleted files (src/lib/themes.ts, src/pages/themes.astro, src/styles/themes.css) can be restored from `c1f3a90~1`.
+    - Reverting the whole commit now conflicts with later work in PlayingCard.svelte, Table.svelte, Layout.astro and global.css, so treat the lab as reference, not a revert.
+    - The theme-lab branch it mentions no longer exists.
+  - Saving it to the account needs a migration. The builder is its own page, so it adds nothing to the game page.
 - **M:** restaurant mode (see [Restaurant mode](#restaurant-mode)):
-  - A per-game host toggle, **switched on for the current season game**.
+  - A per-game host switch, **on for the current season game**, that overrides everyone's theme at that table.
+  - It's also a preset anyone can pick for themselves.
   - The default look stays the same everywhere else.
-  - It moves to per-player themes if those ever exist.
 
-### Phase 6: Open tables, front door, then the app
+### Phase 6: Accounts and open tables
 
-- **L:** public lobbies (migration v10):
+This is everything a stranger needs before they can sit down.
+
+- **M–L: sign in with email** (a migration). Email replaces usernames for signing in.
+  - New accounts sign up with an email and verify it. Anyone can reset their own password by email.
+  - Family accounts sign in once more with their username, add an email, and use the email from then on. Usernames stay stored, but stop being a way to sign in. Admin reset links stay as a backup.
+  - It needs an email-sending service. That's an outside service, so it needs the owner's OK (usually free at this volume). The privacy page changes to match.
+  - Plan the store app's token sign-in at the same time.
+- **S–M, maybe: Google sign-in,** after email works. It's mostly useful for public players. If the store app offers Google sign-in, Apple's rules generally require an Apple-approved privacy-friendly option as well (Sign in with Apple qualifies). So decide on Google when the app is closer.
+- **M: chat moderation before public tables.** Phase 4 has no deleting, which is fine for the family. Strangers sharing a table need at least report, block and a host mute.
+- **L:** public lobbies (a migration):
   - A host makes a lobby public, and it appears in an open-tables list.
   - People request a seat. The host accepts or rejects (a rejected person can't ask again) and can kick at any time (built in Phase 3).
   - Includes rate limits and a move timer on by default.
-  - Needs the Phase 1 terms.
+  - Needs the Phase 1 terms, email sign-in and chat moderation.
 - **S:** landing page: a simple join / log in / sign up page with lighter copy. It goes with public lobbies, because today's "only the family can sit down" line becomes false. It can come earlier with copy that's true either way.
+
+### Phase 7: Push and the store app
+
 - **L:** push notifications through Apple's and Google's push services (approved, for later).
 - **XL:** a store app (see [Mobile app path](#mobile-app-path)).
+
+### Phase 8: More card games
+
+The family also plays Euchre, so one day the site should host more than Hearts. This phase is last on purpose. Euchre has partners, trump, bidding and a 24-card deck, so it's a project of its own (**L–XL**): its own engine, views, cats, stats and season game.
+
+Until then, keep the door open:
+
+- Game rules stay in the engine. Nothing outside it should assume Hearts unless it has to.
+- Features that aren't about the cards (chat, taunts, accounts, themes, lobbies) key on the game and the player, never on seats, suits or Hearts terms.
+- When the second game arrives, add a game-type column to `games` that defaults to Hearts. It's an added column, so old games are untouched.
 
 ## Table moments
 
@@ -225,7 +351,7 @@ Every moment plays on a live change only, never on a page load or reconnect. Eac
 - **One message slot, in priority order:** shot, then auto-finished, Q♠ eaten, hearts broken, J♦, "takes it", and "your lead". Messages merge where they can ("Bob takes it · Q♠ +13") and each shows for at least 1.2s.
 - **Room on a phone:** with 5 players at 375px, the only free spots are the felt's bottom corners. The status cluster goes bottom-left, "Last trick" goes bottom-right, and taunts aim at avatars.
 - **Layers, bottom to top:** restaurant decor, then moment washes, then trick cards, then plaques, then the message slot, then bubbles and thrown items, then dialogs. Nothing ever covers a card's rank corner.
-- **Gameplay effect:** a visible Moon watch makes it easier for the table to stop a shooter (see the questions).
+- **Gameplay effect:** a visible Moon watch makes it easier for the table to stop a shooter. The watches are on by default, and the host can turn them off (see [Decisions](#decisions), 2).
 
 ## Autocomplete rule
 
@@ -254,23 +380,29 @@ This is an easter egg for a family that played most of a season waiting for food
 
 All of it is opt-in decoration drawn under the game layers. The art stays under 30 KB, loads only when the mode is on, and nothing animates continuously.
 
+It's switched on two ways (Phase 5):
+
+- **The host switch** overrides everyone's theme at that table, so everyone there sees the same diner. It's on for the season game.
+- **The personal preset** in the theme picker brings the same decor everywhere you play (the tabletop, rings, the check, the props), seen only by you.
+
 ## Mobile app path
 
 You want an app that shares accounts, data and games with the site. The server already does every game action through JSON endpoints and a live stream, so an app would talk to the same server. The staged path:
 
 1. **Home-screen web app** (Phase 1): manifest, icons, alerts. No store, no fees.
-2. **Push notifications** (Phase 6): "your turn" alerts while the app is closed. Needs Apple's and Google's push services. On iPhone it only works once the site is added to the home screen.
-3. **Store app** (Phase 6, XL): a native shell (for example Capacitor) around the same site, with native push, haptics and share.
+2. **Push notifications** (Phase 7): "your turn" alerts while the app is closed. Needs Apple's and Google's push services. On iPhone it only works once the site is added to the home screen.
+3. **Store app** (Phase 7, XL): a native shell (for example Capacitor) around the same site, with native push, haptics and share.
    - Apple rejects apps that are "just a website" (App Store guideline 4.2), so the native extras matter.
    - Apple's developer program is $99 a year; Google Play is $25 once.
    - A shell that loads the live site keeps sign-in and the same-origin checks working as they do today. A fully bundled app would need token sign-in instead.
+   - If the app offers Google sign-in, Apple generally requires a privacy-friendly option too, such as Sign in with Apple (see Phase 6).
 
 **Things to keep doing now so the app doesn't force a rewrite:**
 
 - Keep the rules in the shared engine.
 - Give every new feature a JSON endpoint, not just a server-rendered form.
 - Only ever add view fields, since old app builds linger like old tabs.
-- Plan a token sign-in path when the app starts.
+- Plan a token sign-in path along with email sign-in (Phase 6).
 
 ## Terms and privacy
 
@@ -278,23 +410,43 @@ You want an app that shares accounts, data and games with the site. The server a
   - the site is provided as-is, with no warranty and a limit on liability;
   - players are responsible for what they post (names, game names, photos, chat), the site doesn't screen it and isn't responsible for it, and offensive content or accounts can be removed;
   - acceptable use, permission to show what people upload, no real-money gambling, a minimum age of 13, and terms that can change.
-- **Privacy:** list only what's actually stored: username, display name, password hash, sessions, games and hands, photos, and (until Phase 1 self-hosts them) Google Fonts. Promise no account deletion until it exists.
+- **Privacy:** list only what's actually stored: username, display name, password hash, sessions, games and hands, and photos. (Google Fonts left the list when Phase 1 self-hosted the fonts.) Promise no account deletion until it exists.
 - **Acceptance:** a required checkbox with the acceptance and terms version recorded is much stronger than a line of text. It's worth it if ads or email ever come.
 - This isn't legal advice. If ads, payments or a real user base arrive, talk to a lawyer. A business entity (an LLC), not a terms page, is what actually separates you personally from the site.
-- **Before a real public launch** (beyond Phase 6): an email service for verification and resets, report and block tools, and a cookie-consent banner if ads come.
+- **What each phase adds to the privacy page:** Phase 4 adds chat (kept 24 hours), Phase 5 adds saved themes, and Phase 6 adds email addresses.
+- **Before a real public launch:** email sign-in and chat moderation (both Phase 6), and a cookie-consent banner if ads come (see [Thinking ahead](#thinking-ahead)).
+
+## Thinking ahead
+
+The long-term goal is a site that public players use, that pays for itself (through ads or something like them), and that hosts more than one card game. None of that is a task yet, but early decisions should leave room for it:
+
+- **Ads never go on the live table.** If they come, they go on pages like /games, stats or the end screen, and load after the page, so play stays fast and the game page budgets hold. Ads also bring an ad network (an outside service), a cookie-consent banner and a privacy rewrite.
+- **If the site ever needs to pay for itself, a "support the site" link is worth trying before ads.** It runs on one small Fly machine, so tips might cover it with far less work.
+- **Public players need email sign-in and chat moderation first** (Phase 6).
+- **Keep features that aren't about the cards game-agnostic** (see [Phase 8](#phase-8-more-card-games)).
+- **Keep giving every feature a JSON endpoint, and only ever add view fields,** so the store app (Phase 7) can use the same server.
+- **Store only what a feature needs,** and list it on the privacy page.
+- **One machine is fine for a long time.** One Node process and one SQLite file can serve far more players than the family. The in-process live hub ties the site to one machine, and each deploy restarts games in play. Revisit that only if public play grows.
+- **The legal side:** if ads, payments or a real user base arrive, talk to a lawyer and consider an LLC (see [Terms and privacy](#terms-and-privacy)).
+
+## Someday
+
+Ideas worth keeping that aren't planned:
+
+- **A "Join call" button.** The host pastes a FaceTime, Meet or Discord link, and players get a button. Dropped from Phase 4 on 2026-11-26. Calling built into the app stays on [Won't do](#wont-do).
 
 ## Won't do
 
 - **Two-corner card faces.**
-- **Calling built into the app.** A "Join call" link covers voice.
+- **Calling built into the app.** A "Join call" link is on the [Someday](#someday) list instead.
 - **Autocomplete checks that look at hidden hands or the crib.**
 - **"Claim the rest", and a mid-hand trick-history setting.** They're replaced by auto-finish and the post-hand review.
-- **Illustrated court cards, a revived theme lab, or changing the default look.** Restaurant mode is opt-in only.
+- **Illustrated court cards, or changing the default look.** Color Block stays the default. Themes (Phase 5) and restaurant mode are opt-in. (A theme picker used to be on this list. The owner asked for themes on 2026-11-26.)
 - **A service worker that caches pages.** It would keep stale code on phones.
 
 ## Rollout
 
-- **Try everything on the dev site first** (dev.shootthesun.com, deployed from the `dev` branch), then release `dev` to `main` between play sessions. Take a Fly volume snapshot of the real site before each migration: v7 (terms acceptance, done), v8 (removed players, Phase 3), v9 (chat) and v10 (public lobbies).
+- **Try everything on the dev site first** (dev.shootthesun.com, deployed from the `dev` branch), then release `dev` to `main` between play sessions. Take a Fly volume snapshot of the real site before each migration: v7 (terms acceptance, done), v8 (removed players, done), v9 (chat, Phase 4b), then later ones for themes, email sign-in and public lobbies.
 - **The dev site is the https test bed** for service workers, home-screen installs and push on real phones.
 - **Real-iPhone loop:** run `npm run dev -- --host`, then open the PC's network address on an iPhone on the same Wi-Fi. Sign-in works over plain http there. Service workers, home-screen installs and push need https, so test those on the dev site (dev.shootthesun.com).
 - **The GitHub repo is public.** Cat photos go in the database, not the repo.
@@ -309,8 +461,26 @@ Made 2026-11-26.
 4. **Kicking:** the host can remove a player at any time.
 5. **Outside services:** push services and app-store developer accounts are OK, but not needed until much later.
 6. **Terms:** boilerplate about liability and user content only, with no name, address or governing law. The 13+ minimum age and the sign-up checkbox stay.
-7. **Restaurant mode:** a per-game host toggle for now, switched on for the current main game. It moves to per-player themes if those ever exist.
+7. **Restaurant mode:** a per-game host toggle for now, switched on for the current main game. Decision 17 replaces "it moves to per-player themes if those ever exist": it stays a host switch and also becomes a theme preset.
 8. **Fonts:** self-hosted. The Google Fonts files (OFL) now live in `src/assets/fonts/`.
+
+Made while planning Phase 4, 2026-11-26:
+
+9. **Join call link:** out of Phase 4, onto the [Someday](#someday) list.
+10. **Taunts:** emoji emotes and emoji throwables only, no preset phrases. Phase 4 builds how they work, and Phase 5 draws them.
+11. **Cooldowns:** one 15s cooldown per player for taunts, shared by emotes and throws. Chat gets only a mild spam limit.
+12. **Cats:** light chatter in Phase 4. Each cat gets a personality later.
+13. **Mute:** per device, and for chat only. It hides the chat previews on avatars and keeps the unread count.
+14. **Chat belongs to the game:**
+    - A removed player loses access.
+    - Anyone who comes back sees the last 24 hours.
+    - A rematch starts empty.
+    - Nobody can delete a message by hand.
+15. **Phone pass first:** before Phase 4, to fix landscape phones and set up a repeatable phone check.
+16. **Email replaces usernames** for signing in (Phase 6). Google sign-in maybe, later.
+17. **Themes are personal:** presets plus a theme builder (Phase 5). Restaurant mode is both a table-wide host switch and a preset.
+18. **The long view:** more card games (Euchre first) come last. Public players and paying for the site guide decisions now, but aren't tasks yet (see [Thinking ahead](#thinking-ahead)).
+19. **Phase 4 ships in two releases:** measuring CSS per page comes first, then 4a (taunts, no migration), then 4b (chat, migration v9, with a volume snapshot of the real site first).
 
 ## Code pointers
 
@@ -324,9 +494,41 @@ Made 2026-11-26.
 - **Auto-finish:** `canAutoFinish` in autofinish.ts, called from `gamePlay`. Records carry `autoFrom`; `tableTricks` and `tableTricksWon` in scoring.ts leave the played-out tricks out.
 - **Removed players:** the `removed_players` table (v8), and `occupant()` in stats.ts, which gives each hand's player per seat from `record.players`, falling back to that table for older records.
 - **Stats:** seats map to whoever sits there now ([stats.ts:63](src/lib/server/stats.ts:63)). Add player ids to hand records before any mid-game seat change.
-- **Live updates:** `publish` rebuilds a view per player ([games.ts:377](src/lib/server/games.ts:377)) and never unsubscribes removed players ([games.ts:390](src/lib/server/games.ts:390)). People asking to join a public table aren't seated, so they need their own channel.
+- **Live updates:** `publish` in games.ts rebuilds a view per player. Since Phase 3 it also sends `removed` to anyone no longer seated and closes their stream. Every stream that opens or closes also runs `publish()`, to update the online dots. People asking to join a public table aren't seated, so they need their own channel.
 - **Public lobbies:** `joinGame` and `removePlayer` work in the lobby only ([games.ts:233](src/lib/server/games.ts:233), [538](src/lib/server/games.ts:538)). The games list is at [games.ts:735](src/lib/server/games.ts:735). Don't parse state blobs per row for an open-tables list.
 - **Cat photos:** blocked at [Avatar.svelte:19](src/components/Avatar.svelte:19), [games.ts:62](src/lib/server/games.ts:62) and [games.ts:132](src/lib/server/games.ts:132).
 - **Restaurant mode:** the table is cream paper, not green felt (`--felt-bg`, [global.css:57](src/styles/global.css:57)).
 - **Landing page:** signed-in users go straight to /games ([index.astro:6](src/pages/index.astro:6)).
 - **Display names:** every new piece of UI that shows a name (bubbles, chat, open tables, the inspector) must cope with 32-character names at 375px.
+
+### Phase 4 code pointers
+
+From a read of the code on 2026-11-26. Function names are given rather than line numbers, because those move.
+
+- **Hub:** hub.ts has `subscribe`, `subscribers`, `sendTo` and `onlineUsers`, but nothing that sends to everyone. A subscriber holds only a user id. events.ts checks membership only when a stream opens.
+- **Live-stream events:** `state`, `build`, `removed` and `deleted`.
+  - They carry no `id:` lines, so nothing is replayed after a drop.
+  - Game.svelte listens by event name, so tabs running old code ignore new names. Don't name one `message` (the default type), `open` or `error` (Game.svelte already listens for the stream's own open and error events).
+- **Who may see a game:** only seated players, through `isMember`. There are no spectators. Once a game has started, `joinGame` refuses everyone, so a player removed mid-game can never come back to that game.
+- **Where cats could react:**
+  - **Hooks:** after `publish()` in `performAction` and in `runBots`, both in games.ts.
+  - **Detecting moments:** the browser does it today (`detectMoments` in src/lib/moments.ts, from `publicFacts` in view.ts). The server would compare a face-up snapshot from before and after the change.
+  - **Hand ends:** `gamePlay` drops `trickComplete` and deals the next hand in the same call. Queued cards can also end a hand inside `applyResult`, and `botTurn` returns only a boolean. So compare `state.lastHand?.number` before and after the change, never `state.hand`, and don't rely on the first play's `result.completedHand`.
+  - **Randomness:** there's no `Math.random` in src; deals use `secureRng`.
+- **Rate limits:** `takeAttempt` in auth.ts has a fixed 15-minute window. The taunt cooldown and the chat limit need a small new helper, kept on `globalThis` like the hub, bot timers and premoves. (auth.ts's own map is a plain module Map, so it resets whenever the dev server reloads that module.)
+- **Text:** `normalizeDisplayName` and `graphemes` in src/lib/names.ts clean text and count characters the way people see them. `normalizeDisplayName` turns line breaks into spaces. Nothing uses `{@html}`; keep it that way.
+- **New endpoints:** in this order:
+  - a signed-in user (the middleware);
+  - membership, with the same 404 for "no such game" and "not your game", as in state.ts, events.ts and hands/[number].ts;
+  - a rate limit (429), as in the avatar upload;
+  - validation (400);
+  - then the action.
+
+  action.ts itself answers non-members with a 403 from `performAction` and has no rate limit. Chat and taunts get their own routes, not new `GameAction` types, because every change through `performAction` is saved with `saveGame` and then sent to everyone with `publish()`. `saveGame` bumps the version and `updated_at`, which reorders /games.
+- **Layers and focus:**
+  - Inside the arena, `.msg` is z 4 and `.insp` is z 5.
+  - `.arena` and `.hand-zone` are size containers, so fixed children inside them are placed relative to the container. A chat sheet belongs in Game.svelte.
+  - During the hand-end sequence, `skipEnding` in Game.svelte swallows every click and the Escape, Enter and Space keys. HandResult takes focus when it opens and closes on any Escape pressed anywhere in the window.
+- **Per-device settings:** localStorage keys start with `hearts:` (`hearts:notify`, `hearts:seen-hand:<id>`, `hearts:seen-shot:<id>`, `hearts:app-nudge`). The 4-colour deck is the `hearts_deck` cookie, read on the server.
+- **Rematch:** `insertRematch` makes a new game id, so chat stored per game starts empty there. Keep playing keeps the same id.
+- **Phone layout:** Table.svelte's phone rules are under `@media (max-width: 640px)`, plus `max-width: 374px` for 360px phones. A sideways phone is wider than 640px, so it keeps the desktop table (at least 340px tall) and seat placement. It does get the single-column layout from `max-width: 1080px`, and the container queries on the arena and the hand.
