@@ -174,7 +174,7 @@ Astro inlines small stylesheets into each page's HTML. That CSS is re-sent with 
 
 So change `check:budgets` to read each route's `styles` list from the server build (`dist/server/entry.mjs`) and cap the largest page, then switch. **S.** Check every page's styles in the browser after the switch. Scheduled as the first step of Phase 4.
 
-**Done (2026-11-27, before Phase 4).** `check:budgets` now measures each page's CSS (its files plus any inline CSS) and fails if any page is over 14 KB. It also fails on a prerendered page, whose CSS Astro doesn't list. `build.inlineStylesheets` is `'never'`, so all CSS is cacheable files. The four pieces the game page only loads with `import()` (the playtest panel, the Sun/Moon banner, the end-of-game choices and the trick review) now bring their own CSS when they load (`<svelte:options css="injected" />`). The game page went from 13.7 KB to 12.7 KB; the scoreboard is next at 7.8 KB. Every public page kept the same CSS rules in the same order.
+**Done (2026-11-27, before Phase 4), live in `release-2026-11-27.3` (Fly release v17).** `check:budgets` now measures each page's CSS (its files plus any inline CSS) and fails if any page is over 14 KB. It also fails on a prerendered page, whose CSS Astro doesn't list. `build.inlineStylesheets` is `'never'`, so all CSS is cacheable files. The four pieces the game page only loads with `import()` (the playtest panel, the Sun/Moon banner, the end-of-game choices and the trick review) now bring their own CSS when they load (`<svelte:options css="injected" />`). The game page went from 13.7 KB to 12.7 KB; the scoreboard is next at 7.8 KB. Every public page kept the same CSS rules in the same order.
 
 ### Phase 3: Less waiting
 
