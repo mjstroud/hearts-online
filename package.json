@@ -13,7 +13,9 @@
     "preview": "astro preview",
     "start": "node --env-file-if-exists=.env ./dist/server/entry.mjs",
     "test": "vitest run --dir src",
-    "check": "astro check && svelte-check --tsconfig ./tsconfig.json --fail-on-warnings",
+    "check": "npm run check:types && npm run check:svelte",
+    "check:types": "astro check",
+    "check:svelte": "svelte-check --tsconfig ./tsconfig.json --fail-on-warnings",
     "check:budgets": "node scripts/check-budgets.mjs",
     "astro": "astro"
   },
