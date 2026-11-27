@@ -417,26 +417,43 @@
   /** Playtest only: the face-up crib's height, measured to pick the small-card style. */
   let cribH = $state(0);
 
-  // A phone on its side: the table fills the screen, so scroll past the site header to it, and back to the
-  // top when it turns upright again, or the pinned header would cover the top seats. Only when the table
-  // appears or the layout flips (the phone turns, or a window is resized across the line), never on a game
-  // update. The same query as the CSS at the end.
+  // A phone on its side: the table fits the screen, so scroll past the site header and centre it, with the
+  // room the CSS leaves above and below. Back to the top when it turns upright again, or the pinned header
+  // would cover the top seats. Only when the table appears or the layout flips (the phone turns, or a window
+  // is resized across the line), never on a game update. The same query as the CSS at the end.
   const SIDEWAYS = '(orientation: landscape) and (max-height: 500px) and (min-width: 540px)';
   let layoutEl: HTMLDivElement | undefined;
+  let arenaEl: HTMLDivElement | undefined;
   onMount(() => {
     const sideways = window.matchMedia(SIDEWAYS);
+    let again: ReturnType<typeof setTimeout> | undefined;
+    const place = () => {
+      let top = 0;
+      if (sideways.matches && layoutEl && arenaEl) {
+        const from = layoutEl.getBoundingClientRect().top + window.scrollY;
+        const pad = parseFloat(getComputedStyle(layoutEl).paddingTop) || 0;
+        const to = arenaEl.getBoundingClientRect().bottom + window.scrollY + pad;
+        // Centred; on a screen taller than the table, never so high that the header's edge shows.
+        top = Math.max(from, from - (window.innerHeight - (to - from)) / 2);
+      }
+      // Plain numbers: some phone browsers reject a scroll `behavior` they don't know.
+      window.scrollTo(0, top);
+    };
     const fit = (turned: boolean) => {
       if (!sideways.matches && !turned) return;
-      // After the browser lays the page out for the new shape.
-      requestAnimationFrame(() => {
-        const top = sideways.matches && layoutEl ? layoutEl.getBoundingClientRect().top + window.scrollY : 0;
-        window.scrollTo({ top, behavior: 'instant' });
-      });
+      // Measuring lays the page out for its new shape. Once more when a turning phone (or a late font) has
+      // settled its size and scroll position.
+      place();
+      clearTimeout(again);
+      again = setTimeout(place, 400);
     };
     const turn = () => fit(true);
     fit(false);
     sideways.addEventListener('change', turn);
-    return () => sideways.removeEventListener('change', turn);
+    return () => {
+      sideways.removeEventListener('change', turn);
+      clearTimeout(again);
+    };
   });
 
   // Everyone holds the same number of cards, so one counter covers the whole table.
@@ -527,7 +544,7 @@
       </div>
     </div>
 
-    <div class="arena" class:five={n === 5}>
+    <div class="arena" class:five={n === 5} bind:this={arenaEl}>
       <div class="felt">
         {#if washFx}{#key washFx.id}<div class="fx" style={FX[washFx.kind][0]}></div>{/key}{/if}
 
@@ -1823,14 +1840,17 @@
     }
   }
 
-  /* A phone on its side (short and wide): the table fills the screen, and the page opens scrolled to it,
-     past the site header. The game's name and chips sit in its top corners. The hand runs along its bottom
+  /* A phone on its side (short and wide): the table fits the screen with a little room around it, and the
+     page opens scrolled to it, past the site header. The game's name and chips sit in its top corners. The hand runs along its bottom
      edge with only the tops of the cards showing, your plaque to its left and the hint and button to its
      right. After the 640px rules, which it overrides where both apply. Keep SIDEWAYS (in the script),
      WatchGlow, Game and Layout in step with this query. */
   @media (orientation: landscape) and (max-height: 500px) and (min-width: 540px) {
+    /* --pad: room above and below the table, so it doesn't run into the screen's edges and you can see where
+       it ends. Less on the shortest screens, where every pixel counts. */
     .layout {
-      padding-top: 0;
+      --pad: clamp(8px, 5svh - 6px, 16px);
+      padding-top: var(--pad);
     }
 
     /* --hc: the hand's card width, from the screen's size. --band: how much of the hand shows. */
@@ -1867,16 +1887,19 @@
       background: var(--counter-bg);
     }
 
-    .chips .sky {
+    /* The hand number makes way too (the standings count the hands), so the chips take at most two rows. */
+    .chips .sky,
+    .chips .num {
       display: none;
     }
 
-    /* The whole screen while the browser's bars show (svh), less an iPhone's home bar. */
+    /* The whole screen while the browser's bars show (svh), less the room around it and an iPhone's home bar. */
     .arena {
-      height: calc(100svh - env(safe-area-inset-bottom, 0px));
+      height: calc(100svh - 2 * var(--pad) - env(safe-area-inset-bottom, 0px));
     }
 
-    /* The felt runs under the hand, starting below the name; the trick centres in the part above the hand. */
+    /* The felt runs under the hand, starting below the name, and its bottom edge is where your cards tuck
+       away. The trick centres in the part above the hand. */
     .felt {
       --tw: min(124px, (100cqh - 64px - var(--band)) / 2.75);
       inset: 26px 52px 0;
@@ -1955,10 +1978,10 @@
       right: calc(50% - 79px);
     }
 
-    /* Low enough to clear the chips. */
+    /* Low enough to clear two rows of chips. */
     .seat.at-left,
     .seat.at-right {
-      top: max(84px, (100% - var(--band)) / 2 - 50px);
+      top: max(56px, (100% - var(--band)) / 2 - 50px);
     }
 
     /* Yours: the bottom-left corner beside your hand, with its tags stacked above it. */
@@ -1983,6 +2006,8 @@
       position: relative;
       height: var(--band);
       margin-top: calc(-1 * var(--band));
+      /* What comes next (the standings) starts below the room under the table, and below an iPhone's home bar. */
+      margin-bottom: calc(var(--pad) + env(safe-area-inset-bottom, 0px));
       padding: 0 calc(27% + 12px) 0 126px;
     }
 
@@ -2011,7 +2036,7 @@
       display: none;
     }
 
-    /* Cut off at the bottom edge, so only the tops of the cards show. A picked card still rises over the felt. */
+    /* Cut off at the felt's bottom edge, so only the tops of the cards show. A picked card still rises over the felt. */
     .hand {
       --cw: var(--hc);
       height: var(--band);
