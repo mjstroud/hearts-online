@@ -35,7 +35,7 @@ const viewFor = (hand: HandState, seat: number | null, settings: GameSettings = 
 
 const factsFor = (hand: HandState, seat: number | null, settings: GameSettings = S) => {
   const v = viewFor(hand, seat, settings);
-  return { heartsBrokenBy: v.heartsBrokenBy, sunWatch: v.sunWatch, moonWatch: v.moonWatch };
+  return { heartsBrokenBy: v.heartsBrokenBy, sunWatch: v.sunWatch, moonWatch: v.moonWatch, sunRun: v.sunRun, moonRun: v.moonRun };
 };
 
 const isPoint = (c: Card) => c[1] === 'H' || c === 'QS';
@@ -49,10 +49,15 @@ function expected(hand: HandState, settings: GameSettings = S) {
   const pointWinners = new Set(done.filter((t) => t.plays.some((p) => isPoint(p.card))).map((t) => t.winner));
   const hearts = done.flatMap((t) => t.plays).filter((p) => p.card[1] === 'H').length;
   const sunFrom = hand.numPlayers === 5 ? 3 : 4;
+  const sun = settings.showWatches && settings.shootTheSun;
+  const moon = settings.showWatches && settings.shootTheMoon;
+  const queen = done.some((t) => t.plays.some((p) => p.card === 'QS'));
   return {
     heartsBrokenBy: first ? { seat: first.seat, card: first.card, trick: first.trick } : null,
-    sunWatch: settings.showWatches && settings.shootTheSun && done.length >= sunFrom && trickWinners.size === 1 ? done[0].winner : null,
-    moonWatch: settings.showWatches && settings.shootTheMoon && pointWinners.size === 1 && hearts >= 7 ? [...pointWinners][0] : null,
+    sunWatch: sun && done.length >= sunFrom && trickWinners.size === 1 ? done[0].winner : null,
+    moonWatch: moon && pointWinners.size === 1 && hearts >= 7 ? [...pointWinners][0] : null,
+    sunRun: sun && done.length > 0 && trickWinners.size === 1 ? { seat: done[0].winner!, tricks: done.length } : null,
+    moonRun: moon && pointWinners.size === 1 && hearts > 0 ? { seat: [...pointWinners][0]!, hearts, queen } : null,
   };
 }
 
@@ -105,7 +110,7 @@ describe('who broke hearts', () => {
   it('is empty until a point card is played, including through the pass', () => {
     const passing = dealHand(1, 4, seeded(3));
     expect(passing.phase).toBe('passing');
-    expect(check(passing)).toEqual({ heartsBrokenBy: null, sunWatch: null, moonWatch: null });
+    expect(check(passing)).toEqual({ heartsBrokenBy: null, sunWatch: null, moonWatch: null, sunRun: null, moonRun: null });
 
     const hand = startHand(4, 4, HANDS, CRIB);
     play(hand, [[0, '2C'], [1, '7C'], [2, 'AC'], [3, 'AS']]);
@@ -218,6 +223,45 @@ describe('Moon watch', () => {
     expect(publicFacts(tricks, null, 12, { ...S, shootTheMoon: false }).moonWatch).toBeNull();
     // The Sun switch is separate.
     expect(publicFacts(tricks, null, 12, { ...S, shootTheSun: false }).moonWatch).toBe(2);
+  });
+});
+
+describe('Sun and Moon runs (the glows)', () => {
+  it('a Sun run starts with the first trick and ends for good once anyone else wins one', () => {
+    const tricks: Trick[] = [];
+    expect(publicFacts(tricks, null, 12, S).sunRun).toBeNull();
+    tricks.push(won(1, '2C', '3C', '4C', '5C'));
+    expect(publicFacts(tricks, null, 12, S).sunRun).toEqual({ seat: 1, tricks: 1 });
+    // A trick still on the felt doesn't count, even one someone else is winning.
+    const current: Trick = { leader: 1, plays: [{ seat: 1, card: '6C' }, { seat: 2, card: 'AC' }], winner: null };
+    expect(publicFacts(tricks, current, 12, S).sunRun).toEqual({ seat: 1, tricks: 1 });
+    tricks.push(won(1, '6C', '7C', '8C', '9C'));
+    expect(publicFacts(tricks, null, 12, S).sunRun).toEqual({ seat: 1, tricks: 2 });
+    tricks.push(won(2, 'AC', 'TC', 'JC', 'QC'));
+    expect(publicFacts(tricks, null, 12, S).sunRun).toBeNull();
+    tricks.push(won(1, 'AD', '2D', '3D', '4D'));
+    expect(publicFacts(tricks, null, 12, S).sunRun).toBeNull();
+  });
+
+  it('a Moon run starts with the first heart, notes the Q♠, and ends once anyone else takes a point card', () => {
+    const tricks = [won(1, '2C', '3C', '4C', '5C'), won(2, 'KS', 'QS', '2S', '3S')];
+    // The Q♠ on its own isn't a Moon run.
+    expect(publicFacts(tricks, null, 12, S).moonRun).toBeNull();
+    tricks.push(won(2, 'AD', '2H', '3D', '4D'));
+    expect(publicFacts(tricks, null, 12, S).moonRun).toEqual({ seat: 2, hearts: 1, queen: true });
+    // Someone else winning a trick with no points in it doesn't matter.
+    tricks.push(won(0, 'AS', '4S', '5S', '6S'));
+    expect(publicFacts(tricks, null, 12, S).moonRun).toEqual({ seat: 2, hearts: 1, queen: true });
+    tricks.push(won(3, 'KD', '3H', '5D', '6D'));
+    expect(publicFacts(tricks, null, 12, S).moonRun).toBeNull();
+  });
+
+  it('follows the switches', () => {
+    const tricks = [won(2, '2H', '3H', '4H', '5H')];
+    expect(publicFacts(tricks, null, 12, S)).toMatchObject({ sunRun: { seat: 2, tricks: 1 }, moonRun: { seat: 2, hearts: 4, queen: false } });
+    expect(publicFacts(tricks, null, 12, { ...S, showWatches: false })).toMatchObject({ sunRun: null, moonRun: null });
+    expect(publicFacts(tricks, null, 12, { ...S, shootTheSun: false })).toMatchObject({ sunRun: null, moonRun: { seat: 2 } });
+    expect(publicFacts(tricks, null, 12, { ...S, shootTheMoon: false })).toMatchObject({ sunRun: { seat: 2 }, moonRun: null });
   });
 });
 

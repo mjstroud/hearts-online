@@ -16,8 +16,10 @@
   interface Props {
     /** Omit (or null) to show the card back. */
     card?: Card | null;
-    /** Card width in px. */
-    width?: number;
+    /** Card width: px, or a CSS length such as `var(--cw)` when the page's CSS sizes the card. */
+    width?: number | string;
+    /** The small-card style. A number width under 56 picks it; a card sized in CSS can't tell, so its page says. */
+    compact?: boolean;
     selected?: boolean;
     /** Queued to play the moment your turn arrives. */
     queued?: boolean;
@@ -35,6 +37,7 @@
   let {
     card = null,
     width = 84,
+    compact: compactStyle,
     selected = false,
     queued = false,
     dimmed = false,
@@ -51,7 +54,7 @@
   const face = $derived(r === 'J' || r === 'Q' || r === 'K');
   const ace = $derived(r === 'A');
   /** Small cards (side panels, playtest rows) drop the big art and show a giant index instead. */
-  const compact = $derived(width < 56);
+  const compact = $derived(compactStyle ?? (typeof width === 'number' && width < 56));
   const tag = $derived(card === 'QS' ? '+13' : card === 'JD' && jackScored ? '−10' : null);
   // The back's emblem is a heart.
   const shape = $derived(SUIT_PATH[card ? suitOf(card) : 'H']);
@@ -73,7 +76,7 @@
   class:dimmed
   class:fresh={fresh && !queued}
   class:interactive={!!onclick}
-  style={`--w: ${width}px`}
+  style={`--w: ${typeof width === 'number' ? `${width}px` : width}`}
   {onclick}
   disabled={onclick ? disabled : undefined}
   aria-label={queued ? `${name}, plays next` : name}
@@ -276,7 +279,7 @@
     content: '';
     position: absolute;
     inset: 6cqi;
-    border-radius: calc(var(--w) * 0.084);
+    border-radius: 8.4cqi;
     background: var(--back-panel);
   }
 

@@ -138,7 +138,7 @@ So change `check:budgets` to read each route's `styles` list from the server bui
 
 ### Phase 3: Less waiting
 
-**Status (2026-11-26): built and on the dev site, not yet released.** Migration v8 adds one table, `removed_players`, so take a Fly volume snapshot of the real site before releasing it.
+**Status (2026-11-26): live.** Released as `release-2026-11-26.4` (Fly release v12) after volume snapshot `vs_w8Qgp2OXbDKSla6laDYmPo`. Migration v8 (one table, `removed_players`) ran on the real site.
 
 - **Checked:**
   - A six-lens design review, then a five-lens code review with each finding verified by a skeptic.
@@ -206,11 +206,11 @@ Every moment plays on a live change only, never on a page load or reconnect. Eac
 | Hearts not broken / broken | The heart in the status cluster is an outline, then turns solid red, or becomes the Q♠ if that broke them. A short warm wash crosses the felt, with "Hearts are broken: Mom's 7♥". |
 | Q♠ played | A quick dark ripple from the card. When the trick closes: "Dad eats the Queen · +13". |
 | J♦ taken | A gold glint on the card, then "Mom grabs the Jack · −10". |
-| Sun watch | From trick 4 (trick 3 with 5 players), if one seat has won every trick: a ☀ glow on their plaque and in the status cluster. When someone else takes a trick: "Sun's down". This is exact: trick winners are public, and the shooter is always the crib winner. |
-| Moon watch | If one seat has taken every point card played so far, including at least 7 hearts: ☾ on their plaque. It's a "watch", not a sure thing, because the crib may hold a heart someone else won. In simulated games about half of moon watches were already dead. When it ends: "Moon blocked by Bob". |
+| Sun watch | Sun rays behind the avatar of the seat that has won every trick so far, from the first trick. Three steps: faint from trick 1, clear from 3 in a row, blazing from two thirds of the hand (8 of 12, 6 of 9). From the clear step the status cluster names them. When someone else takes a trick the sun sinks and goes out. No message. This is exact: trick winners are public, and the shooter is always the crib winner. |
+| Moon watch | A pale halo behind the avatar of the seat that has taken every point card played so far, once that includes a heart. Three steps: faint from the first heart, clear from 5, full with the Q♠ and 7 hearts (or 10). It's a "watch", not a sure thing, because the crib may hold a heart someone else won. When it's blocked the halo greys and goes out. No message. |
 | Sun or Moon shot | A full-table sunrise or moonrise sweep before the hand result, in the hand-end sequence. |
 
-- **One message slot, in priority order:** shot, then auto-finished, Q♠ eaten, hearts broken, watch change, J♦, "takes it", and "your lead". Messages merge where they can ("Bob takes it · Q♠ +13") and each shows for at least 1.2s.
+- **One message slot, in priority order:** shot, then auto-finished, Q♠ eaten, hearts broken, J♦, "takes it", and "your lead". Messages merge where they can ("Bob takes it · Q♠ +13") and each shows for at least 1.2s.
 - **Room on a phone:** with 5 players at 375px, the only free spots are the felt's bottom corners. The status cluster goes bottom-left, "Last trick" goes bottom-right, and taunts aim at avatars.
 - **Layers, bottom to top:** restaurant decor, then moment washes, then trick cards, then plaques, then the message slot, then bubbles and thrown items, then dialogs. Nothing ever covers a card's rank corner.
 - **Gameplay effect:** a visible Moon watch makes it easier for the table to stop a shooter (see the questions).

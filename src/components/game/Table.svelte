@@ -4,6 +4,7 @@
   import { type Card, QUEEN_OF_SPADES, SUIT_SYMBOL, cardLabel, isPenaltyCard, suitOf } from '../../lib/engine/cards';
   import { type Trick, followPlays, queueSuit, trickWinner } from '../../lib/engine/hand';
   import type { HandSummary, TableView } from '../../lib/engine/view';
+  import { type Glow, WATCH_LEVEL, glowOf } from '../../lib/engine/watch';
   import {
     ARRIVE_MS,
     MIN_SHOW_MS,
@@ -25,6 +26,7 @@
   import PlayingCard from '../PlayingCard.svelte';
   import DeckToggle from '../DeckToggle.svelte';
   import Standings from './Standings.svelte';
+  import WatchGlow from './WatchGlow.svelte';
 
   // The playtest panel loads only on playtest tables, so players never download it.
   // One shared promise, so live updates never restart the load (or reset the panel).
@@ -178,9 +180,6 @@
   /** Who takes the trick on the felt, or is winning it once two cards are down. */
   const topSeat = $derived(shown ? (shown.winner ?? (shown.plays.length > 1 ? trickWinner(shown) : null)) : null);
   const led = $derived(shown?.plays[0] ?? null);
-  // In scoring the Sun replaces the Moon, so a Sun run (both watches on one seat) shows the sun.
-  const watchSeat = $derived(t.phase === 'playing' ? (t.sunWatch ?? t.moonWatch ?? null) : null);
-  const sunWatch = $derived(t.phase === 'playing' && (t.sunWatch ?? null) !== null);
   // Your own break shows at once (the prediction sets heartsBroken); the server then names the card.
   const breaker = $derived(t.heartsBrokenBy?.card ?? t.current?.plays.find((p) => isPenaltyCard(p.card))?.card);
   const trickKey = (tr: Trick | null) => tr?.plays.map((p) => p.card).join('') ?? '';
@@ -331,7 +330,7 @@
             later(waitFor(QUEEN_OF_SPADES), () => ripple(QUEEN_OF_SPADES));
           }
           const closing = waitFor(ft.plays.at(-1)?.card);
-          say(finalMoments(finalBefore, ft, finalHand, who(finalHand)).map((x) => ({ ...x, delay: closing })));
+          say(finalMoments(ft, finalHand, who(finalHand)).map((x) => ({ ...x, delay: closing })));
         }
       }
     });
@@ -347,21 +346,78 @@
     };
   });
 
+  // ----- The Sun or Moon glow behind a watcher's avatar, from public facts only (see engine/watch.ts).
+  // While the hand-end sequence holds the final trick, `t` is already the next hand: a shot keeps its
+  // glow, blazing, until the celebration, and a run that ended on the last trick goes out.
+  const glowNow = $derived.by((): Glow | null => {
+    if (!finalTrick) return glowOf(t);
+    const s = view.settings.showWatches ? finalHand : null;
+    if (s?.sun != null) return { seat: s.sun, kind: 'sun', level: 3 };
+    if (s?.moon != null) return { seat: s.moon, kind: 'moon', level: 3 };
+    return null;
+  });
+  type Lit = Glow & { ignite: boolean; flare: number };
+  /** The glow on show, and one going out while a new one lights (on another seat, or a Moon after the Sun). */
+  let glow = $state<Lit | null>(null);
+  let fading = $state<Glow | null>(null);
+  let glowTarget: Glow | null = null;
+  /** The glow came from the held final trick: when the hand-end sequence lets go, it simply goes. */
+  let glowHeld = false;
+  let glowTimer: ReturnType<typeof setTimeout> | undefined;
+  let fadeTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Long enough for the slowest way out (WatchGlow's sink). */
+  const FADE_MS = 1200;
+  // It changes once the card that closed the trick has landed, so it never gets ahead of the felt.
+  // Only changes the table watched light up, flare or go out; a page load or a reconnect just shows it.
+  $effect(() => {
+    const next = glowNow;
+    // Read here, so the hand-end sequence letting go always runs this, even when no glow changes.
+    const held = !!finalTrick;
+    untrack(() => {
+      const was = glowTarget;
+      const released = glowHeld && !held;
+      glowHeld = held;
+      if (next?.seat === was?.seat && next?.kind === was?.kind && next?.level === was?.level) return;
+      glowTarget = next;
+      const live = watched && !released;
+      const apply = () => {
+        const cur = glow;
+        if (cur && next && cur.seat === next.seat && cur.kind === next.kind) {
+          glow = { ...next, ignite: cur.ignite, flare: cur.flare + (live && next.level > cur.level ? 1 : 0) };
+          return;
+        }
+        // Anything else means the old run is over: another seat's run, or the Sun broken with the Moon left.
+        if (cur && live) {
+          clearTimeout(fadeTimer);
+          fading = cur;
+          fadeTimer = setTimeout(() => (fading = null), FADE_MS);
+        }
+        glow = next && { ...next, ignite: live, flare: 0 };
+      };
+      clearTimeout(glowTimer);
+      const closing = (finalTrick ?? t.lastTrick)?.plays.at(-1)?.card;
+      const wait = live && !prefersReducedMotion.current ? waitFor(closing) + ARRIVE_MS : 0;
+      if (wait) glowTimer = setTimeout(apply, wait);
+      else apply();
+    });
+  });
+  /** The corner names the watcher once the glow is a real watch. */
+  const watch = $derived(!finalTrick && glow && glow.level >= WATCH_LEVEL ? glow : null);
+  onMount(() => () => {
+    clearTimeout(glowTimer);
+    clearTimeout(fadeTimer);
+  });
+
   // ----- Responsive sizing
-  let arenaW = $state(900);
-  let arenaH = $state(470);
-  let handW = $state(900);
-  // Trick cards grow with the table so the middle of the felt doesn't feel empty.
-  const trickW = $derived(Math.round(Math.max(56, Math.min(124, arenaW * 0.11, arenaH * 0.24))));
-  const cardW = $derived(handW < 520 ? 62 : handW < 760 ? 78 : 96);
+  // Card sizes and the fan's spacing come from container queries in the CSS, not measured widths, so the
+  // server-rendered page is already laid out for the phone it's on: nothing overflows or jumps on load.
   const handCount = $derived(t.myHand.length);
-  const step = $derived(Math.max(14, Math.min(cardW * 0.74, (handW - cardW - 8) / Math.max(1, handCount - 1))));
-  const handOffset = $derived((handW - (cardW + step * Math.max(0, handCount - 1))) / 2);
   const mid = $derived((handCount - 1) / 2);
-  // A gentle fan: a little rotation and a shallow arc.
+  // A gentle fan: a little rotation and a shallow arc (the CSS curves it by 0.3px per card from the middle, squared).
   const spread = $derived(Math.min(1.5, 15 / Math.max(handCount, 1)));
-  const ARC = 0.3;
-  const arcDrop = $derived(mid ** 2 * ARC);
+  const arcDrop = $derived(mid ** 2 * 0.3);
+  /** Playtest only: the face-up crib's height, measured to pick the small-card style. */
+  let cribH = $state(0);
 
   // Everyone holds the same number of cards, so one counter covers the whole table.
   const tricksLeft = $derived(t.phase === 'playing' ? t.totalTricks - t.trickNumber + 1 : t.totalTricks);
@@ -449,7 +505,7 @@
       </div>
     </div>
 
-    <div class="arena" bind:clientWidth={arenaW} bind:clientHeight={arenaH} class:five={n === 5} style={`--tw: ${trickW}px`}>
+    <div class="arena" class:five={n === 5}>
       <div class="felt">
         {#if washFx}{#key washFx.id}<div class="fx" style={FX[washFx.kind][0]}></div>{/key}{/if}
 
@@ -482,7 +538,7 @@
                   in:fly|global={{ ...FROM[pos], duration: arrival.slide ? ARRIVE_MS : 0, opacity: wait ? 0 : 0.2, delay: wait }}
                   out:fade={{ duration: 160 }}
                 >
-                  <PlayingCard card={p.card} width={trickW} jackScored={view.settings.jackOfDiamonds} />
+                  <PlayingCard card={p.card} width="var(--tw)" jackScored={view.settings.jackOfDiamonds} />
                   {#if rippleFx?.card === p.card}{#key rippleFx.id}<span class="fx" style={FX.ripple[0]}></span>{/key}{/if}
                 </div>
               {/each}
@@ -496,13 +552,19 @@
           {:else if t.cribWinner === null}
             <div class="crib" in:fade title="The crib goes to whoever wins the first trick">
               {#if view.dev && showCrib}
-                <div class="crib-open">
-                  {#each view.dev.crib as c (c)}<PlayingCard card={c} width={trickW * 0.62} jackScored={view.settings.jackOfDiamonds} />{/each}
+                <!-- The row is one card tall, so its height says whether the cards are under 56px wide (78.4px tall). -->
+                <div class="crib-open" bind:clientHeight={cribH}>
+                  {#each view.dev.crib as c (c)}<PlayingCard
+                      card={c}
+                      width="calc(var(--tw) * 0.62)"
+                      compact={cribH ? cribH < 78.4 : undefined}
+                      jackScored={view.settings.jackOfDiamonds}
+                    />{/each}
                 </div>
               {:else}
                 <div class="crib-stack">
                   {#each Array(Math.min(t.cribSize, 4)) as _, i}
-                    <span style={`--i: ${i}`}><PlayingCard width={trickW * 0.72} /></span>
+                    <span style={`--i: ${i}`}><PlayingCard width="calc(var(--tw) * 0.72)" /></span>
                   {/each}
                 </div>
               {/if}
@@ -528,12 +590,16 @@
         </span>
         {#if t.phase === 'playing'}
           <span class="facts">
-            <span class:red={!t.heartsBroken || breaker !== 'QS'} title={t.heartsBroken ? 'Hearts are broken' : 'Hearts aren’t broken yet'}
+            <span
+              class="heart"
+              class:red={!t.heartsBroken || breaker !== 'QS'}
+              class:q={t.heartsBroken && breaker === 'QS'}
+              title={t.heartsBroken ? 'Hearts are broken' : 'Hearts aren’t broken yet'}
               >{t.heartsBroken ? (breaker === 'QS' ? 'Q♠\uFE0E' : '♥\uFE0E') : '♡'}</span
             >
-            {#if watchSeat !== null}
-              <span class="watch" title={sunWatch ? 'Sun watch: has won every trick so far' : 'Moon watch: has taken every point card so far'}
-                >{sunWatch ? '☀\uFE0E' : '☾'}&nbsp;<span class="nm">{nameOf(watchSeat)}</span></span
+            {#if watch}
+              <span class="watch" title={watch.kind === 'sun' ? 'Sun watch: has won every trick so far' : 'Moon watch: has taken every point card so far'}
+                >{watch.kind === 'sun' ? '☀\uFE0E' : '☾'}&nbsp;<span class="nm">{nameOf(watch.seat)}</span></span
               >
             {/if}
           </span>
@@ -549,17 +615,16 @@
       {#each view.players as p (p.userId)}
         {@const pos = posOf(p.seat)}
         {@const acting = view.toAct.includes(p.seat)}
-        <div class={`seat at-${pos}`} class:acting class:me={p.seat === me}>
+        <div class={`seat at-${pos}`} class:acting class:me={p.seat === me} class:glowing={glow?.seat === p.seat || fading?.seat === p.seat}>
           <div class="plaque">
             <span class="seat-avatar">
-              <Avatar name={p.name} seed={p.username} isBot={p.isBot} src={p.avatar} size={arenaW < 520 ? 34 : 38} />
+              {#if fading?.seat === p.seat}{#key fading}<WatchGlow kind={fading.kind} level={fading.level} out />{/key}{/if}
+              {#if glow?.seat === p.seat}{#key glow.kind}<WatchGlow kind={glow.kind} level={glow.level} ignite={glow.ignite} flare={glow.flare} />{/key}{/if}
+              <Avatar name={p.name} seed={p.username} isBot={p.isBot} src={p.avatar} size="var(--av)" />
               {#if !p.isBot}<span class="presence" class:on={p.online}></span>{/if}
               {#if led && led.seat === p.seat}
                 {@const s = suitOf(led.card)}
                 <span class="dot" style={`color: var(--suit-${s.toLowerCase()})`} title="Led this trick">{SUIT_SYMBOL[s]}&#xFE0E;</span>
-              {/if}
-              {#if watchSeat === p.seat}
-                <span class="dot w" title={sunWatch ? 'On Sun watch' : 'On Moon watch'}>{sunWatch ? '☀\uFE0E' : '☾'}</span>
               {/if}
             </span>
             <span class="plaque-text">
@@ -642,17 +707,13 @@
         {/if}
       </div>
 
-      <div class="hand" bind:clientWidth={handW} style={`height: ${cardW * 1.4 + 34 + arcDrop}px`}>
+      <div class="hand" style={`--gaps: ${Math.max(1, handCount - 1)}; --spread: ${spread}deg; --arc: ${arcDrop}px`}>
         {#each t.myHand as card, i (card)}
           {@const canPick = (myTurn && t.legal.includes(card)) || (canQueue && queueable.includes(card))}
-          <div
-            class="slot"
-            style={`transform: translate(${handOffset + i * step}px, ${(i - mid) ** 2 * ARC}px) rotate(${(i - mid) * spread}deg); z-index: ${i}`}
-            out:fly={{ y: -60, duration: 200 }}
-          >
+          <div class="slot" style={`--i: ${i - mid}; z-index: ${i}`} out:fly={{ y: -60, duration: 200 }}>
             <PlayingCard
               {card}
-              width={cardW}
+              width="var(--cw)"
               selected={selected.includes(card) && card !== queuedCard}
               queued={card === queuedCard}
               dimmed={(myTurn || canQueue) && !canPick}
@@ -771,7 +832,10 @@
     gap: 10px;
   }
 
+  /* Above the seats, so a top seat's Sun or Moon glow goes behind the game's name and chips. */
   .statusbar {
+    position: relative;
+    z-index: 4;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -796,12 +860,16 @@
   }
 
   /* ---------- Arena ---------- */
+  /* A container, so the cards and avatars inside are sized from the arena in CSS. */
   .arena {
+    container: arena / size;
     position: relative;
     height: clamp(340px, calc(100dvh - 420px), 580px);
   }
 
   .felt {
+    /* Trick cards grow with the table so the middle of the felt doesn't feel empty. */
+    --tw: max(56px, min(124px, 11cqw, 24cqh));
     position: absolute;
     inset: 34px 64px 30px;
     border-radius: 34px;
@@ -1174,9 +1242,20 @@
   .facts {
     grid-column: 1 / -1;
     display: flex;
+    align-items: center;
     gap: 8px;
     font-size: 13px;
     font-weight: 700;
+  }
+
+  /* Whether hearts are broken, big enough to read at a glance: ♡, then ♥ (or the Q♠ that broke them). */
+  .heart {
+    font-size: 20px;
+    line-height: 20px;
+  }
+
+  .heart.q {
+    font-size: 15px;
   }
 
   .watch {
@@ -1198,7 +1277,7 @@
     cursor: pointer;
   }
 
-  /* On the avatar: the led suit (top left) and a Sun or Moon watch (top right). */
+  /* On the avatar: the led suit (top left). */
   .dot {
     position: absolute;
     top: -3px;
@@ -1212,18 +1291,29 @@
     text-align: center;
   }
 
-  .dot.w {
-    left: auto;
-    right: -3px;
-    background: var(--gold);
-    color: #3b2604;
+  /* A Sun or Moon glow (WatchGlow) sits behind this avatar: the name and the suit dot keep a dark edge over it. */
+  .glowing .plaque-text {
+    text-shadow:
+      0 0 3px var(--plaque-bg),
+      0 0 1px var(--plaque-bg);
+  }
+
+  .glowing .dot {
+    box-shadow: 0 0 0 2px var(--plaque-bg);
   }
 
   .seat-avatar {
+    --av: 38px;
     position: relative;
     flex: none;
     border-radius: 50%;
     padding: 2px;
+  }
+
+  @container arena (width < 520px) {
+    .seat-avatar {
+      --av: 34px;
+    }
   }
 
   /* Spinning ring on a pseudo-element so the badges on the avatar stay upright. The avatar (position: relative) sits on top. */
@@ -1374,6 +1464,7 @@
   /* ---------- Hand ---------- */
   /* Quick taps on the cards and the action button never count as a double-tap zoom. */
   .hand-zone {
+    container: hand / inline-size;
     margin-top: 22px;
     touch-action: manipulation;
   }
@@ -1433,15 +1524,35 @@
     vertical-align: bottom;
   }
 
+  /* Card width (--cw) steps down with the zone's width. The cards overlap just enough to fit, at most
+     74% of a card apart and at least 14px. 100cqi is the zone's width. */
   .hand {
+    --cw: 96px;
+    --step: max(14px, min(var(--cw) * 0.74, (100cqi - var(--cw) - 8px) / var(--gaps)));
     position: relative;
     margin-top: 10px;
+    height: calc(var(--cw) * 1.4 + 34px + var(--arc));
   }
 
+  @container hand (width < 760px) {
+    .hand {
+      --cw: 78px;
+    }
+  }
+
+  @container hand (width < 520px) {
+    .hand {
+      --cw: 62px;
+    }
+  }
+
+  /* --i is the card's place counted from the middle of the hand. */
   .slot {
     position: absolute;
     top: 26px;
     left: 0;
+    transform: translate(calc(50cqi - var(--cw) / 2 + var(--i) * var(--step)), calc(var(--i) * var(--i) * 0.3px))
+      rotate(calc(var(--i) * var(--spread)));
     transform-origin: 50% 120%;
     /* Positioned with transform only, so re-fanning the hand never triggers layout. */
     transition: transform 0.25s var(--ease);
