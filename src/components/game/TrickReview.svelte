@@ -41,7 +41,7 @@
       <p class="line">
         Passed {r.passLabel.toLowerCase()}
         {#if r.sun !== null || r.moon !== null}
-          · {r.sun !== null ? '☀' : '☾'} <span class="nm">{name(r.sun ?? r.moon ?? 0)}</span> shot the {r.sun !== null ? 'Sun' : 'Moon'}
+          · {r.sun !== null ? '☀\uFE0E' : '☾'} <span class="nm">{name(r.sun ?? r.moon ?? 0)}</span> shot the {r.sun !== null ? 'Sun' : 'Moon'}
         {/if}
       </p>
     {/if}

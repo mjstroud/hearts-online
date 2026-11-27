@@ -27,12 +27,22 @@ export interface MoveTiming {
   live(version: unknown): void;
 }
 
-// Inside a tap's handler, count from the tap itself so input delay is included. Older browsers
-// stamp events on a different clock, so only trust a stamp that's already in the past.
+// Count from the tap itself, so input delay is included. A capturing listener notes each tap or key
+// press before the page's own handlers run (in place of the deprecated window.event), and forgets it
+// once that event is done. Older browsers stamp events on a different clock, so only trust a stamp
+// that's already in the past.
+let inputStamp = 0;
+if (typeof window !== 'undefined') {
+  const note = (e: Event) => {
+    inputStamp = e.timeStamp;
+    setTimeout(() => (inputStamp = 0));
+  };
+  for (const type of ['click', 'keydown']) window.addEventListener(type, note, { capture: true, passive: true });
+}
+
 function tapTime(): number {
   const now = performance.now();
-  const stamp = typeof window === 'undefined' ? undefined : window.event?.timeStamp;
-  return stamp !== undefined && stamp > 0 && stamp <= now ? stamp : now;
+  return inputStamp > 0 && inputStamp <= now ? inputStamp : now;
 }
 
 export function timeMove(action: TimedMove): MoveTiming {

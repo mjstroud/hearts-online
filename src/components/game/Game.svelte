@@ -295,7 +295,7 @@
     if (shot) loadCelebration().catch(() => {});
     ending = { hand, stage: 'trick', held: before };
     if (before && hand.finalTrick) {
-      // Long enough for each of the final trick's messages (the Queen, the Jack, a watch ending) to show.
+      // Long enough for each of the final trick's messages (auto-finished, the Queen, the Jack) to show.
       const who = { names: view.players.map((p) => p.name), me: view.me.seat, jack: view.settings.jackOfDiamonds };
       const hold = finalTrickHoldMs(before.table, hand.finalTrick, hand, who);
       endingTimer = setTimeout(() => (shot ? showShot() : endHand()), hold);

@@ -788,7 +788,7 @@
             <div class="lh-row">
               <span class="lh-name" title={nm}>{p.seat === me ? 'You' : nm}</span>
               <span class="lh-tags">
-                {#if view.lastHand.sun === p.seat}<span title="Shot the Sun">☀</span>{/if}
+                {#if view.lastHand.sun === p.seat}<span title="Shot the Sun">☀&#xFE0E;</span>{/if}
                 {#if view.lastHand.moon === p.seat}<span title="Shot the Moon">☾</span>{/if}
                 {#if view.lastHand.queen === p.seat}<span title="Queen of Spades">Q♠</span>{/if}
                 {#if view.lastHand.jack === p.seat && view.lastHand.jackScored}<span class="j" title="Jack of Diamonds">J♦</span>{/if}
