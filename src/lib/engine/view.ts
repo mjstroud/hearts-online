@@ -47,6 +47,10 @@ export interface TableView {
   sunWatch: number | null;
   /** The seat that has taken every point card played so far, with at least 7 hearts. Not a sure thing: the crib may hold a heart. */
   moonWatch: number | null;
+  /** The seat that has won every trick so far, from the first one on, and how many. It lights the Sun glow (see watch.ts). */
+  sunRun: { seat: number; tricks: number } | null;
+  /** The seat that has taken every point card played so far, once that includes a heart: its hearts, and whether the Q♠ is among them. It lights the Moon glow. */
+  moonRun: { seat: number; hearts: number; queen: boolean } | null;
 }
 
 /** Public end-of-hand summary (no deal details). */
@@ -107,7 +111,7 @@ export const MOON_WATCH_HEARTS = 7;
 /** Tricks one seat must win from the start before a Sun watch starts: 4 of 12, 3 of 9. */
 export const sunWatchFrom = (totalTricks: number) => Math.ceil(totalTricks / 3);
 
-type PublicFacts = Pick<TableView, 'heartsBrokenBy' | 'sunWatch' | 'moonWatch'>;
+type PublicFacts = Pick<TableView, 'heartsBrokenBy' | 'sunWatch' | 'moonWatch' | 'sunRun' | 'moonRun'>;
 
 /**
  * The table facts everyone may see. It's handed the face-up cards only (finished tricks and the
@@ -131,10 +135,18 @@ export function publicFacts(tricks: readonly Trick[], current: Trick | null, tot
   const oneTaker = takers.length > 0 && takers.every((w) => w === takers[0]);
   const hoarder = oneTaker && hearts >= MOON_WATCH_HEARTS ? takers[0] : null;
 
+  // The runs behind the glows: the same facts from the first trick and the first heart on.
+  const sun = settings.showWatches && settings.shootTheSun;
+  const moon = settings.showWatches && settings.shootTheMoon;
+  const unbroken = leader !== null && tricks.every((t) => t.winner === leader);
+  const queen = tricks.some((t) => t.plays.some((p) => p.card === QUEEN_OF_SPADES));
+
   return {
     heartsBrokenBy,
-    sunWatch: settings.showWatches && settings.shootTheSun && sweeping ? leader : null,
-    moonWatch: settings.showWatches && settings.shootTheMoon ? hoarder : null,
+    sunWatch: sun && sweeping ? leader : null,
+    moonWatch: moon ? hoarder : null,
+    sunRun: sun && unbroken ? { seat: leader, tricks: tricks.length } : null,
+    moonRun: moon && oneTaker && hearts > 0 ? { seat: takers[0]!, hearts, queen } : null,
   };
 }
 
