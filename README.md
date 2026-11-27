@@ -20,7 +20,7 @@ Built with [Astro](https://astro.build) (server-rendered), [Svelte](https://svel
 - **Terms and privacy.** Short Terms and Privacy pages. New players agree at sign-up, and existing players agree once on their next visit.
 - **Less waiting.**
   - **Queue your card.** Once the lead card is down (on the first trick, as soon as play starts), tap a card you could follow with and it goes down the moment your turn arrives. Tap it again to cancel. Nobody else can tell you queued it until it's played.
-  - **The last trick plays itself.** Everyone's last card is forced, so after the usual pause the server plays the whole trick in one go. A late tap on your last card still works.
+  - **The last trick plays itself.** Everyone's last card is forced, so after the usual pause the server plays the trick one card at a time, at the cats' pace, so everyone can see who played what. On your turn, a tap on your last card still plays it straight away.
   - **Hands end early** once nobody can take any more points, as everyone can see from the cards played face up. The server plays out the rest at once. Those tricks are left out of trick counts and the trick review. It never looks at hidden hands or the crib, so it fires only once every heart, the Q♠ and the J♦ have been played.
   - The tab title, turn alerts and the "Your move" list on /games only count moves you actually have to make, not a card a cat or the server is about to play for you.
   - The host can switch the last trick and early ending off on the game's Settings page, mid-game too. Both are on by default.
