@@ -31,17 +31,18 @@ export function moonLevel(hearts: number, queen: boolean): GlowLevel | 0 {
 }
 
 /**
- * The glow the table shows, if any. Only one seat can have a run of either kind (a Sun runner has
- * taken every point card too), so it's one glow at most: the brighter of the two, the Sun on a tie,
- * as the Sun replaces the Moon in scoring.
+ * The glow the table shows, if any: one at most. A Sun runner has taken every point card too, so
+ * while a Sun run lasts it shows as the Sun (which replaces the Moon in scoring), as bright as the
+ * brighter of the two runs. Once the Sun breaks, any Moon run carries on as the Moon.
  */
 export function glowOf(t: Pick<TableView, 'phase' | 'totalTricks' | 'sunRun' | 'moonRun'>): Glow | null {
   if (t.phase !== 'playing') return null;
   const sun = t.sunRun ?? null;
   const moon = t.moonRun ?? null;
-  const s = sun ? sunLevel(sun.tricks, t.totalTricks) : 0;
   const m = moon ? moonLevel(moon.hearts, moon.queen) : 0;
-  if (sun && s && s >= m) return { seat: sun.seat, kind: 'sun', level: s };
-  if (moon && m) return { seat: moon.seat, kind: 'moon', level: m };
-  return null;
+  if (sun) {
+    const s = sunLevel(sun.tricks, t.totalTricks);
+    if (s) return { seat: sun.seat, kind: 'sun', level: moon?.seat === sun.seat ? (Math.max(s, m) as GlowLevel) : s };
+  }
+  return moon && m ? { seat: moon.seat, kind: 'moon', level: m } : null;
 }

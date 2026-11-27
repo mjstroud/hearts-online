@@ -107,7 +107,10 @@
      its dots and the name. It reaches 18px past the avatar ring. */
   .glow {
     position: absolute;
-    inset: -18px;
+    left: -18px;
+    top: -18px;
+    width: calc(100% + 36px);
+    height: calc(100% + 36px);
     z-index: -1;
     overflow: visible;
     pointer-events: none;
@@ -126,39 +129,47 @@
     transform-origin: 0 0;
   }
 
-  /* Each level shows more of the same art. */
+  /* Each level shows more of the same art. --o is a part's opacity at this level, so going out dims it from there. */
+  .ra,
+  .rb,
+  .co,
+  .ash,
+  .bu,
+  .ml,
+  .mo,
+  .lb,
+  .st {
+    opacity: var(--o, 1);
+  }
   .rb,
   .s2,
   .ash,
-  .bu {
-    opacity: 0;
-  }
-  .l1 .co {
-    opacity: 0;
-  }
-  .l1 .ra {
-    opacity: 0.85;
-    transform: scale(0.8);
-  }
-  .l2 .ra {
-    transform: scale(0.86);
+  .bu,
+  .l1 .co,
+  .l1 .st {
+    --o: 0;
   }
   .l3 .rb,
   .l3 .s2 {
-    opacity: 1;
+    --o: 1;
+  }
+  .l1 .ra {
+    --o: 0.85;
+    transform: scale(0.8);
+  }
+  .l2 .ra,
+  .sun.l2 .ash {
+    transform: scale(0.86);
   }
   .l1 .ml {
-    opacity: 0.6;
+    --o: 0.6;
     transform: scale(0.8);
   }
   .l2 .ml {
     transform: scale(0.92);
   }
   .l1 .mo {
-    opacity: 0.55;
-  }
-  .l1 .st {
-    opacity: 0;
+    --o: 0.55;
   }
 
   /* Lighting up: the glow swings out from behind the avatar. A level-up swells it and sends out a ring. */
@@ -192,7 +203,7 @@
     animation: dim 0.5s var(--ease);
   }
   .out:not(.l1) .ash {
-    opacity: 0.75;
+    --o: 0.75;
     animation: ash 0.5s var(--ease);
   }
 
@@ -226,7 +237,7 @@
   }
   @keyframes dim {
     from {
-      opacity: 1;
+      opacity: var(--o, 1);
     }
   }
   @keyframes ash {

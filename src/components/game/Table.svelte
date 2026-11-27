@@ -330,7 +330,7 @@
             later(waitFor(QUEEN_OF_SPADES), () => ripple(QUEEN_OF_SPADES));
           }
           const closing = waitFor(ft.plays.at(-1)?.card);
-          say(finalMoments(finalBefore, ft, finalHand, who(finalHand)).map((x) => ({ ...x, delay: closing })));
+          say(finalMoments(ft, finalHand, who(finalHand)).map((x) => ({ ...x, delay: closing })));
         }
       }
     });
@@ -357,7 +357,7 @@
     return null;
   });
   type Lit = Glow & { ignite: boolean; flare: number };
-  /** The glow on show, and one going out (on another seat, or the same one) while a new one lights. */
+  /** The glow on show, and one going out while a new one lights (on another seat, or a Moon after the Sun). */
   let glow = $state<Lit | null>(null);
   let fading = $state<Glow | null>(null);
   let glowTarget: Glow | null = null;
@@ -371,10 +371,12 @@
   // Only changes the table watched light up, flare or go out; a page load or a reconnect just shows it.
   $effect(() => {
     const next = glowNow;
+    // Read here, so the hand-end sequence letting go always runs this, even when no glow changes.
+    const held = !!finalTrick;
     untrack(() => {
       const was = glowTarget;
-      const released = glowHeld && !finalTrick;
-      glowHeld = !!finalTrick;
+      const released = glowHeld && !held;
+      glowHeld = held;
       if (next?.seat === was?.seat && next?.kind === was?.kind && next?.level === was?.level) return;
       glowTarget = next;
       const live = watched && !released;
@@ -384,7 +386,8 @@
           glow = { ...next, ignite: cur.ignite, flare: cur.flare + (live && next.level > cur.level ? 1 : 0) };
           return;
         }
-        if (cur && live && cur.seat !== next?.seat) {
+        // Anything else means the old run is over: another seat's run, or the Sun broken with the Moon left.
+        if (cur && live) {
           clearTimeout(fadeTimer);
           fading = cur;
           fadeTimer = setTimeout(() => (fading = null), FADE_MS);
@@ -1248,7 +1251,7 @@
   /* Whether hearts are broken, big enough to read at a glance: ♡, then ♥ (or the Q♠ that broke them). */
   .heart {
     font-size: 20px;
-    line-height: 1;
+    line-height: 20px;
   }
 
   .heart.q {

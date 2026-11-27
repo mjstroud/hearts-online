@@ -21,11 +21,15 @@ describe('glow levels', () => {
 describe('the glow the table shows', () => {
   const base = { phase: 'playing' as const, totalTricks: 12, sunRun: null, moonRun: null };
 
-  it('is the brighter run, the Sun on a tie', () => {
+  it('is the Sun while a Sun run lasts, as bright as the brighter run, then the Moon', () => {
     expect(glowOf(base)).toBeNull();
     expect(glowOf({ ...base, sunRun: { seat: 1, tricks: 1 } })).toEqual({ seat: 1, kind: 'sun', level: 1 });
     expect(glowOf({ ...base, sunRun: { seat: 1, tricks: 2 }, moonRun: { seat: 1, hearts: 3, queen: false } })).toEqual({ seat: 1, kind: 'sun', level: 1 });
-    expect(glowOf({ ...base, sunRun: { seat: 1, tricks: 2 }, moonRun: { seat: 1, hearts: 5, queen: false } })).toEqual({ seat: 1, kind: 'moon', level: 2 });
+    // A clear Moon makes the Sun clear too, so the glow never flips between the two during one run.
+    expect(glowOf({ ...base, sunRun: { seat: 1, tricks: 2 }, moonRun: { seat: 1, hearts: 5, queen: false } })).toEqual({ seat: 1, kind: 'sun', level: 2 });
+    expect(glowOf({ ...base, sunRun: { seat: 1, tricks: 4 }, moonRun: { seat: 1, hearts: 8, queen: true } })).toEqual({ seat: 1, kind: 'sun', level: 3 });
+    // The Sun broken, the Moon carries on.
+    expect(glowOf({ ...base, moonRun: { seat: 1, hearts: 5, queen: false } })).toEqual({ seat: 1, kind: 'moon', level: 2 });
     expect(glowOf({ ...base, moonRun: { seat: 3, hearts: 2, queen: true } })).toEqual({ seat: 3, kind: 'moon', level: 1 });
   });
 

@@ -146,7 +146,7 @@ export function publicFacts(tricks: readonly Trick[], current: Trick | null, tot
     sunWatch: sun && sweeping ? leader : null,
     moonWatch: moon ? hoarder : null,
     sunRun: sun && unbroken ? { seat: leader, tricks: tricks.length } : null,
-    moonRun: moon && oneTaker && hearts > 0 ? { seat: takers[0], hearts, queen } : null,
+    moonRun: moon && oneTaker && hearts > 0 ? { seat: takers[0]!, hearts, queen } : null,
   };
 }
 
