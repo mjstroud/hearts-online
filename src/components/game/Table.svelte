@@ -199,7 +199,7 @@
     });
   });
 
-  // ----- Cards that land in one update (the last trick playing itself, queued cards firing together)
+  // ----- Cards that land in one update (queued cards firing together)
   // slide in one after another, in play order, so the order still reads; on trick 1 too, as the crib
   // gives way. Cards already on the felt don't wait. An update the table didn't watch shows the felt
   // as it is, and reduced motion has the cards appear together.
@@ -271,8 +271,6 @@
     queue = [];
     queued = null;
   }
-  const slot = $derived(queued ?? restingMessage(finished && settled ? shown : null, who(), myTurn && leading && !finalTrick && !lastAuto));
-
   // One-shot effects, all on the one fx keyframe below; each sets its own colours and path.
   // A warm band across the felt for hearts, and a dark ring from the Q♠. (A Sun or Moon shot is Game.svelte's
   // full-screen celebration, not a felt effect.)
@@ -437,10 +435,12 @@
   let showCrib = $state(true);
   const manualBots = $derived(view.dev?.botMode === 'manual');
 
-  /** The last trick plays itself: every card in it is forced, so the server plays them after the usual pause. */
+  /** The last trick plays itself: every card in it is forced, so the server plays them one at a time after the usual pause. */
   const lastAuto = $derived(
     t.phase === 'playing' && t.trickNumber === t.totalTricks && !!view.settings.autoPlayLast && !manualBots && me !== null && !onAutopilot,
   );
+  /** The message slot: a queued moment, else who took the trick on the felt (and "your lead" when it's yours to lead). */
+  const slot = $derived(queued ?? restingMessage(finished && settled ? shown : null, who(), myTurn && leading && !finalTrick && !lastAuto));
 
   // ----- Queuing a card to play the moment your turn arrives: once the lead suit is known (trick 1's
   // is always clubs), and never in the last trick, which plays itself. Only cards you could play
@@ -788,7 +788,7 @@
             <div class="lh-row">
               <span class="lh-name" title={nm}>{p.seat === me ? 'You' : nm}</span>
               <span class="lh-tags">
-                {#if view.lastHand.sun === p.seat}<span title="Shot the Sun">☀</span>{/if}
+                {#if view.lastHand.sun === p.seat}<span title="Shot the Sun">☀&#xFE0E;</span>{/if}
                 {#if view.lastHand.moon === p.seat}<span title="Shot the Moon">☾</span>{/if}
                 {#if view.lastHand.queen === p.seat}<span title="Queen of Spades">Q♠</span>{/if}
                 {#if view.lastHand.jack === p.seat && view.lastHand.jackScored}<span class="j" title="Jack of Diamonds">J♦</span>{/if}

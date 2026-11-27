@@ -55,7 +55,7 @@
 
   {#if summary.sun !== null}
     <div class="banner sun">
-      <span class="icon">☀</span>
+      <span class="icon">☀&#xFE0E;</span>
       <div><strong>{name(summary.sun)} shot the Sun!</strong><span>Won every trick. Everyone else takes +52.</span></div>
     </div>
   {:else if summary.moon !== null}

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { canAutoFinish } from './autofinish';
 import { chooseBotPass, chooseBotPlay } from './bot';
-import { type Card, type Rng, isPenaltyCard, penaltyPoints } from './cards';
+import { type Card, type Rng, isPenaltyCard } from './cards';
 import { type GameState, gamePlay } from './game';
 import {
   type HandState,

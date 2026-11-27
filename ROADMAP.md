@@ -65,6 +65,7 @@ These are the "build it fast from the start" rules. They answer the performance 
 - **Opening the live stream sends your first update twice** ([events.ts:46](src/pages/api/games/[id]/events.ts)).
 - **/stats re-reads every hand of every game on each view.** That cost keeps growing through the season.
 - **The alerts button reads backwards** ([Table.svelte:421](src/components/game/Table.svelte:421)).
+- **Open (2026-11-26): landscape phones.** At 667×375, a long-name "takes it" message overlaps the status cluster. Seen in a static mock of the real CSS, not yet on a phone.
 
 ## Phases
 
@@ -129,6 +130,7 @@ All client code plus facts worked out in the view. No rule changes and no migrat
   - Decisions: a rematch goes back to the limit the game first finished with. Keep playing is blocked while a rematch exists; deleting the rematch brings it back. An extended game counts as in progress in lifetime stats until it finishes again. Rematch names add a plain " rematch" (then " rematch 2"), which is easy to type when deleting one.
   - Size: the end-screen choices and the Sun/Moon banner now load with `import()`, and so does the playtest latency timer (ground rule 3). The game page's JS went from 44.3 KB to 44.0 KB.
   - Follow-up (XS): mark where a game was extended on the scoreboard, from `extensions`.
+- **XS: The last trick plays at a readable pace.** All of its cards used to arrive in one update, 150ms apart, along with the next deal and the new totals, so it was over before anyone could see who played what. Now the server plays it one card at a time at the cats' pace: the usual 1.7s trick pause, then 0.9s before each card after the first (`BOT_DELAYS`). It looks like any other trick, and only the last card brings the next deal. That adds about 2.3s a hand with four players and 3s with five. On your turn, a tap on your own card still plays it at once. It's all on the server, so tabs running old code get it too. One side effect: a tab still running code from before Phase 3 (release .4) works out "Your turn" from `toAct`, so it now flashes "Your turn" for each person in the last trick, not just the leader, until it's refreshed. **On `dev`**, not released yet.
 
 ### Follow-up: measure CSS per page
 
@@ -146,7 +148,7 @@ So change `check:budgets` to read each route's `styles` list from the server bui
   - In the browser: queueing, the stagger, the last trick and auto-finish at 375px and on desktop, and removing a player end to end with a 32-character name.
 - **Decisions made while building:**
   - **Queued cards live in server memory,** a map beside the playtest undo history, not in the database. Losing one on a deploy just means it isn't queued. Queueing never touches the version, `updated_at`, the move clock or a cat's pause, so the table can't tell. Your own other tabs get a quiet refresh.
-  - **The last trick plays in one go** after the usual trick pause (one save, one update), and the browser slides the cards in 150ms apart.
+  - **The last trick plays in one go** after the usual trick pause (one save, one update), and the browser slides the cards in 150ms apart. *Changed since: it now plays one card at a time (see [Added 2026-11-26](#added-2026-11-26-owner-requests)).*
   - **Auto-finish never cuts in when only the last trick is left;** that trick always plays out visibly and counts. It also requires the J♦ to be played face up even when the J♦ rule is off, so every stored "who took what" fact comes from a face-up card.
   - **Auto-finish turns out to be rare.** "A suit every player has shown they're out of" can never hold in legal play: whoever leads a suit for the last time still had it. So the rule fires only once every heart, the Q♠ and the J♦ have been played. In simulation that's about 1 hand in 6,700 with the bots, and around 1% with looser play. Nearly all the time saved comes from the last trick.
   - **Removing a player** swaps a cat into the seat and never deletes or reseats. Their open streams are told and closed. They can't open the game afterwards: /stats lists it as "Removed", with only their own hands counted. The trick review and the hand result name each hand's own players.
@@ -164,6 +166,16 @@ So change `check:budgets` to read each route's `styles` list from the server bui
 - **S:** public-information auto-finish (see [Autocomplete rule](#autocomplete-rule)). The server plays out the rest at once and marks where it took over, so trick counts can leave those tricks out. Each hand record also gains player ids, which protects stats if seats ever change hands.
 - **XS:** host options for final-trick auto-play and auto-finish, changeable mid-game. Both are **on by default, including in the current season game**.
 - **S–M:** the host can remove a player at any time. In the lobby the seat empties. Mid-game a cat takes the seat for good. Earlier hands stay credited to the removed player through the player ids above.
+
+### Since Phase 3: watch glows and a type check
+
+**Status (2026-11-26): live.** Released as `release-2026-11-26.5` (Fly release v13). There was no migration, so no snapshot.
+
+- **Sun and Moon watches glow** behind the watcher's avatar from the first trick or heart, in three steps, with no pop-ups (see [Table moments](#table-moments)). New public facts `sunRun` and `moonRun` drive them. `sunWatch` and `moonWatch` keep their meaning for tabs running old code.
+- **The hearts-broken icon** in the status cluster is bigger.
+- **Phones lay out at their own width on first paint.** Card and avatar sizes come from container queries, not measured widths.
+- **CI type-checks** every .astro, .ts and .svelte file (`npm run check`), and Svelte warnings fail it too. It was added after a stale call in a .svelte file reached the dev site: the build and the tests don't check types, and astro check never looks inside .svelte files. It's on `dev` and reaches `main` with the next release.
+- **Not checked yet:** a real iPhone, and the owner's Firefox.
 
 ### Phase 4: Talk and tease
 

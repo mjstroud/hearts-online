@@ -241,7 +241,7 @@ export function playCard(state: HandState, seat: number, card: Card, settings: G
   if (state.phase !== 'playing' || !state.current) throw new RuleError('It is not time to play.');
   if (state.turn !== seat) throw new RuleError('It is not your turn.');
   if (!state.hands[seat].includes(card)) throw new RuleError('That card is not in your hand.');
-  if (!legalPlays(state, seat, settings).includes(card)) throw new RuleError(illegalReason(state, seat, card));
+  if (!legalPlays(state, seat, settings).includes(card)) throw new RuleError(illegalReason(state, seat));
 
   state.hands[seat] = state.hands[seat].filter((c) => c !== card);
   state.current.plays.push({ seat, card });
@@ -268,7 +268,7 @@ export function playCard(state: HandState, seat: number, card: Card, settings: G
   return { trickComplete: true, handComplete: false };
 }
 
-function illegalReason(state: HandState, seat: number, card: Card): string {
+function illegalReason(state: HandState, seat: number): string {
   const plays = state.current?.plays ?? [];
   if (plays.length === 0) {
     if (isFirstTrick(state)) return `The first trick must be opened with the ${cardLabel(state.openingCard)}.`;
