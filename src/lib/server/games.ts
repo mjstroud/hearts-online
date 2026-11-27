@@ -573,6 +573,30 @@ function publishTo(gameId: string, userId: number) {
   }
 }
 
+/**
+ * Send every seated player's open streams the same small message (taunts now, chat later). Chatter
+ * never goes through publish(): no save, no version bump, no rebuilt views. Who's seated is looked up
+ * on every send, because a cat's reaction fires later on its own timer, by when someone may have been
+ * removed or the game deleted. Cats never have streams. Never throws.
+ */
+export function sendToSeated(gameId: string, event: string, data: unknown): void {
+  try {
+    const subs = subscribers(gameId);
+    if (!subs.length) return;
+    const seated = new Set(getPlayers(gameId).filter((p) => !p.isBot).map((p) => p.userId));
+    for (const s of subs) {
+      if (!seated.has(s.userId)) continue;
+      try {
+        s.send(event, data);
+      } catch (err) {
+        console.error('Failed to push update', err);
+      }
+    }
+  } catch (err) {
+    console.error('Failed to send to the table', err);
+  }
+}
+
 /** Someone changed their photo or name: refresh every live table they're seated at. Never throws. */
 export function publishPlayerChange(userId: number): void {
   try {
