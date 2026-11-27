@@ -271,8 +271,6 @@
     queue = [];
     queued = null;
   }
-  const slot = $derived(queued ?? restingMessage(finished && settled ? shown : null, who(), myTurn && leading && !finalTrick && !lastAuto));
-
   // One-shot effects, all on the one fx keyframe below; each sets its own colours and path.
   // A warm band across the felt for hearts, and a dark ring from the Q♠. (A Sun or Moon shot is Game.svelte's
   // full-screen celebration, not a felt effect.)
@@ -441,6 +439,8 @@
   const lastAuto = $derived(
     t.phase === 'playing' && t.trickNumber === t.totalTricks && !!view.settings.autoPlayLast && !manualBots && me !== null && !onAutopilot,
   );
+  /** The message slot: a queued moment, else who took the trick on the felt (and "your lead" when it's yours to lead). */
+  const slot = $derived(queued ?? restingMessage(finished && settled ? shown : null, who(), myTurn && leading && !finalTrick && !lastAuto));
 
   // ----- Queuing a card to play the moment your turn arrives: once the lead suit is known (trick 1's
   // is always clubs), and never in the last trick, which plays itself. Only cards you could play

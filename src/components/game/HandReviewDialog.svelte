@@ -14,7 +14,8 @@
 
   let dialog: HTMLDialogElement;
   let hand = $state<number | null>(null);
-  let review: Promise<typeof import('./TrickReview.svelte')> | undefined;
+  // State, so the dialog shows the review whichever of the two is set last.
+  let review = $state.raw<Promise<typeof import('./TrickReview.svelte')>>();
 
   onMount(() => {
     const open = (e: MouseEvent) => {

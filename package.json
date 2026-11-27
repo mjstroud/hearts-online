@@ -13,6 +13,9 @@
     "preview": "astro preview",
     "start": "node --env-file-if-exists=.env ./dist/server/entry.mjs",
     "test": "vitest run --dir src",
+    "check": "npm run check:types && npm run check:svelte",
+    "check:types": "astro check",
+    "check:svelte": "svelte-check --tsconfig ./tsconfig.json --fail-on-warnings",
     "check:budgets": "node scripts/check-budgets.mjs",
     "astro": "astro"
   },
@@ -26,7 +29,10 @@
     "svelte": "^5.57.1"
   },
   "devDependencies": {
+    "@astrojs/check": "^0.9.12",
     "@types/node": "^26.6.4",
+    "svelte-check": "^4.7.8",
+    "typescript": "^6.0.3",
     "vitest": "^5.0.3"
   }
 }
