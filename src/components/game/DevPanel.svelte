@@ -1,3 +1,6 @@
+<!-- Only ever loaded with import(), so its CSS comes in its own JS chunk rather than on every game page. -->
+<svelte:options css="injected" />
+
 <script lang="ts">
   import type { Card } from '../../lib/engine/cards';
   import { PRESETS, type PresetId } from '../../lib/engine/presets';

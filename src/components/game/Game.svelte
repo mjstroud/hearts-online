@@ -6,6 +6,7 @@
   import type { HandSummary } from '../../lib/engine/view';
   import type { MoveTiming, TimedMove } from '../../lib/latency.svelte';
   import { endedLive, finalTrickHoldMs } from '../../lib/moments';
+  import { postJson } from '../../lib/post-json';
   import type { GameAction, GameView } from '../../lib/types';
   import { SITE_NAME } from '../../lib/ui';
   import FinalResults from './FinalResults.svelte';
@@ -152,32 +153,19 @@
     const was = view.premove;
     pendingPremove = { hand, trick: action.trick ?? t.trickNumber, card: action.card, id };
     view = withPremove(view);
-    try {
-      const res = await fetch(`/api/games/${view.id}/action`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(action),
-        signal: AbortSignal.timeout?.(15_000),
-      });
-      const data = await res.json().catch(() => ({}));
-      // A newer queue or cancel may be on its way; it keeps its own overlay.
-      if (pendingPremove?.id === id) pendingPremove = null;
-      if (!res.ok) {
-        showToast(data.error ?? 'Something went wrong.');
-        refresh();
-        return false;
-      }
-      if (action.card === null && was && typeof data?.version === 'number' && playedBy(data, hand, was)) {
-        showToast(`Too late: your ${cardLabel(was)} was already played.`);
-      }
-      apply(data);
-      return true;
-    } catch {
-      if (pendingPremove?.id === id) pendingPremove = null;
-      showToast('Network hiccup — please try again.');
+    const { ok, status, data } = await postJson(`/api/games/${view.id}/action`, action);
+    // A newer queue or cancel may be on its way; it keeps its own overlay.
+    if (pendingPremove?.id === id) pendingPremove = null;
+    if (!ok) {
+      showToast(status ? (data.error ?? 'Something went wrong.') : 'Network hiccup — please try again.');
       refresh();
       return false;
     }
+    if (action.card === null && was && typeof data?.version === 'number' && playedBy(data, hand, was)) {
+      showToast(`Too late: your ${cardLabel(was)} was already played.`);
+    }
+    apply(data);
+    return true;
   }
 
   /** Your latest play or pass, timed for the playtest panel's latency readout (playtest tables only). */
@@ -201,30 +189,22 @@
     }
     timer?.applied(!!guess);
     try {
-      const res = await fetch(`/api/games/${view.id}/action`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(action),
-        // Don't leave the hand locked if a request hangs (say, a phone hopping from wifi to cellular).
-        signal: AbortSignal.timeout?.(15_000),
-      });
-      const data = await res.json().catch(() => ({}));
-      timer?.answered(res.ok && typeof data?.version === 'number' ? data.version : null);
+      const { ok, status, data } = await postJson(`/api/games/${view.id}/action`, action);
+      timer?.answered(ok && typeof data?.version === 'number' ? data.version : null);
       pendingBase = null;
-      if (!res.ok) {
+      if (!status) {
+        // Timed out or offline. The move may or may not have landed, so ask the server.
+        showToast('Network hiccup — please try again.');
+        refresh();
+        return false;
+      }
+      if (!ok) {
         showToast(data.error ?? 'Something went wrong.');
         if (guess) refresh();
         return false;
       }
       apply(data);
       return true;
-    } catch {
-      // Timed out or offline. The move may or may not have landed, so ask the server.
-      timer?.answered(null);
-      pendingBase = null;
-      showToast('Network hiccup — please try again.');
-      refresh();
-      return false;
     } finally {
       busy = false;
     }
@@ -262,9 +242,10 @@
       return inMemory;
     }
   }
-  function remember(key: string, n: number) {
+  /** Save something for this device. Storage can be blocked or full, which is never worth an error. */
+  function remember(key: string, value: number | string) {
     try {
-      localStorage.setItem(key, String(n));
+      localStorage.setItem(key, String(value));
     } catch {}
   }
 
@@ -357,9 +338,7 @@
   function closeResult() {
     resultOpen = false;
     seenInMemory = view.lastHand?.number ?? 0;
-    try {
-      localStorage.setItem(seenKey, String(seenInMemory));
-    } catch {}
+    remember(seenKey, seenInMemory);
   }
 
   // Alerts go through a service worker (public/sw.js), because Android Chrome won't let a page
@@ -431,9 +410,7 @@
       if (p !== 'granted') return showToast('Notifications are blocked for this site.');
     }
     notify = !notify;
-    try {
-      localStorage.setItem('hearts:notify', notify ? '1' : '0');
-    } catch {}
+    remember('hearts:notify', notify ? '1' : '0');
   }
 
   onMount(() => {
@@ -628,9 +605,10 @@
     outline-offset: 2px;
   }
 
-  /* A phone on its side at the table (Table.svelte, same query): the header has scrolled away and the table
-     fills the screen, so the pills sit in its top-right corner, over the chips rather than the trick, and
-     narrow enough to clear the top seats. A toast sits above the hand, and taps go through it to the felt. */
+  /* A phone on its side at the table (Table.svelte): the header has scrolled away and the table fills the
+     screen, so the pills sit in its top-right corner, over the chips rather than the trick, and narrow
+     enough to clear the top seats. A toast sits above the hand, and taps go through it to the felt. Keep in
+     step with SIDEWAYS in src/lib/phones.ts; src/lib/phones.test.ts checks. */
   @media (orientation: landscape) and (max-height: 500px) and (min-width: 540px) {
     .conn.at-table,
     .new-version.at-table {

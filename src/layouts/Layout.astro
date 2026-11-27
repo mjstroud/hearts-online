@@ -159,7 +159,8 @@ const deck = Astro.cookies.get(DECK_COOKIE)?.value === 'four' ? 'four' : 'two';
   }
 
   /* A phone on its side at a game: the header scrolls away with the page, so the table can fill the
-     screen (Table.svelte scrolls to it, and has the same query). */
+     screen (Table.svelte scrolls to it). Keep in step with SIDEWAYS in src/lib/phones.ts;
+     src/lib/phones.test.ts checks. */
   @media (orientation: landscape) and (max-height: 500px) and (min-width: 540px) {
     :global(body.full) .site-header {
       position: relative;

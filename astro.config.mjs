@@ -13,6 +13,9 @@ export default defineConfig({
   // No form or move comes near 64 KB; the adapter's default (1 GB) would let one request fill the VM's memory.
   adapter: node({ mode: 'standalone', bodySizeLimit: 64 * 1024 }),
   integrations: [svelte()],
+  // All CSS in files the browser caches, rather than small stylesheets inlined and re-sent with every
+  // page. scripts/check-budgets.mjs measures what each page links.
+  build: { inlineStylesheets: 'never' },
   // We do our own proxy-aware same-origin check in src/middleware.ts.
   security: { checkOrigin: false },
   server: { port: 4321 },

@@ -77,7 +77,7 @@ Other scripts:
 npm test               # unit tests (Vitest)
 npm run check          # type check: astro check and svelte-check (CI runs it; warnings in .svelte files fail it)
 npm run build          # production build into ./dist
-npm run check:budgets  # after a build: fail if the game page's JS or the CSS goes over its size budget
+npm run check:budgets  # after a build: fail if the game page's JS, any JS file or any page's CSS goes over its budget
 npm start              # run the production server
 ```
 
@@ -147,15 +147,31 @@ Two long-lived branches, each deployed by CI when it's pushed:
 | `dev` | [dev.shootthesun.com](https://dev.shootthesun.com) (Fly app `hearts-table-dev`, `fly.dev.toml`) | Finished work, ready to try on real phones. |
 | `main` | [shootthesun.com](https://shootthesun.com) (Fly app `hearts-table`, `fly.toml`) | Releases only. |
 
-`dev` is the repo's default branch on GitHub, so pull requests aim at it unless you choose otherwise.
+`dev` is the repo's default branch on GitHub. Work lands by merging locally and pushing, with no pull requests (`gh` isn't installed). Every merge makes a merge commit (`git merge --no-ff`), never a squash or a rebase, so the history shows where each piece of work came in, and `dev` and `main` keep one shared history instead of drifting apart.
 
-- **Everyday work:** branch off `dev` (for example `feature/table-moments`), then open a pull request into `dev` (base: `dev`), or merge locally and push `dev`. Pushing `dev` deploys the dev site. Squash-merging a feature branch is fine.
-- **A release:** when `dev` is ready, open a pull request from `dev` into `main` between play sessions. Its description is the release notes.
-  - If the release adds a database migration, snapshot the real site's volume first: `fly volumes snapshots create <volume id>`. `fly volumes list` shows the id.
-  - Merge it with **Create a merge commit**, never squash or rebase, or `main` gets commits `dev` doesn't have and the two drift apart. Merging deploys the real site.
-  - Then tag what was deployed: `git fetch origin`, then `git tag -a release-YYYY-MM-DD origin/main -m "..."`, then `git push origin release-YYYY-MM-DD`. Tags don't trigger CI.
-- **An urgent fix for the real site:** branch off `main`, open a pull request into `main`, then merge `main` back into `dev` (also with a merge commit) so the two don't drift.
-- Pull requests to either branch run the tests, but only pushes deploy. Only a release or an urgent fix ever targets `main`.
+- **Everyday work:** branch off `dev` (for example `feat/table-moments`). When it's done and `npm run check`, `npm test`, `npm run build` and `npm run check:budgets` all pass, merge it into `dev` and push:
+
+  ```bash
+  git checkout dev && git pull
+  git merge --no-ff feat/table-moments -m "Merge feat/table-moments: what it does"
+  git push origin dev
+  ```
+
+  Pushing `dev` deploys the dev site. Try it there, on real phones too, before it goes any further.
+- **A release** merges `dev` into `main`. Do it between play sessions: every push to `main` restarts the real site's one machine, mid-game for anyone playing.
+  - If the release adds a database migration, snapshot the real site's volume first: `fly volumes list` shows the id, then `fly volumes snapshots create <volume id>`. (Bare `fly` commands act on the real app.)
+  - Then merge and push. Pushing `main` deploys the real site once CI passes.
+
+    ```bash
+    git checkout main && git pull
+    git merge --no-ff dev -m "Release: what's in it"
+    git push origin main
+    ```
+
+  - Tag what was deployed with an annotated tag on `main`, named `release-YYYY-MM-DD.N`, where N counts that day's releases from 1: `git tag -a release-YYYY-MM-DD.N main -m "What's in it"`, then `git push origin release-YYYY-MM-DD.N` (for example `release-2026-11-27.2`, the day's second release). Tags don't trigger CI.
+  - Note the release in ROADMAP.md on `dev`: the tag, the Fly release number (`fly releases`) and any snapshot.
+- **An urgent fix for the real site:** branch off `main`, merge it into `main` (`--no-ff`) and push, then merge `main` back into `dev` (also `--no-ff`) and push, so the two don't drift.
+- Only a release or an urgent fix ever goes to `main`. CI also runs the checks on pull requests, but this repo doesn't use them.
 
 ### Dev site
 
