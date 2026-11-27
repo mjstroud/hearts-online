@@ -26,10 +26,12 @@ import {
   passLabel,
 } from '../engine/rules';
 import type { HandRecord } from '../engine/scoring';
+import { type TableEvent, faceUpMark, tableEvents } from '../engine/table-events';
 import { summarizeHand, tableViewFor } from '../engine/view';
 import type { DevSettings, DevView, GameAction, GameListItem, GameMode, GameStatus, GameView } from '../types';
 import { avatarSrc } from '../avatars';
 import { GAME_NAME_MAX, clipToLength } from '../names';
+import { catsReact, clearCatReaction } from './chatter';
 import { now, sql, transaction } from './db';
 import { type Subscriber, onlineUsers, sendTo, subscribers } from './hub';
 
@@ -919,6 +921,8 @@ export function performAction(gameId: string, userId: number, action: GameAction
   // False when nothing anyone else can see has changed: a late tap, or a card queued or cancelled.
   // Then there's no save, no update for the table and no change to the computer players' timing.
   let changed = true;
+  // What the table watched happen, for the cats' chatter.
+  let events: TableEvent[] = [];
   transaction(() => {
     const game = loadGame(gameId);
     if (!game) throw new GameError('That game no longer exists.', 404);
@@ -947,6 +951,8 @@ export function performAction(gameId: string, userId: number, action: GameAction
       if (!remembered) remember(gameId, before);
       remembered = true;
     };
+    // Counts only, from before the move: the move changes the hand in place.
+    const mark = faceUpMark(game.state);
 
     switch (action?.type) {
       case 'pass': {
@@ -1164,6 +1170,7 @@ export function performAction(gameId: string, userId: number, action: GameAction
         throw new GameError('Unknown action.');
     }
     saveGame(game);
+    events = tableEvents(mark, game.state, game.settings);
   });
   if (!changed) {
     // Your other tabs show what you queued; nobody else hears a thing.
@@ -1171,6 +1178,7 @@ export function performAction(gameId: string, userId: number, action: GameAction
     return;
   }
   publish(gameId);
+  catsReact(gameId, events);
   if (action.type === 'leave' || action.type === 'removePlayer') publishRematchSource(gameId);
   rescheduleBots(gameId);
 }
@@ -1258,6 +1266,7 @@ export function deleteGame(gameId: string, userId: number) {
     sql('DELETE FROM games WHERE id = ?').run(gameId);
   });
   clearBotTimer(gameId);
+  clearCatReaction(gameId);
   undoStacks.delete(gameId);
   premoves.delete(gameId);
   publish(gameId);
@@ -1369,8 +1378,9 @@ export function scheduleBots(gameId: string, retryDelay?: number) {
 
 function runBots(gameId: string) {
   let changed: boolean;
+  let events: TableEvent[];
   try {
-    changed = botTurn(gameId);
+    ({ changed, events } = botTurn(gameId));
     botFailures.delete(gameId);
   } catch (err) {
     // Don't let one bad move stall the table forever: retry with backoff (up to 5 minutes).
@@ -1382,21 +1392,25 @@ function runBots(gameId: string) {
     return;
   }
   if (changed) publish(gameId);
+  catsReact(gameId, events);
   scheduleBots(gameId);
 }
 
 /**
  * Hand anyone whose move timer ran out to a computer player, then make whatever moves the
  * computer owes right now: all its passes, or one card. The final trick goes one card at a time
- * too, at the cats' pace, so the table can see who played what. Returns true if anything changed.
+ * too, at the cats' pace, so the table can see who played what. Says whether anything changed,
+ * and what the table watched happen.
  */
-function botTurn(gameId: string): boolean {
+function botTurn(gameId: string): { changed: boolean; events: TableEvent[] } {
   return transaction(() => {
     const game = loadGame(gameId);
-    if (!game || game.status !== 'active' || !game.state?.hand) return false;
-    if (game.mode === 'playtest' && game.dev.botMode === 'manual') return false;
+    const none = { changed: false, events: [] };
+    if (!game || game.status !== 'active' || !game.state?.hand) return none;
+    if (game.mode === 'playtest' && game.dev.botMode === 'manual') return none;
     const players = getPlayers(gameId);
     const state = game.state;
+    const mark = faceUpMark(state);
     let changed = false;
 
     const deadline = moveDeadline(game, players);
@@ -1414,8 +1428,9 @@ function botTurn(gameId: string): boolean {
       applyResult(game, result, players);
       changed = true;
     }
-    if (changed) saveGame(game);
-    return changed;
+    if (!changed) return none;
+    saveGame(game);
+    return { changed: true, events: tableEvents(mark, game.state, game.settings) };
   });
 }
 
