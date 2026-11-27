@@ -1,3 +1,6 @@
+<!-- Only ever loaded with import(), so its CSS comes in its own JS chunk rather than on every page that can show it. -->
+<svelte:options css="injected" />
+
 <script lang="ts">
   import type { HandReview } from '../../lib/engine/review';
   import { cardsPerPlayer } from '../../lib/engine/rules';
