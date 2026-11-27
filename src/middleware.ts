@@ -1,7 +1,7 @@
 import { defineMiddleware } from 'astro:middleware';
 import { SESSION_COOKIE, getSessionUser, setSessionCookie } from './lib/server/auth';
 import { resumeBots } from './lib/server/games';
-import { isDevSite } from './lib/server/env';
+import { devToolsEnabled, isDevSite } from './lib/server/env';
 import { canonicalRedirect, isSecure } from './lib/server/http';
 import { ACCEPT_TERMS_PATH, isPageLoad, needsTerms, termsGatedPath } from './lib/terms';
 
@@ -73,7 +73,8 @@ export const onRequest = defineMiddleware(async (ctx, next) => {
   const response = await next();
   try {
     response.headers.set('X-Content-Type-Options', 'nosniff');
-    response.headers.set('X-Frame-Options', 'DENY');
+    // /dev/phones shows the game in a frame of its own, so dev tools allow the same site to frame it.
+    response.headers.set('X-Frame-Options', devToolsEnabled() ? 'SAMEORIGIN' : 'DENY');
     response.headers.set('Referrer-Policy', 'same-origin');
     // Keep the dev site out of search results.
     if (isDevSite()) response.headers.set('X-Robots-Tag', 'noindex, nofollow');

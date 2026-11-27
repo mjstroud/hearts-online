@@ -507,11 +507,11 @@
 </script>
 
 {#if !connected}
-  <div class="conn" transition:fly={{ y: -10, duration: 200 }}>Reconnecting…</div>
+  <div class="conn" class:at-table={!!tableView} transition:fly={{ y: -10, duration: 200 }}>Reconnecting…</div>
 {/if}
 
 {#if newVersion && connected}
-  <button class="new-version" disabled={reloadAsked} onclick={() => (reloadAsked = true)}>
+  <button class="new-version" class:at-table={!!tableView} disabled={reloadAsked} onclick={() => (reloadAsked = true)}>
     {reloadAsked ? 'Refreshing…' : 'New version · tap to refresh'}
   </button>
 {/if}
@@ -626,5 +626,24 @@
   .new-version:focus-visible {
     outline: 2px solid var(--gold);
     outline-offset: 2px;
+  }
+
+  /* A phone on its side at the table (Table.svelte, same query): the header has scrolled away and the table
+     fills the screen, so the pills sit in its top-right corner, over the chips rather than the trick, and
+     narrow enough to clear the top seats. A toast sits above the hand, and taps go through it to the felt. */
+  @media (orientation: landscape) and (max-height: 500px) and (min-width: 540px) {
+    .conn.at-table,
+    .new-version.at-table {
+      top: calc(6px + env(safe-area-inset-top, 0px));
+      left: auto;
+      right: max(20px, env(safe-area-inset-right, 0px));
+      max-width: calc(50% - 184px);
+      transform: none;
+    }
+
+    .toast {
+      bottom: calc(84px + env(safe-area-inset-bottom, 0px));
+      pointer-events: none;
+    }
   }
 </style>
