@@ -628,9 +628,10 @@
     outline-offset: 2px;
   }
 
-  /* A phone on its side at the table (Table.svelte, same query): the header has scrolled away and the table
-     fills the screen, so the pills sit in its top-right corner, over the chips rather than the trick, and
-     narrow enough to clear the top seats. A toast sits above the hand, and taps go through it to the felt. */
+  /* A phone on its side at the table (Table.svelte): the header has scrolled away and the table fills the
+     screen, so the pills sit in its top-right corner, over the chips rather than the trick, and narrow
+     enough to clear the top seats. A toast sits above the hand, and taps go through it to the felt. Keep in
+     step with SIDEWAYS in src/lib/phones.ts; src/lib/phones.test.ts checks. */
   @media (orientation: landscape) and (max-height: 500px) and (min-width: 540px) {
     .conn.at-table,
     .new-version.at-table {

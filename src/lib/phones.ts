@@ -21,6 +21,16 @@ export const PHONES: Phone[] = [
   { name: 'Large phone', width: 430, height: 932, bars: { upright: 193, sideways: 50 }, notch: 59 },
 ];
 
+/**
+ * A phone on its side (short and wide) gets a layout of its own. This is the one source for its media
+ * query: Table.svelte's script imports it, and the CSS copies in Table, WatchGlow, Game and Layout must
+ * match it word for word (browsers don't support @custom-media). src/lib/phones.test.ts checks them all,
+ * and that every sideways size above gets this layout and no upright one does.
+ */
+export const SIDEWAYS_MAX_HEIGHT = 500;
+export const SIDEWAYS_MIN_WIDTH = 540;
+export const SIDEWAYS = `(orientation: landscape) and (max-height: ${SIDEWAYS_MAX_HEIGHT}px) and (min-width: ${SIDEWAYS_MIN_WIDTH}px)`;
+
 /** The page's own side padding on a sideways phone, wider than 640px (global.css): a notch only takes what's beyond it. */
 const PAGE_PADDING = 20;
 

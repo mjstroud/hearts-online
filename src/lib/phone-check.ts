@@ -1,7 +1,8 @@
 /**
  * The checks /dev/phones runs on the game page inside its frame (same origin, so it can look in): a page
- * wider than the screen, table pieces on top of each other, a rank corner that's covered, and, sideways,
- * anything you need to play that's off the screen. Browser only; nothing here runs for players.
+ * wider than the screen, the wrong layout for the way the phone is held, table pieces on top of each other,
+ * a rank corner that's covered, and, sideways, anything you need to play that's off the screen. Browser
+ * only; nothing here runs for players.
  */
 
 /** 'skip': there was nothing to check, so the size gets no tick. */
@@ -83,7 +84,12 @@ function describe(el: Element): string {
   return `<${el.tagName.toLowerCase()}${el.classList[0] ? `.${el.classList[0]}` : ''}>`;
 }
 
-export function checkFrame(frame: HTMLIFrameElement, sideways: boolean): Finding[] {
+/**
+ * `query` is SIDEWAYS from phones.ts, handed in by the page rather than imported here: the game island
+ * imports phones.ts too, and sharing it with this dev-only script would split it into a chunk of its own
+ * that every game page then fetches.
+ */
+export function checkFrame(frame: HTMLIFrameElement, sideways: boolean, query: string): Finding[] {
   const win = frame.contentWindow;
   const doc = frame.contentDocument;
   if (!win || !doc) return [{ level: 'bad', text: 'The frame didn’t load.' }];
@@ -102,6 +108,23 @@ export function checkFrame(frame: HTMLIFrameElement, sideways: boolean): Finding
   const trickCards = [...doc.querySelectorAll('.trick .played')].filter((c) => visible(c, win));
   const passing = !!doc.querySelector('.center-note');
   note(passing ? 'Passing.' : `Playing, ${trickCards.length} card${trickCards.length === 1 ? '' : 's'} on the trick.`);
+
+  // Asked of the frame's own window, so it's the query as the page inside sees it.
+  if (win.matchMedia(query).matches !== sideways) {
+    const got = sideways ? 'didn’t get' : 'got';
+    bad(`Held ${sideways ? 'sideways' : 'upright'}, the page ${got} the sideways layout (SIDEWAYS in src/lib/phones.ts).`);
+  }
+
+  // A renamed class would otherwise leave nothing to check, and every size would quietly pass.
+  const missing = (what: string, selector: string) => bad(`Found no ${what} (${selector}) to check. Was a class renamed?`);
+  if (!doc.querySelector('.seat .plaque')) missing('plaques', '.seat .plaque');
+  if (!doc.querySelector('.counter')) missing('status cluster', '.counter');
+  if (!doc.querySelector('.action-bar')) missing('action bar', '.action-bar');
+  const hand = doc.querySelector('.hand');
+  if (!hand) missing('hand', '.hand');
+  else if (!hand.children.length) note('Your hand is empty, so it wasn’t checked.');
+  else if (!hand.querySelector('.pc')) missing('cards in your hand', '.hand .pc');
+  else if (!hand.querySelector('.pc .index > *')) missing('rank corners in your hand', '.hand .pc .index > *');
 
   // Solid pieces on each other.
   const pieces = solidPieces(doc, win);
