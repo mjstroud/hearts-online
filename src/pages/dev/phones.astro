@@ -1,6 +1,6 @@
 ---
 import Layout from '../../layouts/Layout.astro';
-import { PHONES, viewport } from '../../lib/phones';
+import { PHONES, SIDEWAYS, viewport } from '../../lib/phones';
 import { devToolsEnabled } from '../../lib/server/env';
 
 /**
@@ -34,7 +34,7 @@ const here = (fit: string) => `/dev/phones?game=${encodeURIComponent(game)}${fit
 
     {
       game ? (
-        <div class="stack" id="phones" data-game={game} data-sizes={JSON.stringify(sizes)}>
+        <div class="stack" id="phones" data-game={game} data-sizes={JSON.stringify(sizes)} data-sideways={SIDEWAYS}>
           <div class="row" style="--gap: 8px">
             <button class="btn btn-primary btn-sm" type="button" data-all>
               Check every size
@@ -128,6 +128,8 @@ const here = (fit: string) => `/dev/phones?game=${encodeURIComponent(game)}${fit
   if (root) {
     const game = root.dataset.game!;
     const sizes = JSON.parse(root.dataset.sizes!) as Size[];
+    // From the server, so this script doesn't share phones.ts with the game island (see checkFrame).
+    const sidewaysQuery = root.dataset.sideways!;
     const frame = root.querySelector('iframe')!;
     const scaler = root.querySelector<HTMLElement>('.scaler')!;
     const stage = root.querySelector<HTMLElement>('.stage')!;
@@ -178,7 +180,7 @@ const here = (fit: string) => `/dev/phones?game=${encodeURIComponent(game)}${fit
         // Another site: its address can't be read.
       }
       if (at !== path) return [{ level: 'skip', text: `The frame is on ${at ?? 'another site'}, not the game.` } satisfies Finding];
-      return checkFrame(frame, s.sideways);
+      return checkFrame(frame, s.sideways, sidewaysQuery);
     };
 
     const render = (rows: { size: Size; findings: Finding[] }[]) => {

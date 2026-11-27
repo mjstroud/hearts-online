@@ -20,6 +20,7 @@
     takeNext,
   } from '../../lib/moments';
   import { fade, fly, scale } from '../../lib/motion';
+  import { SIDEWAYS } from '../../lib/phones';
   import type { GameAction, GameView } from '../../lib/types';
   import { signed } from '../../lib/ui';
   import Avatar from '../Avatar.svelte';
@@ -420,8 +421,7 @@
   // A phone on its side: the table fits the screen, so scroll past the site header and centre it, with the
   // room the CSS leaves above and below. Back to the top when it turns upright again, or the pinned header
   // would cover the top seats. Only when the table appears or the layout flips (the phone turns, or a window
-  // is resized across the line), never on a game update. The same query as the CSS at the end.
-  const SIDEWAYS = '(orientation: landscape) and (max-height: 500px) and (min-width: 540px)';
+  // is resized across the line), never on a game update. SIDEWAYS is the same query as the CSS at the end.
   let layoutEl: HTMLDivElement | undefined;
   let arenaEl: HTMLDivElement | undefined;
   onMount(() => {
@@ -1843,8 +1843,8 @@
   /* A phone on its side (short and wide): the table fits the screen with a little room around it, and the
      page opens scrolled to it, past the site header. The game's name and chips sit in its top corners. The hand runs along its bottom
      edge with only the tops of the cards showing, your plaque to its left and the hint and button to its
-     right. After the 640px rules, which it overrides where both apply. Keep SIDEWAYS (in the script),
-     WatchGlow, Game and Layout in step with this query. */
+     right. After the 640px rules, which it overrides where both apply. Keep in step with SIDEWAYS in
+     src/lib/phones.ts; src/lib/phones.test.ts checks. */
   @media (orientation: landscape) and (max-height: 500px) and (min-width: 540px) {
     /* --pad: room above and below the table, so it doesn't run into the screen's edges and you can see where
        it ends. Less on the shortest screens, where every pixel counts. */

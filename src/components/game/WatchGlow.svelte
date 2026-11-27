@@ -123,7 +123,8 @@
     }
   }
 
-  /* A phone on its side lays the plaques flat again (Table.svelte, same query), so the gap faces the name. */
+  /* A phone on its side lays the plaques flat again (Table.svelte), so the gap faces the name. Keep in step
+     with SIDEWAYS in src/lib/phones.ts; src/lib/phones.test.ts checks. */
   @media (orientation: landscape) and (max-height: 500px) and (min-width: 540px) {
     .glow {
       rotate: none;
