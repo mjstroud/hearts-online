@@ -65,6 +65,7 @@ These are the "build it fast from the start" rules. They answer the performance 
 - **Opening the live stream sends your first update twice** ([events.ts:46](src/pages/api/games/[id]/events.ts)).
 - **/stats re-reads every hand of every game on each view.** That cost keeps growing through the season.
 - **The alerts button reads backwards** ([Table.svelte:421](src/components/game/Table.svelte:421)).
+- **Open (2026-11-26): landscape phones.** At 667×375, a long-name "takes it" message overlaps the status cluster. Seen in a static mock of the real CSS, not yet on a phone.
 
 ## Phases
 
@@ -164,6 +165,16 @@ So change `check:budgets` to read each route's `styles` list from the server bui
 - **S:** public-information auto-finish (see [Autocomplete rule](#autocomplete-rule)). The server plays out the rest at once and marks where it took over, so trick counts can leave those tricks out. Each hand record also gains player ids, which protects stats if seats ever change hands.
 - **XS:** host options for final-trick auto-play and auto-finish, changeable mid-game. Both are **on by default, including in the current season game**.
 - **S–M:** the host can remove a player at any time. In the lobby the seat empties. Mid-game a cat takes the seat for good. Earlier hands stay credited to the removed player through the player ids above.
+
+### Since Phase 3: watch glows and a type check
+
+**Status (2026-11-26): live.** Released as `release-2026-11-26.5` (Fly release v13). There was no migration, so no snapshot.
+
+- **Sun and Moon watches glow** behind the watcher's avatar from the first trick or heart, in three steps, with no pop-ups (see [Table moments](#table-moments)). New public facts `sunRun` and `moonRun` drive them. `sunWatch` and `moonWatch` keep their meaning for tabs running old code.
+- **The hearts-broken icon** in the status cluster is bigger.
+- **Phones lay out at their own width on first paint.** Card and avatar sizes come from container queries, not measured widths.
+- **CI type-checks** every .astro, .ts and .svelte file (`npm run check`), and Svelte warnings fail it too. It was added after a stale call in a .svelte file reached the dev site: the build and the tests don't check types, and astro check never looks inside .svelte files. It's on `dev` and reaches `main` with the next release.
+- **Not checked yet:** a real iPhone, and the owner's Firefox.
 
 ### Phase 4: Talk and tease
 

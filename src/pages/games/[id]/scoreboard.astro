@@ -125,7 +125,7 @@ for (const p of seated) names[p.seat] = p.displayName;
                           <td class:list={{ low: s === low }}>
                             <span class="cell">
                               <span class="marks">
-                                {h.sun === p.seat && <span title="Shot the Sun">☀</span>}
+                                {h.sun === p.seat && <span title="Shot the Sun">☀&#xFE0E;</span>}
                                 {h.moon === p.seat && <span title="Shot the Moon">☾</span>}
                                 {h.queen === p.seat && <span class="q" title="Took the Queen of Spades">Q♠</span>}
                                 {h.jack === p.seat && h.jackScored && <span class="j" title="Took the Jack of Diamonds">J♦</span>}
@@ -145,7 +145,7 @@ for (const p of seated) names[p.seat] = p.displayName;
           </div>
         )
       }
-      <p class="faint small legend">☀ Shot the Sun · ☾ Shot the Moon · Q♠ Queen · J♦ Jack · ▣ Crib</p>
+      <p class="faint small legend">☀&#xFE0E; Shot the Sun · ☾ Shot the Moon · Q♠ Queen · J♦ Jack · ▣ Crib</p>
     </section>
   </div>
   {hands.length > 0 && <HandReviewDialog client:idle gameId={game.id} names={names} />}

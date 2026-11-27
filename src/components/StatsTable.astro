@@ -20,7 +20,7 @@ const columns: { label: string; title: string; value: (s: PlayerStats) => string
   { label: 'Clean %', title: 'Hands finished at 0 points or better', value: (s) => fmtPct(pct(s.clean, s.hands)) },
   { label: 'Won hand', title: 'Hands where they had the lowest score (ties count)', value: (s) => fmtPct(pct(s.handWins, s.hands)) },
   { label: '☾', title: 'Moons shot', value: (s) => String(s.moons) },
-  { label: '☀', title: 'Suns shot', value: (s) => String(s.suns) },
+  { label: '☀\uFE0E', title: 'Suns shot', value: (s) => String(s.suns) },
   { label: 'Best', title: 'Best single hand', value: (s) => (s.best === null ? '–' : String(s.best)) },
   { label: 'Worst', title: 'Worst single hand', value: (s) => (s.worst === null ? '–' : String(s.worst)) },
   { label: 'Q♠ passed', title: 'Times they passed the Queen away', value: (s) => String(s.queenPassed) },

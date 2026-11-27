@@ -11,7 +11,7 @@
 <div class={`shot ${kind}`} role="status">
   <span class="orb" aria-hidden="true"></span>
   <p>
-    <span class="glyph" aria-hidden="true">{kind === 'sun' ? '☀' : '☾'}</span>
+    <span class="glyph" aria-hidden="true">{kind === 'sun' ? '☀\uFE0E' : '☾'}</span>
     <strong class="display" title={name}>{name}</strong>
     <span>shot the {kind === 'sun' ? 'Sun' : 'Moon'}!</span>
   </p>
