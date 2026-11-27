@@ -1,0 +1,247 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { PHONES, viewport } from '../../lib/phones';
+import { devToolsEnabled } from '../../lib/server/env';
+
+/**
+ * Dev only: one of your games at every phone size in CLAUDE.md's phone rule, upright and sideways, with
+ * automatic checks for a page wider than the screen, things on top of each other, and a hand that's out
+ * of reach. One size shows at a time: every copy of the table holds a live stream open, and a browser
+ * allows only six at once to a site over plain http.
+ */
+if (!devToolsEnabled()) return new Response(null, { status: 404 });
+if (!Astro.locals.user) return Astro.redirect(`/login?next=${encodeURIComponent(Astro.url.pathname + Astro.url.search)}`);
+
+// An id, or a whole game address pasted in: keep just the id.
+const game = (Astro.url.searchParams.get('game') ?? '').trim().replace(/^.*\/games\//, '').split(/[/?#]/)[0];
+const inApp = Astro.url.searchParams.get('fit') === 'app';
+const sizes = PHONES.flatMap((p) => [viewport(p, false, !inApp), viewport(p, true, !inApp)]);
+const here = (fit: string) => `/dev/phones?game=${encodeURIComponent(game)}${fit ? `&fit=${fit}` : ''}`;
+---
+
+<Layout title="Phone sizes">
+  <div class="container page">
+    <div class="page-head">
+      <div class="stack" style="--gap: 8px">
+        <span class="eyebrow">Dev · Phone sizes</span>
+        <h1 class="display">Every phone, both ways up</h1>
+        <p class="muted">
+          The sizes from CLAUDE.md’s phone rule. {inApp ? 'Each is the whole screen, as an installed app.' : 'Each is what a browser leaves the page, after its own bars (an estimate).'}
+          Sideways iPhones lose their notch from the width. Play a few cards in the frame to check other moments.
+        </p>
+      </div>
+    </div>
+
+    {
+      game ? (
+        <div class="stack" id="phones" data-game={game} data-sizes={JSON.stringify(sizes)}>
+          <div class="row" style="--gap: 8px">
+            <button class="btn btn-primary btn-sm" type="button" data-all>
+              Check every size
+            </button>
+            <a class="btn btn-ghost btn-sm" href={here(inApp ? '' : 'app')}>
+              {inApp ? 'Show in a browser instead' : 'Show as an installed app instead'}
+            </a>
+            <a class="btn btn-ghost btn-sm" href={`/games/${encodeURIComponent(game)}`}>
+              Open the game
+            </a>
+          </div>
+          <div class="row" style="--gap: 6px">
+            {sizes.map((s, i) => (
+              <button class="btn btn-ghost btn-sm size" type="button" data-size={i}>
+                {s.phone} · {s.sideways ? 'sideways' : 'upright'} <span class="faint num">{s.width}×{s.height}</span>
+                <span class="mark" aria-hidden="true" />
+              </button>
+            ))}
+          </div>
+          <ol class="report" aria-live="polite" />
+          <div class="stage">
+            <div class="scaler">
+              <iframe title="The game at a phone size" />
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div class="panel panel-pad stack">
+          <p>Pick a table to look at. A fresh one has a 32-character name in every other seat.</p>
+          <div class="row" style="--gap: 8px">
+            <a class="btn btn-primary" href="/dev/long-names?players=5&then=phones">
+              New 5-player table
+            </a>
+            <a class="btn" href="/dev/long-names?players=4&then=phones">
+              New 4-player table
+            </a>
+          </div>
+          <form class="row" method="get" style="--gap: 8px">
+            <input class="input" name="game" placeholder="Or a game id, from its address" aria-label="Game id" required />
+            <button class="btn" type="submit">Show it</button>
+          </form>
+        </div>
+      )
+    }
+  </div>
+</Layout>
+
+<!-- Inline, so this dev page never counts against the CSS budget of the pages players load. -->
+<style is:inline>
+  #phones .size[aria-pressed='true'] {
+    border-color: var(--gold);
+    color: var(--text);
+  }
+  #phones .mark:not(:empty) {
+    margin-left: 4px;
+  }
+  #phones .report {
+    margin: 0;
+    padding-left: 20px;
+    font-size: 13.5px;
+  }
+  #phones .report .bad {
+    color: var(--alert-ink);
+  }
+  #phones .report .note,
+  #phones .report .skip {
+    color: var(--muted);
+  }
+  #phones .stage {
+    overflow: hidden;
+  }
+  #phones .scaler {
+    transform-origin: 0 0;
+  }
+  /* The border goes outside the phone's size, so the page inside gets every pixel of it. */
+  #phones iframe {
+    display: block;
+    box-sizing: content-box;
+    border: 1px solid var(--border-strong);
+    border-radius: 12px;
+    background: var(--bg);
+  }
+</style>
+
+<script>
+  import { checkFrame, type Finding } from '../../lib/phone-check';
+
+  type Size = { phone: string; sideways: boolean; width: number; height: number };
+
+  const root = document.getElementById('phones');
+  if (root) {
+    const game = root.dataset.game!;
+    const sizes = JSON.parse(root.dataset.sizes!) as Size[];
+    const frame = root.querySelector('iframe')!;
+    const scaler = root.querySelector<HTMLElement>('.scaler')!;
+    const stage = root.querySelector<HTMLElement>('.stage')!;
+    const report = root.querySelector<HTMLOListElement>('.report')!;
+    const buttons = [...root.querySelectorAll<HTMLButtonElement>('[data-size]')];
+    const label = (s: Size) => `${s.phone} · ${s.sideways ? 'sideways' : 'upright'} (${s.width}×${s.height})`;
+    const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    const path = `/games/${encodeURIComponent(game)}`;
+    let loaded: Promise<void> | null = null;
+
+    /** Waits (up to 4s) until nothing in the frame is moving, leaving out anything that never ends. */
+    const settle = async () => {
+      const doc = frame.contentDocument;
+      for (let tries = 0; doc && tries < 40; tries++) {
+        const moving = doc.getAnimations().some((a) => a.playState === 'running' && a.effect?.getComputedTiming().endTime !== Infinity);
+        if (!moving) return;
+        await wait(100);
+      }
+    };
+
+    // Shrink a frame that's wider than the page, so the whole phone stays in view.
+    const fit = (s: Size) => {
+      const scale = Math.min(1, stage.clientWidth / (s.width + 2));
+      scaler.style.transform = `scale(${scale})`;
+      stage.style.height = `${(s.height + 2) * scale}px`;
+    };
+
+    const show = async (i: number) => {
+      const s = sizes[i];
+      buttons.forEach((b, j) => b.setAttribute('aria-pressed', String(i === j)));
+      frame.style.width = `${s.width}px`;
+      frame.style.height = `${s.height}px`;
+      fit(s);
+      if (!loaded) {
+        loaded = new Promise((r) => frame.addEventListener('load', () => r(), { once: true }));
+        frame.src = path;
+      }
+      await loaded;
+      // Room for media queries, container queries and the page's own scrolling (a frame later, and frames
+      // come slowly in a tab that's out of sight), then for cards to finish sliding to their new places.
+      await wait(1000);
+      await settle();
+      // A game that isn't yours sends the frame to /games; a link followed inside it goes elsewhere.
+      let at: string | undefined;
+      try {
+        at = frame.contentWindow?.location.pathname;
+      } catch {
+        // Another site: its address can't be read.
+      }
+      if (at !== path) return [{ level: 'skip', text: `The frame is on ${at ?? 'another site'}, not the game.` } satisfies Finding];
+      return checkFrame(frame, s.sideways);
+    };
+
+    const render = (rows: { size: Size; findings: Finding[] }[]) => {
+      report.replaceChildren(
+        ...rows.flatMap(({ size, findings }) => {
+          const bad = findings.filter((f) => f.level === 'bad');
+          const skipped = findings.some((f) => f.level === 'skip');
+          const head = document.createElement('li');
+          head.className = bad.length ? 'bad' : '';
+          head.textContent = `${label(size)}: ${skipped ? 'not checked' : bad.length ? `${bad.length} problem${bad.length === 1 ? '' : 's'}` : 'fine'}`;
+          const list = document.createElement('ul');
+          for (const f of findings) {
+            const li = document.createElement('li');
+            li.className = f.level;
+            li.textContent = f.text;
+            list.append(li);
+          }
+          head.append(list);
+          return [head];
+        }),
+      );
+    };
+
+    const mark = (i: number, findings: Finding[]) => {
+      const sign = findings.some((f) => f.level === 'skip') ? '–' : findings.some((f) => f.level === 'bad') ? '✗' : '✓';
+      buttons[i].querySelector('.mark')!.textContent = sign;
+    };
+
+    // One check at a time: there's one frame, so a second would measure the first one's size.
+    const all = root.querySelector<HTMLButtonElement>('[data-all]')!;
+    const busy = async (job: () => Promise<void>) => {
+      [all, ...buttons].forEach((b) => (b.disabled = true));
+      try {
+        await job();
+      } finally {
+        [all, ...buttons].forEach((b) => (b.disabled = false));
+      }
+    };
+    const checkOne = (i: number) =>
+      busy(async () => {
+        const findings = await show(i);
+        mark(i, findings);
+        render([{ size: sizes[i], findings }]);
+      });
+
+    buttons.forEach((b, i) => b.addEventListener('click', () => checkOne(i)));
+
+    all.addEventListener('click', () =>
+      busy(async () => {
+        const rows: { size: Size; findings: Finding[] }[] = [];
+        for (let i = 0; i < sizes.length; i++) {
+          const findings = await show(i);
+          mark(i, findings);
+          rows.push({ size: sizes[i], findings });
+          render(rows);
+        }
+      }),
+    );
+
+    addEventListener('resize', () => {
+      const i = buttons.findIndex((b) => b.getAttribute('aria-pressed') === 'true');
+      if (i >= 0) fit(sizes[i]);
+    });
+    void checkOne(0);
+  }
+</script>

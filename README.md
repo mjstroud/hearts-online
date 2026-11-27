@@ -9,7 +9,7 @@ Built with [Astro](https://astro.build) (server-rendered), [Svelte](https://svel
 - **Accounts and private games.** Username and password sign-in. Each game has a 6-character join code and invite link, and only seated players can see it. Leave and come back from any device. Site admins can make one-time password reset links from `/admin`.
 - **Profile photos.** Upload one from the Account page and it replaces your initials wherever players are shown. The browser crops it to a 256px square before uploading. It's stored in the SQLite file with camera and location metadata stripped. The cats always keep their 🐱.
 - **Live or at your own pace.** Moves sync instantly over Server-Sent Events. A game can also sit idle for days and resume where it left off. Optional browser alerts tell you when it's your turn, through a small service worker so they work on Android too. A tab left open across a deploy shows a "New version, tap to refresh" pill.
-- **Phone-first.** Built for phones: no zooming on text boxes or quick taps, notch-safe padding, an action bar that doesn't move the hand, and full reduced-motion support. Add it to your home screen for an app-style icon and full-screen window. The Get the app page (`/app`, linked from the account menu, the footer and a dismissible card on /games on phones) shows a one-tap Install button when the browser offers one, and step-by-step instructions for iPhone, Android and computers when it doesn't.
+- **Phone-first.** Built for phones: no zooming on text boxes or quick taps, notch-safe padding, an action bar that doesn't move the hand, and full reduced-motion support. Turned sideways, the table fills the screen with your cards along its bottom edge, and the page opens scrolled past the header to it. Add it to your home screen for an app-style icon and full-screen window. The Get the app page (`/app`, linked from the account menu, the footer and a dismissible card on /games on phones) shows a one-tap Install button when the browser offers one, and step-by-step instructions for iPhone, Android and computers when it doesn't.
 - **An easy-to-read table.**
   - Trick cards stack by seat, so the led card is never buried. A ring marks the led card and a glow marks the card currently winning.
   - The finished trick stays on the felt until the next lead, and a Last trick button brings it back. Tap a trick, or hover on a computer, to see who played what.
@@ -81,7 +81,11 @@ npm run check:budgets  # after a build: fail if the game page's JS or the CSS go
 npm start              # run the production server
 ```
 
-In dev, `/dev/long-names?players=5` (or `4`) makes a playtest table full of 32-character names for checking layouts; add `&me=long` to lengthen your own. To try it on a real phone, run `npm run dev -- --host` and open the PC's network address on the same Wi-Fi (leave `SITE_URL` unset). `CLAUDE.md` has the project's ground rules and [ROADMAP.md](ROADMAP.md) the plan.
+In dev, `/dev/long-names?players=5` (or `4`) makes a playtest table full of 32-character names for checking layouts; add `&me=long` to lengthen your own.
+
+**Phone sizes.** Every change that affects phones is checked at four sizes, each upright and sideways, with 4 and 5 players and 32-character names: a small Android (360×780), an iPhone SE (375×667), a standard iPhone (393×852) and a large phone (430×932). `/dev/phones` shows a game at each one and checks for overflow, overlaps and a hand that's out of reach. `/dev/checklist` is a five-minute check for anyone to run on their own phone on the dev site. Both are dev tools: the real site answers 404.
+
+To try it on a real phone, run `npm run dev -- --host` and open the PC's network address on the same Wi-Fi (leave `SITE_URL` unset). `CLAUDE.md` has the project's ground rules and [ROADMAP.md](ROADMAP.md) the plan.
 
 ## Configuration
 
@@ -158,7 +162,7 @@ Two long-lived branches, each deployed by CI when it's pushed:
 `dev.shootthesun.com` is a second Fly app (`hearts-table-dev`) with its own volume and database. Accounts and games there are separate from the real site, so test freely.
 
 - It has a gold **DEV** badge by the logo, a "Dev ·" tab title, and headers that keep search engines out.
-- The `/dev/long-names` table works there too.
+- The `/dev/long-names` table, `/dev/phones` and `/dev/checklist` work there too.
 - It sleeps when nobody's using it (`auto_stop_machines`), so the first visit after a while takes a few seconds to wake it.
 - **Manual deploy:** `fly deploy --remote-only --config fly.dev.toml` deploys whatever is in your working copy, committed or not. It's handy for a quick check before pushing.
 

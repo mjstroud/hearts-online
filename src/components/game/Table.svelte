@@ -417,6 +417,28 @@
   /** Playtest only: the face-up crib's height, measured to pick the small-card style. */
   let cribH = $state(0);
 
+  // A phone on its side: the table fills the screen, so scroll past the site header to it, and back to the
+  // top when it turns upright again, or the pinned header would cover the top seats. Only when the table
+  // appears or the layout flips (the phone turns, or a window is resized across the line), never on a game
+  // update. The same query as the CSS at the end.
+  const SIDEWAYS = '(orientation: landscape) and (max-height: 500px) and (min-width: 540px)';
+  let layoutEl: HTMLDivElement | undefined;
+  onMount(() => {
+    const sideways = window.matchMedia(SIDEWAYS);
+    const fit = (turned: boolean) => {
+      if (!sideways.matches && !turned) return;
+      // After the browser lays the page out for the new shape.
+      requestAnimationFrame(() => {
+        const top = sideways.matches && layoutEl ? layoutEl.getBoundingClientRect().top + window.scrollY : 0;
+        window.scrollTo({ top, behavior: 'instant' });
+      });
+    };
+    const turn = () => fit(true);
+    fit(false);
+    sideways.addEventListener('change', turn);
+    return () => sideways.removeEventListener('change', turn);
+  });
+
   // Everyone holds the same number of cards, so one counter covers the whole table.
   const tricksLeft = $derived(t.phase === 'playing' ? t.totalTricks - t.trickNumber + 1 : t.totalTricks);
 
@@ -493,7 +515,7 @@
 
 <svelte:window onpointerdown={closeOutside} onkeydown={(e) => e.key === 'Escape' && (inspect = null)} />
 
-<div class="container wide layout">
+<div class="container wide layout" bind:this={layoutEl}>
   <div class="main">
     <div class="statusbar">
       <h1 class="game-name">{view.name}</h1>
@@ -1732,6 +1754,11 @@
       display: none;
     }
 
+    /* Room for your seat's tags, which hang below the table, above the button. */
+    .hand-zone {
+      margin-top: 28px;
+    }
+
     /* Narrow tables stack each plaque: avatar over name and score. */
     .plaque {
       flex-direction: column;
@@ -1793,6 +1820,207 @@
     }
     .five .played.at-right {
       transform: translate(84%, 10%) rotate(6deg);
+    }
+  }
+
+  /* A phone on its side (short and wide): the table fills the screen, and the page opens scrolled to it,
+     past the site header. The game's name and chips sit in its top corners. The hand runs along its bottom
+     edge with only the tops of the cards showing, your plaque to its left and the hint and button to its
+     right. After the 640px rules, which it overrides where both apply. Keep SIDEWAYS (in the script),
+     WatchGlow, Game and Layout in step with this query. */
+  @media (orientation: landscape) and (max-height: 500px) and (min-width: 540px) {
+    .layout {
+      padding-top: 0;
+    }
+
+    /* --hc: the hand's card width, from the screen's size. --band: how much of the hand shows. */
+    .main {
+      --hc: clamp(52px, min(19svh, 8vw), 80px);
+      --band: calc(var(--hc) * 0.7 + 18px);
+      gap: 0;
+    }
+
+    /* Over the table's top corners, clear of the top seats. Taps go through it to the seats. */
+    .statusbar {
+      height: 36px;
+      margin-bottom: -36px;
+      padding-top: 6px;
+      align-items: flex-start;
+      flex-wrap: nowrap;
+      pointer-events: none;
+    }
+
+    .game-name {
+      font-size: 16px;
+      max-width: calc(50% - 164px);
+    }
+
+    .chips {
+      max-width: calc(50% - 164px);
+      justify-content: flex-end;
+      gap: 4px;
+    }
+
+    /* On dark ground, since they run onto the felt. A playtest table says so in the panel under it. */
+    .chips .badge {
+      height: 20px;
+      background: var(--counter-bg);
+    }
+
+    .chips .sky {
+      display: none;
+    }
+
+    /* The whole screen while the browser's bars show (svh), less an iPhone's home bar. */
+    .arena {
+      height: calc(100svh - env(safe-area-inset-bottom, 0px));
+    }
+
+    /* The felt runs under the hand, starting below the name; the trick centres in the part above the hand. */
+    .felt {
+      --tw: min(124px, (100cqh - 64px - var(--band)) / 2.75);
+      inset: 26px 52px 0;
+    }
+
+    .center {
+      inset: 22px 0 var(--band);
+    }
+
+    /* Clear of the status cluster and "Last trick" in the corners, even with a long name on the watch. */
+    .msg {
+      bottom: 6%;
+      max-width: min(240px, 100% - 264px);
+    }
+
+    /* The status cluster on one row, above your plaque, and "Last trick" above the button. */
+    .counter {
+      left: 0;
+      bottom: calc(var(--band) + 35px);
+      display: flex;
+      padding: 4px 9px;
+    }
+
+    .counter-text > span:first-child {
+      width: min-content;
+    }
+
+    .dots {
+      display: none;
+    }
+
+    .watch .nm {
+      max-width: 3.5em;
+    }
+
+    .last {
+      left: auto;
+      right: 0;
+      bottom: calc(var(--band) + 44px);
+    }
+
+    /* Plaques lie flat: avatar, then name and score. */
+    .plaque {
+      flex-direction: row;
+      gap: 6px;
+      padding: 2px 10px 2px 2px;
+      max-width: 150px;
+      border-radius: 99px;
+    }
+
+    .plaque-text {
+      align-items: flex-start;
+    }
+
+    .seat-name {
+      max-width: 96px;
+    }
+
+    .seat-avatar {
+      --av: 30px;
+    }
+
+    /* Top seats near the top edge, with a little room for a Sun or Moon glow above the avatar (its tips may
+       still be cut). Five players' two top seats meet in the middle (a plaque is at most 150px). */
+    .seat.at-top,
+    .seat.at-top-left,
+    .seat.at-top-right {
+      top: 6px;
+    }
+
+    .seat.at-top-left {
+      left: calc(50% - 79px);
+    }
+
+    .seat.at-top-right {
+      right: calc(50% - 79px);
+    }
+
+    /* Low enough to clear the chips. */
+    .seat.at-left,
+    .seat.at-right {
+      top: max(84px, (100% - var(--band)) / 2 - 50px);
+    }
+
+    /* Yours: the bottom-left corner beside your hand, with its tags stacked above it. */
+    .seat.at-bottom {
+      top: auto;
+      bottom: 4px;
+      left: 0;
+      transform: none;
+      flex-direction: column-reverse;
+      align-items: flex-start;
+    }
+
+    .seat.at-bottom .seat-tags {
+      max-width: 112px;
+      flex-wrap: wrap-reverse;
+      justify-content: flex-start;
+    }
+
+    /* The hand lies over the bottom of the felt, clear of the button and of your plaque, even with a
+       four-figure score and the end card of a full hand tilted towards it. */
+    .hand-zone {
+      position: relative;
+      height: var(--band);
+      margin-top: calc(-1 * var(--band));
+      padding: 0 calc(27% + 12px) 0 126px;
+    }
+
+    .action-bar {
+      position: absolute;
+      right: 0;
+      bottom: 4px;
+      max-width: 27%;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 4px;
+      padding: 5px;
+      border-radius: 14px;
+      background: var(--counter-bg);
+    }
+
+    .hint {
+      font-size: 12.5px;
+    }
+
+    .act {
+      max-width: 100%;
+    }
+
+    .act-long {
+      display: none;
+    }
+
+    /* Cut off at the bottom edge, so only the tops of the cards show. A picked card still rises over the felt. */
+    .hand {
+      --cw: var(--hc);
+      height: var(--band);
+      margin: 0;
+      clip-path: inset(-99px -99px 0);
+    }
+
+    .slot {
+      top: 6px;
     }
   }
 
