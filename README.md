@@ -75,6 +75,7 @@ Other scripts:
 
 ```bash
 npm test               # unit tests (Vitest)
+npm run check          # type check: astro check and svelte-check (CI runs it; warnings in .svelte files fail it)
 npm run build          # production build into ./dist
 npm run check:budgets  # after a build: fail if the game page's JS or the CSS goes over its size budget
 npm start              # run the production server

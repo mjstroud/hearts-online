@@ -21,6 +21,7 @@
   // svelte-ignore state_referenced_locally
   const current = view.settings.scoreLimit;
   let mode = $state<'limit' | 'none'>(current === null ? 'none' : 'limit');
+  // svelte-ignore state_referenced_locally
   let target = $state<number | null>(current === null || top >= current ? Math.ceil((top + 26) / 50) * 50 : current);
   const valid = $derived(mode === 'none' || (Number.isInteger(target) && target! >= min && target! <= MAX_LIMIT));
 

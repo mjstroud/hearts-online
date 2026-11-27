@@ -25,6 +25,9 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      # Type errors fail the job: astro check covers .astro and .ts files, svelte-check the .svelte ones
+      # (warnings too, such as state that doesn't update). Neither the build nor the tests check types.
+      - run: npm run check
       # --silent=false keeps the console output of passing tests, such as the live-update sizes.
       - run: npm test -- --silent=false
       - run: npm run build

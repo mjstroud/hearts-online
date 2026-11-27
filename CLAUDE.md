@@ -10,6 +10,7 @@ Stack: Astro 7 (server-rendered, node adapter), Svelte 5 with runes for the live
 npm run dev               # http://localhost:4321, database at ./data/hearts.db
 npm run dev -- --host     # also on the LAN, for testing on a real iPhone (see below)
 npm test                  # Vitest
+npm run check             # types: astro check (.astro, .ts) and svelte-check (.svelte, warnings fail too)
 npm run build             # production build into ./dist
 npm run check:budgets     # after a build: fails if the browser bundle is over budget
 npm start                 # run the production build
@@ -17,7 +18,7 @@ npm start                 # run the production build
 
 - **Dev seed with long names:** sign in locally, then open `/dev/long-names` for a 5-player playtest table where every other seat has a 32-character, one-word name. `?players=4` gives four seats, and `me=long` (as in `/dev/long-names?players=4&me=long`) gives your own local account a 32-character name too. It also works on the dev site; the real site answers 404.
 - **Real iPhone:** run `npm run dev -- --host` and open the Network address it prints on an iPhone on the same Wi-Fi. Sign-in works over plain http. Leave `SITE_URL` blank in `.env`, or the phone gets redirected to that address. Service workers, home-screen installs and push need https, so test those on the dev site (dev.shootthesun.com).
-- **CI** (`.github/workflows/ci.yml`) runs the tests, the build and the budget check on every push to `dev` or `main` and on pull requests.
+- **CI** (`.github/workflows/ci.yml`) runs the type check, the tests, the build and the budget check on every push to `dev` or `main` and on pull requests.
 - **Branches:** `dev` is the default branch. Work branches off `dev` and lands by merging it into `dev` locally with a merge commit (`git merge --no-ff`) and pushing `dev`. No pull request is needed (and `gh` isn't installed). Every push to `dev` deploys the dev site, dev.shootthesun.com (`fly.dev.toml`, app `hearts-table-dev`, its own database). A release merges `dev` into `main` the same way, with a merge commit (never squash or rebase). Every push to `main` deploys the real site (`fly.toml`, app `hearts-table`), restarting its one machine. Never merge or push to `main` unless the owner asks for a release or an urgent fix. For an urgent fix, branch off `main`, merge into `main`, then merge `main` back into `dev`. README → Branches and releases has the full steps.
 - **`fly` commands default to the real app** (`fly.toml` names `hearts-table`). For the dev site, always pass `--app hearts-table-dev` or `--config fly.dev.toml`. Only deploy the real app by hand from a clean, up-to-date `main`.
 - **Dev site:** `src/lib/server/env.ts` (`isDevSite()`, from `SITE_ENV=dev`) adds the DEV badge and noindex and turns on dev tools. Anything dev-only must check `devToolsEnabled()`, never just `import.meta.env.DEV`.
