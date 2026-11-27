@@ -49,11 +49,11 @@ These are the "build it fast from the start" rules. Phase 1 wrote them into `CLA
 2. **Budgets, gzipped and checked in CI** (`npm run check:budgets` and `view-size.test.ts`):
    - Game page JS: at most 55 KB (39.5 KB after Phase 1, 44.3 KB after Phase 2, 48.3 KB after the phone pass; raised from 45 KB with the owner's OK).
    - Any other single JS file: at most 15 KB. Aim for 10 KB or less for a new interactive component.
-   - All CSS together: at most 14 KB. It was 10.2 KB after Phase 1; the owner OK'd raising the cap from 11 KB for the Phase 2 visuals.
+   - The CSS any one page loads: at most 14 KB, counting its stylesheet files and any inline CSS. The owner OK'd raising the cap from 11 KB for the Phase 2 visuals. Since 2026-11-27 the check measures each page (it used to add up every CSS file and missed inline CSS); the game page is 12.7 KB.
    - One player's live update: at most 4 KB. The largest update in a hand, with 32-character names, photos, a move timer and four-figure scores, is about 2.7 KB with 4 players and 3.0 KB with 5 (measured 2026-11-27; the test prints both).
    A change that goes over fails CI, so it never deploys. Raise a budget only with the owner's OK.
 3. **Load only what's needed.** Optional pieces load with `import()` only when they're needed: the playtest panel and its latency timer on playtest tables, the end-screen choices, the Sun/Moon banner and the trick review. Restaurant art should load only when the mode is on, and taunt art only when the first taunt arrives.
-4. **Animation:** CSS keyframes on `transform` and `opacity` only. No animated shadows or filters, nothing that loops forever, one shared overlay layer, and reduced motion fully respected (Svelte transitions go through src/lib/motion.ts so they respect it). Two loops break this today (see [Bugs found](#bugs-found)).
+4. **Animation:** CSS keyframes on `transform` and `opacity` only. No animated shadows or filters, nothing that loops forever, one shared overlay layer, and reduced motion fully respected (Svelte transitions go through src/lib/motion.ts so they respect it). Two loops break the "nothing that loops forever" part today, and a few short shadow and filter transitions break the "no animated shadows or filters" part (see [Bugs found](#bugs-found)).
 5. **Chatter stays out of `publish()`.** Reactions and chat get their own broadcast, and chat history gets its own endpoint. Every game update rebuilds every player's view and reorders /games, so only real game changes go through it.
 6. **Existing games are never at risk:**
    - Migrations only add things: append to `MIGRATIONS` in db.ts, never edit an old one.
@@ -78,6 +78,7 @@ Open ones first, then the fixed ones, oldest first.
 
 - **/stats re-reads every hand of every game on each view** (`userOverview` in stats.ts). That cost keeps growing through the season.
 - **Two animations loop forever with motion on,** against [ground rule 4](#ground-rules): the acting seat's spinning ring (`.acting .seat-avatar::before` in Table.svelte, 2.6s a turn) and the "Your turn" badge's pulse on /games (`.pulse` in src/pages/games/index.astro). Both animate only `transform` or `opacity`, and both stop under reduced motion. Cap them (a few turns, then hold still) or write the exception into the rule.
+- **A few short transitions animate shadows or filters,** against [ground rule 4](#ground-rules): the acting plaque's `box-shadow` (Table.svelte `.plaque`), a picked card's `box-shadow` (PlayingCard.svelte), focused inputs (`.input` in global.css, and AvatarEditor.svelte), and `filter` in charts/BarList.svelte. Each is a 0.15–0.2s change, not a loop. Either move them to `opacity` on a pseudo-element or write the exception into the rule; the owner's call. Don't copy them for Phase 4's bubbles and throws.
 - **The admin page's reset-link box is 13px,** so an iPhone can zoom in when it's tapped. Its `.mono` class in admin.astro beats the 16px `.input` rule. Only the owner sees it.
 - **Upright phones lose `.page`'s top and bottom room.** In global.css's 640px block, `.container`'s `padding: 0 16px` comes after `.page`'s 24px and 64px and wipes them, because every `.page` is also a `.container`. So pages like /games sit right under the header and right on the footer. It's been that way since launch, and fixing it changes the upright look, so it's the owner's call.
 - **The scoreboard has no marker for extended games.** Already a follow-up under [Added 2026-11-26](#added-2026-11-26-owner-requests): mark where a game was extended, from `extensions`.
@@ -173,6 +174,8 @@ Astro inlines small stylesheets into each page's HTML. That CSS is re-sent with 
 
 So change `check:budgets` to read each route's `styles` list from the server build (`dist/server/entry.mjs`) and cap the largest page, then switch. **S.** Check every page's styles in the browser after the switch. Scheduled as the first step of Phase 4.
 
+**Done (2026-11-27, before Phase 4).** `check:budgets` now measures each page's CSS (its files plus any inline CSS) and fails if any page is over 14 KB. It also fails on a prerendered page, whose CSS Astro doesn't list. `build.inlineStylesheets` is `'never'`, so all CSS is cacheable files. The four pieces the game page only loads with `import()` (the playtest panel, the Sun/Moon banner, the end-of-game choices and the trick review) now bring their own CSS when they load (`<svelte:options css="injected" />`). The game page went from 13.7 KB to 12.7 KB; the scoreboard is next at 7.8 KB. Every public page kept the same CSS rules in the same order.
+
 ### Phase 3: Less waiting
 
 **Status (2026-11-26): live.** Released as `release-2026-11-26.4` (Fly release v12) after volume snapshot `vs_w8Qgp2OXbDKSla6laDYmPo`. Migration v8 (one table, `removed_players`) ran on the real site.
@@ -218,7 +221,7 @@ The family nearly always plays on phones, and a player on Android Chrome had to 
 
 **Status (2026-11-27): live.** Released as `release-2026-11-27.1` (Fly release v15), after the real site's games had been quiet for 20 minutes. No migration, so no snapshot. Checked in the browser at every size, but not yet on a real phone.
 
-- **Sideways phones get their own layout:** `(orientation: landscape) and (max-height: 500px) and (min-width: 540px)`, in Table, WatchGlow, Game and Layout.
+- **Sideways phones get their own layout:** `(orientation: landscape) and (max-height: 500px) and (min-width: 540px)`, now `SIDEWAYS` in src/lib/phones.ts, copied into the CSS of Table, WatchGlow, Game and Layout (src/lib/phones.test.ts checks the copies).
   - The table fills the screen. Three designs were prototyped and judged; this one won on playability and robustness.
   - The page opens scrolled past the site header to the table. On a sideways phone the header scrolls away instead of staying pinned (the owner's choice, 2026-11-27), so the menu is a scroll up. Turning the phone upright scrolls back to the top.
   - Your cards run along the bottom edge, showing only their tops: the rank corners and a picked card always show. Your plaque sits bottom-left, and the hint and button sit in a dark box bottom-right.
@@ -230,7 +233,7 @@ The family nearly always plays on phones, and a player on Android Chrome had to 
   - Sideways, the "Hand N" chip makes way so the chips take at most two rows.
   - Pages beside the table (/games, the waiting room, final results and the rest) had no side margin on screens wider than 640px, every sideways phone included: `.page` wiped the container's gutter. They get the gutter now. Desktop widths are unchanged.
   - Checked in headless Edge with iPhone notch and home-bar insets: all four phones, upright and sideways, in a browser and as an app, with 4 and 5 players.
-- **`/dev/phones`** shows one of your games at all eight sizes, as a browser leaves them (estimates) or as an installed app (`&fit=app`). It checks each for a page wider than the screen, pieces on top of each other, covered rank corners and, sideways, anything off the screen. **Check every size** runs all eight. `/dev/long-names?then=phones` starts a table there. The dev server and the dev site allow same-site frames for it; the real site still refuses all frames.
+- **`/dev/phones`** shows one of your games at all eight sizes, as a browser leaves them (estimates) or as an installed app (`&fit=app`). It checks each for a page wider than the screen, pieces on top of each other, covered rank corners and, sideways, anything off the screen. It also fails a size when the page didn't get the layout it should (sideways or not), or when it can't find the pieces it checks (the plaques, the status cluster, the action bar, the hand's cards), so a renamed class can't quietly pass. **Check every size** runs all eight. `/dev/long-names?then=phones` starts a table there. The dev server and the dev site allow same-site frames for it; the real site still refuses all frames.
 - **`/dev/checklist`** is the family's five-minute check, on the dev site: upright, sideways, alerts and the app. It ends with a box that says what the phone told the site, for screenshots.
 - **The phone sizes** are in CLAUDE.md's phone rule and the README.
 - **Not checked on a real phone yet**, so the checklist is how to catch these:
@@ -252,17 +255,17 @@ The plan as it was made, and where each piece stands:
   - queueing a card (tap-tap, cancel) and the stagger, on touch;
   - the last trick's pace, and the watch glows;
   - uploading a profile photo in iPhone Safari;
-  - the sideways layout itself (see "Not checked on a real phone yet" above).
+  - the polished sideways layout (`release-2026-11-27.2`); the owner tried the first version on their phone.
 - **Later: the Android emulator.** The emulator that comes with Android Studio is free, runs on the owner's PC and has real Chrome for Android in it, so the sideways layout can be checked in the browser where the bug was reported. The owner wants it set up, but not as part of the phone pass (2026-11-27). It's a multi-gigabyte download, and the owner accepts Google's SDK licence during setup. Also on the [Someday](#someday) list so it isn't lost.
 
 ### Phase 4: Talk and tease
 
 Planned 2026-11-26 after a read of the code it touches (see [Phase 4 code pointers](#phase-4-code-pointers)). It comes after the [phone pass](#phone-pass-before-phase-4) and ships in two releases.
 
-**First step, after the phone pass and before 4a: [measure CSS per page](#follow-up-measure-css-per-page).**
-- The budget check reports 13.0 of 14 KB of CSS (the phone pass took 0.7 KB), but that adds up every page's CSS files. The game page loads 10.7 KB of those files, plus about 3 KB gzipped of inline CSS that the check never counts, so it really loads about 13.7 KB.
-- Bubbles, throws, the taunt tray and the chat sheet won't fit in what's left. Measure per page first, then tell the owner the exact increase needed.
-- Game page JS is 48.3 of 55 KB (after `release-2026-11-27.2`). That's enough, as long as the chat sheet loads with `import()`.
+**First step, done 2026-11-27: [measure CSS per page](#follow-up-measure-css-per-page).**
+- The game page loads 12.7 of 14 KB of CSS, all of it counted, so 4a has about 1.3 KB. If bubbles, throws and the taunt tray need more, tell the owner the exact increase. The taunt tray and the chat sheet load with `import()`, so their CSS should travel with them (`<svelte:options css="injected" />`) rather than add to the page.
+- Game page JS is 48.4 of 55 KB. That's enough, as long as the chat sheet loads with `import()`.
+- The helpers 4a needs are in place: `postJson` for the new POSTs and `rateLimit` for the cooldowns (see the code pointers).
 
 **Release 4a: taunts (no migration)**
 
@@ -277,7 +280,7 @@ Planned 2026-11-26 after a read of the code it touches (see [Phase 4 code pointe
   - **A fixed starter list** of about 8 emotes and 4 throwables, for the owner to veto. The server sends an id from the list, never the emoji itself, so Phase 5's art can replace the emoji without changing anything else. Characters with two forms (such as ❤) get a variation selector, so every phone draws them in colour.
   - **One 15s cooldown per player** covers emotes and throws together. The server enforces it in memory, so it resets on a restart, which is fine. The button shows how long is left.
   - **Taunts can't be muted.**
-  - **Layers:** bubbles and thrown items get one new layer above the message slot and below dialogs. That means renumbering the arena's z-indexes, since nothing fits between the message slot (4) and the inspector (5). Sideways, the game's name and chips sit outside the arena but paint over its top corners, so they cover anything there, bubbles included. Throws wait until big moments are over.
+  - **Layers:** bubbles and thrown items get one new layer above the message slot and below dialogs. That means renumbering the arena's z-indexes, since nothing fits between the message slot (4) and the inspector (5). Sideways, the game's name and chips (the statusbar, z 4) lie over the arena's top corners, and the arena isn't a stacking context: its pieces below z 4 (seats, glows, the status cluster) go under the name and chips, while `.msg` (z 4, later in the page), `.insp` (z 5) and a bubble layer above them paint over them. Keep the seats below 4 when renumbering, or decide on purpose which wins. Throws wait until big moments are over.
 - **S–M: the cats chatter, lightly.** Now and then a cat sends an emote or a throw, under the same 15s cooldown, with at most one cat reacting to any moment.
   - **Triggers come only from face-up events:** a trick won, the Q♠ or J♦ taken in a trick, hearts broken, a Sun or Moon shot, or being hit by a throw.
   - **Never from hidden cards:** not the cat's own hand, its pass, the crib, its legal plays or a queued card, or the table could read hidden cards from the reaction (ground rule 7).
@@ -318,7 +321,7 @@ Planned 2026-11-26 after a read of the code it touches (see [Phase 4 code pointe
 
 ### Phase 5: Personality
 
-- **S:** cat photos. An admin uploads them into the existing photo storage, so they stay out of the public repo, and the three "cats never have photos" checks are lifted.
+- **S:** cat photos. An admin uploads them into the existing photo storage, so they stay out of the public repo, and the "cats never have photos" checks (see [Code pointers](#code-pointers)) are lifted.
 - **M:** a cartoony SVG set for moments, empty states and a link-preview image. It ships as one cached file, within budget, and loads only when needed.
 - **M: taunts, drawn.** The Phase 4 emotes and throwables swap their emoji for cartoony art from that set, and the throws get a fuller, poker-style flight. How they work (the list, the cooldown, waiting out big moments) stays as Phase 4 built it.
 - **M: cat personalities.** Each cat gets its own taunts and its own chattiness, building on Phase 4's light chatter. Key them by username (`bot-1` to `bot-7`), not display name. Goes well with the photos.
@@ -532,8 +535,8 @@ Function and component names rather than line numbers, because those move.
 - **Auto-finish:** `canAutoFinish` in autofinish.ts, called from `gamePlay` (through `autoFinishes`). Records carry `autoFrom`; `tableTricks` and `tableTricksWon` in scoring.ts leave the played-out tricks out.
 - **Who played each hand:** done in Phase 3. `recordHand` in games.ts stores each hand's player ids as `record.players`, and `occupants()` in games.ts gives each hand's player per seat from them. Older records fall back to the `removed_players` table (v8), then to whoever sits there now. stats.ts and `handNames` both go through `occupants()`, so a seat that changes hands mid-game keeps its earlier hands with the person who played them.
 - **Live updates:** `publish` in games.ts rebuilds a view per player. Since Phase 3 it also sends `removed` to anyone no longer seated and closes their stream. Every stream that opens or closes also runs `publish()`, to update the online dots. People asking to join a public table aren't seated, so they need their own channel.
-- **Public lobbies:** `joinGame` in games.ts works in the lobby only, and refuses playtests. Removing a player is the `removePlayer` action in `performAction`, and it works at any time: in the lobby the seat empties and the others move up, and mid-game `removeMidGame` gives the seat to a cat for good. The games list is `listGamesForUser` in games.ts. It parses every game's state blob for its row, so don't do the same for an open-tables list.
-- **Cat photos:** blocked in Avatar.svelte (`photo`), `playerAvatar` and `getPlayers` in games.ts, `toUser` in auth.ts, and `saveAvatar` in avatars.ts.
+- **Public lobbies:** `joinGame` in games.ts works in the lobby only, and refuses playtests. Removing a player is the `removePlayer` action in `performAction`. It works in the lobby and mid-game, but not once the game has finished (Keep playing first): in the lobby the seat empties and the others move up, and mid-game `removeMidGame` gives the seat to a cat for good. The games list is `listGamesForUser` in games.ts. It parses every game's state blob for its row, so don't do the same for an open-tables list.
+- **Cat photos:** blocked in Avatar.svelte (`photo`), Avatar.astro (`photo`), `playerAvatar` and `getPlayers` in games.ts, `toUser` in auth.ts, and `saveAvatar` in avatars.ts.
 - **Restaurant mode:** the table is cream paper, not green felt (`--felt-bg` in global.css).
 - **Landing page:** signed-in users go straight to /games (the redirect at the top of src/pages/index.astro).
 - **Display names:** every new piece of UI that shows a name (bubbles, chat, open tables, the inspector) must cope with a 32-character name at every phone size in [ground rule 8](#ground-rules). Cut short with "…" is fine; overflowing or overlapping never is.
@@ -552,7 +555,8 @@ From a read of the code on 2026-11-26, with the phone layout brought up to date 
   - **Detecting moments:** the browser does it today (`detectMoments` in src/lib/moments.ts, from `publicFacts` in view.ts). The server would compare a face-up snapshot from before and after the change.
   - **Hand ends:** `gamePlay` drops `trickComplete` and deals the next hand in the same call. Queued cards can also end a hand inside `applyResult`, and `botTurn` returns only a boolean. So compare `state.lastHand?.number` before and after the change, never `state.hand`, and don't rely on the first play's `result.completedHand`.
   - **Randomness:** there's no `Math.random` in src; deals use `secureRng`.
-- **Rate limits:** `takeAttempt` in auth.ts has a fixed 15-minute window. The taunt cooldown and the chat limit need a small new helper, kept on `globalThis` like the hub, bot timers and premoves. (auth.ts's own map is a plain module Map, so it resets whenever the dev server reloads that module.)
+- **Rate limits:** `rateLimit(keys)` in src/lib/server/rate-limit.ts: fixed windows (15 minutes unless a key passes `windowMs`), with counts kept on `globalThis` so a dev reload doesn't reset them. It returns `{ ok, retryAfterMs }` for a 429 and the button's countdown, e.g. `rateLimit([{ key: 'taunt:user:ID', limit: 1, windowMs: 15_000 }])`. `takeAttempt` is its yes/no form, used by sign-in, sign-up, password changes, resets and photo uploads.
+- **New POSTs from the table:** `postJson(url, body)` in src/lib/post-json.ts: a 15-second timeout, never throws, and `status: 0` when nothing came back (show the "Network hiccup" toast then, as `act()` in Game.svelte does).
 - **Text:** `normalizeDisplayName` and `graphemes` in src/lib/names.ts clean text and count characters the way people see them. `normalizeDisplayName` turns line breaks into spaces. Nothing uses `{@html}`; keep it that way.
 - **New endpoints:** in this order:
   - a signed-in user (the middleware);
@@ -564,20 +568,20 @@ From a read of the code on 2026-11-26, with the phone layout brought up to date 
   action.ts itself answers non-members with a 403 from `performAction` and has no rate limit. Chat and taunts get their own routes, not new `GameAction` types, because every change through `performAction` is saved with `saveGame` and then sent to everyone with `publish()`. `saveGame` bumps the version and `updated_at`, which reorders /games.
 - **Layers and focus:**
   - Inside the arena, `.msg` is z 4 and `.insp` is z 5.
-  - `.arena` and `.hand-zone` are size containers, so fixed children inside them are placed relative to the container. A chat sheet belongs in Game.svelte.
+  - `.arena` and `.hand-zone` are size containers. That doesn't make them stacking contexts, or containing blocks for fixed children (a `position: fixed` child is still placed against the screen). A chat sheet still belongs in Game.svelte, so it outlasts the table.
   - During the hand-end sequence, `skipEnding` in Game.svelte swallows every click and the Escape, Enter and Space keys. HandResult takes focus when it opens and closes on any Escape pressed anywhere in the window.
 - **Per-device settings:** localStorage keys start with `hearts:` (`hearts:notify`, `hearts:seen-hand:<id>`, `hearts:seen-shot:<id>`, `hearts:app-nudge`, and `hearts:phone-check` on /dev/checklist). The 4-colour deck is the `hearts_deck` cookie, read on the server.
 - **Rematch:** `insertRematch` makes a new game id, so chat stored per game starts empty there. Keep playing keeps the same id.
 - **Phone layout:** Table.svelte has three sets of rules for small screens, in this order:
   - **Below 1080px** the side panel (standings, the deck and alerts switches) moves under the table.
   - **Upright phones:** `@media (max-width: 640px)`, plus `max-width: 374px` for 360px phones. Plaques stack (avatar over name), the status cluster sits in the felt's bottom-left corner and "Last trick" bottom-right, and the hand and action bar sit under the table.
-  - **Sideways phones:** the last block, `@media (orientation: landscape) and (max-height: 500px) and (min-width: 540px)`. It comes after the 640px rules and overrides them where both apply. The same query is in WatchGlow.svelte (the glow turns with the plaque), Game.svelte (the pills and the toast), Layout.astro (the header scrolls away) and the `SIDEWAYS` constant in Table.svelte's script (it scrolls the page to centre the table, and back to the top when the phone turns upright). Change one, change all five.
+  - **Sideways phones:** the last block, `@media (orientation: landscape) and (max-height: 500px) and (min-width: 540px)`. It comes after the 640px rules and overrides them where both apply. The query is `SIDEWAYS` in src/lib/phones.ts (built from `SIDEWAYS_MAX_HEIGHT` and `SIDEWAYS_MIN_WIDTH`), which Table.svelte's script imports to centre the table (and scroll back to the top when the phone turns upright). CSS can't import it, so it's copied into Table.svelte, WatchGlow.svelte (the glow turns with the plaque), Game.svelte (the pills and the toast) and Layout.astro (the header scrolls away). src/lib/phones.test.ts fails if any copy differs or goes missing.
 - **What Phase 4 has to fit around, sideways:**
   - **The bar above the table isn't above it.** The statusbar (the game's name and chips) lies over the table's top corners with `pointer-events: none`, so taps pass through to the seats, and each half is capped at `calc(50% - 164px)` to stay clear of the top seats. The Reconnecting and New version pills (Game.svelte) sit in the same top-right corner, over the chips. A chat button "in the bar above the table" needs a place of its own here, with taps turned back on for it, clear of the pills.
   - **The hand runs along the bottom edge,** showing only the tops of the cards, tucked into the felt's bottom edge. A phone bottom sheet would cover it, so the chat sheet needs another shape sideways, such as a panel from one side.
   - **Your own plaque is bottom-left,** beside your hand, with its tags stacked above it and the status cluster higher up the same corner. That's where the taunt tray opens from, so it has to open up and over the felt.
   - **The hint and button sit in a dark box at bottom-right,** at most 27% of the width, with "Last trick" above it.
-  - **The top seats sit 6px from the top edge,** between the name and the chips. A bubble above a top seat's avatar would go off the screen, and anything that reaches the corners goes under the name and chips, which paint over the arena. A Sun or Moon glow's tips can already be cut there.
+  - **The top seats sit 6px from the top edge,** between the name and the chips. A bubble above a top seat's avatar would go off the screen, and in the corners it meets the name and chips (see Layers in 4a for which paints over which). A Sun or Moon glow's tips can already be cut there.
   - **The toast** sits 84px up from the bottom, over the hand area, and lets taps through.
   - **What's under the table** (the playtest panel, then the standings and the deck and alerts switches) is a scroll down, since the page opens scrolled to the table. A mute switch there is out of sight during play; the one in the chat sheet isn't.
   - **Check every new piece with `/dev/phones`,** which looks for overflow, overlaps, covered rank corners and, sideways, anything off the screen.

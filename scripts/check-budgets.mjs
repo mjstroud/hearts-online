@@ -172,8 +172,8 @@ if (islandLoader && !roles.has(islandLoader)) roles.set(islandLoader, 'island lo
 // ---------------------------------------------------------------------------
 // Each page's CSS
 
-// The server build carries Astro's list of routes as JSON, and each page lists exactly the CSS its HTML
-// links or inlines: {…,"styles":[{"type":"external","src":"/_astro/Layout.x.css"},{"type":"inline",
+// The server build carries Astro's list of routes as JSON, and each server-rendered page lists the CSS
+// its HTML links or inlines (not <style is:inline> blocks, which only dev pages use): {…,"styles":[{"type":"external","src":"/_astro/Layout.x.css"},{"type":"inline",
 // "content":"…"}],"routeData":{"route":"/games/[id]","type":"page",…}}. Adding up every CSS file instead
 // would mix in pages that never load together, and miss the inline CSS.
 
@@ -215,7 +215,10 @@ function findRoutes() {
 const cssPages = [];
 const pagesPerCssFile = new Map();
 for (const { routeData, styles } of findRoutes()) {
-  if (routeData?.type !== 'page' || !styles?.length) continue;
+  if (routeData?.type !== 'page') continue;
+  // Astro empties a prerendered page's list, so its CSS would quietly go unmeasured.
+  if (routeData.prerender) fail(`${routeData.route} is prerendered, and this script can’t measure a prerendered page’s CSS yet. Read its <link> and <style> tags from dist/client in scripts/check-budgets.mjs.`);
+  if (!styles?.length) continue;
   const page = { route: routeData.route, files: [], inline: '' };
   for (const style of styles) {
     if (style.type === 'inline') page.inline += style.content;

@@ -77,7 +77,7 @@ Other scripts:
 npm test               # unit tests (Vitest)
 npm run check          # type check: astro check and svelte-check (CI runs it; warnings in .svelte files fail it)
 npm run build          # production build into ./dist
-npm run check:budgets  # after a build: fail if the game page's JS or the CSS goes over its size budget
+npm run check:budgets  # after a build: fail if the game page's JS, any JS file or any page's CSS goes over its budget
 npm start              # run the production server
 ```
 
@@ -168,7 +168,7 @@ Two long-lived branches, each deployed by CI when it's pushed:
     git push origin main
     ```
 
-  - Tag what was deployed with an annotated tag on `main`, named `release-YYYY-MM-DD.N`, where N counts that day's releases from 1: `git tag -a release-2026-11-27.2 main -m "What's in it"`, then `git push origin release-2026-11-27.2`. Tags don't trigger CI.
+  - Tag what was deployed with an annotated tag on `main`, named `release-YYYY-MM-DD.N`, where N counts that day's releases from 1: `git tag -a release-YYYY-MM-DD.N main -m "What's in it"`, then `git push origin release-YYYY-MM-DD.N` (for example `release-2026-11-27.2`, the day's second release). Tags don't trigger CI.
   - Note the release in ROADMAP.md on `dev`: the tag, the Fly release number (`fly releases`) and any snapshot.
 - **An urgent fix for the real site:** branch off `main`, merge it into `main` (`--no-ff`) and push, then merge `main` back into `dev` (also `--no-ff`) and push, so the two don't drift.
 - Only a release or an urgent fix ever goes to `main`. CI also runs the checks on pull requests, but this repo doesn't use them.
