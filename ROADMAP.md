@@ -82,8 +82,9 @@ These are the "build it fast from the start" rules. They answer the performance 
 - **Opening the live stream sends your first update twice** ([events.ts:46](src/pages/api/games/[id]/events.ts)).
 - **/stats re-reads every hand of every game on each view.** That cost keeps growing through the season.
 - **The alerts button reads backwards** ([Table.svelte:421](src/components/game/Table.svelte:421)).
-- **Open (2026-11-26): landscape phones.** At 667×375, a long-name "takes it" message overlaps the status cluster. Seen in a static mock of the real CSS, not yet on a phone.
-- **Open (2026-11-26): the hand is off screen on a phone turned sideways.** A player on Android Chrome could see the table but had to scroll off it to pick a card. A sideways phone is wider than 640px, so it gets the desktop layout. That layout needs at least 340px of height for the table alone, which pushes the hand below the bottom of the screen. Planned for the [phone pass](#phone-pass-before-phase-4).
+- **Fixed (2026-11-27): landscape phones.** At 667×375, a long-name "takes it" message overlapped the status cluster. The sideways layout keeps the message clear of the cluster and "Last trick" at the eight phone sizes, and `/dev/phones` now checks for it. On a sideways screen narrower than those (540–640px) it can still touch the cluster in a rare case: two digits of tricks left, a watch on a long name, and hearts broken by the Q♠. Measured in the browser, not yet on a phone.
+- **Fixed (2026-11-27): the hand is off screen on a phone turned sideways.** A player on Android Chrome could see the table but had to scroll off it to pick a card. A sideways phone is wider than 640px, so it got the desktop layout. That layout needs at least 340px of height for the table alone, which pushed the hand below the bottom of the screen. The [phone pass](#phone-pass-before-phase-4) gives sideways phones a layout of their own.
+- **Fixed (2026-11-27): upright, your own seat's tags touched the button.** "Choosing" (and any tag of yours) hung 3px into the Pass or Play button at every phone size. `/dev/phones` found it; the hand now sits a few pixels lower.
 
 ## Phases
 
@@ -199,6 +200,22 @@ So change `check:budgets` to read each route's `styles` list from the server bui
 
 The family nearly always plays on phones, and a player on Android Chrome had to scroll off the table to play in landscape. This comes before Phase 4 because Phase 4 adds bubbles, a taunt tray and a chat sheet to the same small screen, so the layout should settle first. No migration.
 
+**Status (2026-11-27): built and checked in the browser at every size; on the dev site, not released yet.**
+
+- **Sideways phones get their own layout:** `(orientation: landscape) and (max-height: 500px) and (min-width: 540px)`, in Table, WatchGlow, Game and Layout.
+  - The table fills the screen. Three designs were prototyped and judged; this one won on playability and robustness.
+  - The page opens scrolled past the site header to the table. On a sideways phone the header scrolls away instead of staying pinned (the owner's choice, 2026-11-27), so the menu is a scroll up. Turning the phone upright scrolls back to the top.
+  - Your cards run along the bottom edge, showing only their tops: the rank corners and a picked card always show. Your plaque sits bottom-left, and the hint and button sit in a dark box bottom-right.
+  - The name and chips sit in the table's top corners on dark ground. The Playtest chip is hidden there (the panel under the table says so).
+  - It costs 0.6 KB of CSS (12.9 of 14 KB) and a few lines of script. Upright phones and ordinary desktop windows are unchanged, apart from the 3px fix in [Bugs found](#bugs-found). Any window at least 540px wide and at most 500px tall (say, a quarter-screen window, or a laptop zoomed right in) gets the sideways layout too, which fits it better than the old one did.
+- **`/dev/phones`** shows one of your games at all eight sizes, as a browser leaves them (estimates) or as an installed app (`&fit=app`). It checks each for a page wider than the screen, pieces on top of each other, covered rank corners and, sideways, anything off the screen. **Check every size** runs all eight. `/dev/long-names?then=phones` starts a table there. The dev server and the dev site allow same-site frames for it; the real site still refuses all frames.
+- **`/dev/checklist`** is the family's five-minute check, on the dev site: upright, sideways, alerts and the app. It ends with a box that says what the phone told the site, for screenshots.
+- **The phone sizes** are in CLAUDE.md's phone rule and the README.
+- **Not checked on a real phone yet**, so the checklist is how to catch these:
+  - the sideways layout in real Android Chrome and iPhone Safari: their toolbars, the home-bar and notch insets, and whether opening scrolled to the table sticks;
+  - turning the phone mid-game;
+  - everything in the backlog below.
+
 - **S–M: a landscape layout for short screens.** A sideways phone (roughly 667–932 wide and 360–430 tall) is wider than 640px, so today it misses the phone rules. It gets the single-column layout, but keeps the desktop table and seat placement. The table alone needs 340px of height, so the hand ends up below the bottom of the screen.
   - Give short landscape screens their own layout, for example `(orientation: landscape) and (max-height: 500px)`.
   - Put the hand beside the table or over the bottom of the felt, with the action bar in reach, so you can see the trick and play without scrolling.
@@ -220,16 +237,16 @@ The family nearly always plays on phones, and a player on Android Chrome had to 
 
   A 32-character name must still fit from 375px up. At 360px nothing may overflow or overlap, but long names may be cut short with an ellipsis.
 - **XS: a five-minute checklist for the family** to run on their own phones on the dev site, because real phones catch what emulation misses.
-- **Optional:** the Android emulator that comes with Android Studio is free, runs on the owner's PC and has real Chrome for Android in it. Installing it needs the owner's OK.
+- **Later: the Android emulator.** The emulator that comes with Android Studio is free, runs on the owner's PC and has real Chrome for Android in it, so the sideways layout can be checked in the browser where the bug was reported. The owner wants it set up, but not as part of the phone pass (2026-11-27). It's a multi-gigabyte download, and the owner accepts Google's SDK licence during setup. Also on the [Someday](#someday) list so it isn't lost.
 
 ### Phase 4: Talk and tease
 
 Planned 2026-11-26 after a read of the code it touches (see [Phase 4 code pointers](#phase-4-code-pointers)). It comes after the [phone pass](#phone-pass-before-phase-4) and ships in two releases.
 
 **First step, after the phone pass and before 4a: [measure CSS per page](#follow-up-measure-css-per-page).**
-- The budget check reports 12.3 of 14 KB of CSS, but that adds up every page's CSS files. The game page loads 10.1 KB of those files, plus about 3 KB gzipped of inline CSS that the check never counts, so it really loads about 13.1 KB.
+- The budget check reports 12.9 of 14 KB of CSS (the phone pass took 0.6 KB), but that adds up every page's CSS files. The game page loads 10.7 KB of those files, plus about 3 KB gzipped of inline CSS that the check never counts, so it really loads about 13.7 KB.
 - Bubbles, throws, the taunt tray and the chat sheet won't fit in what's left. Measure per page first, then tell the owner the exact increase needed.
-- Game page JS is 48.0 of 55 KB. That's enough, as long as the chat sheet loads with `import()`.
+- Game page JS is 48.2 of 55 KB. That's enough, as long as the chat sheet loads with `import()`.
 
 **Release 4a: taunts (no migration)**
 
@@ -434,6 +451,7 @@ The long-term goal is a site that public players use, that pays for itself (thro
 Ideas worth keeping that aren't planned:
 
 - **A "Join call" button.** The host pastes a FaceTime, Meet or Discord link, and players get a button. Dropped from Phase 4 on 2026-11-26. Calling built into the app stays on [Won't do](#wont-do).
+- **Set up the Android emulator** (Android Studio, on the owner's PC) to test real Chrome for Android, starting with the sideways layout. The owner said yes, later (2026-11-27). See the [phone pass](#phone-pass-before-phase-4).
 
 ## Won't do
 

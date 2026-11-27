@@ -158,6 +158,14 @@ const deck = Astro.cookies.get(DECK_COOKIE)?.value === 'four' ? 'four' : 'two';
     padding-top: env(safe-area-inset-top, 0px);
   }
 
+  /* A phone on its side at a game: the header scrolls away with the page, so the table can fill the
+     screen (Table.svelte scrolls to it, and has the same query). */
+  @media (orientation: landscape) and (max-height: 500px) and (min-width: 540px) {
+    :global(body.full) .site-header {
+      position: relative;
+    }
+  }
+
   .header-inner {
     height: 60px;
     display: flex;

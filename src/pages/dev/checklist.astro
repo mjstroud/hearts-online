@@ -1,0 +1,180 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { devToolsEnabled } from '../../lib/server/env';
+
+/**
+ * Dev only: a five-minute check for the family to run on their own phones on the dev site, because real
+ * phones catch what a computer pretending to be one misses. Open to read signed out; the test tables
+ * need a dev-site account. Ticks are kept on the phone (localStorage), nowhere else.
+ */
+if (!devToolsEnabled()) return new Response(null, { status: 404 });
+const signedIn = !!Astro.locals.user;
+
+const sections: { title: string; items: string[] }[] = [
+  {
+    title: 'Upright',
+    items: [
+      'The whole table fits across the screen. Long names end in “…”, and nothing sits on top of anything else.',
+      'Passing: tap three cards, then Pass. The cards don’t jump around between taps.',
+      'Playing: tap a card, then tap it again (or tap Play). Nothing zooms in.',
+      'Before your turn, tap a card twice: it stays marked as queued and plays itself when your turn comes. Tap it once more to cancel.',
+      'Tap the cards in the middle of the table: a strip shows who played each one.',
+      'The last trick of a hand plays one card at a time, slowly enough to see who played what.',
+    ],
+  },
+  {
+    title: 'Sideways',
+    items: [
+      'Turn the phone sideways. The whole table and your cards fit on the screen without scrolling, and the top bar has scrolled out of the way.',
+      'Play a card while it’s sideways.',
+      'Scroll up: the top bar and its menu are still there.',
+      'Turn it upright again. The page isn’t zoomed in and nothing is stuck at the sideways size.',
+    ],
+  },
+  {
+    title: 'Alerts and the app',
+    items: [
+      'Under the table, tap “Alert me when it’s my turn” and allow notifications. Switch to another app: when it’s your turn, an alert arrives. (On an iPhone this only works in the app from your home screen.)',
+      'Menu (your picture, top right) → Get the app. Add it to your home screen, open it from there, and play a card. There are no browser bars.',
+      'Account → change your photo. It shows on your plaque at the table.',
+    ],
+  },
+];
+---
+
+<Layout title="Phone check">
+  <div class="container page" style="max-width: 640px">
+    <div class="page-head">
+      <div class="stack" style="--gap: 8px">
+        <span class="eyebrow">Dev · Phone check</span>
+        <h1 class="display">Five minutes on your phone</h1>
+        <p class="muted">
+          Real phones catch things a computer can’t. This all happens on the test site, so nothing touches the real games. Tick
+          each thing that works; anything that doesn’t, take a screenshot.
+        </p>
+      </div>
+    </div>
+
+    <div class="stack" id="check">
+      <section class="panel panel-pad stack" style="--gap: 10px">
+        <h2>1. A test table</h2>
+        {
+          signedIn ? (
+            <>
+              <p class="muted">Each opens in a new tab with your cards and some cats with very long names. Come back here to tick things off.</p>
+              <div class="row" style="--gap: 8px">
+                <a class="btn btn-primary" href="/dev/long-names?players=5" target="_blank">
+                  5 players
+                </a>
+                <a class="btn" href="/dev/long-names?players=4" target="_blank">
+                  4 players
+                </a>
+              </div>
+            </>
+          ) : (
+            <p>
+              <a href="/login?next=/dev/checklist">Sign in to the test site</a> first. It has its own accounts, so you may need to sign
+              up: ask for the sign-up code.
+            </p>
+          )
+        }
+      </section>
+
+      {
+        sections.map((s, i) => (
+          <section class="panel panel-pad stack" style="--gap: 10px">
+            <h2>
+              {i + 2}. {s.title}
+            </h2>
+            {s.items.map((item, j) => (
+              <label class="tick">
+                <input type="checkbox" data-id={`${i}.${j}`} />
+                <span>{item}</span>
+              </label>
+            ))}
+          </section>
+        ))
+      }
+
+      <section class="panel panel-pad stack" style="--gap: 8px">
+        <h2>5. Send it over</h2>
+        <p class="muted">
+          Screenshot anything that looked wrong, and this box too: it says what your phone told the site about itself. Send them to
+          whoever runs the site.
+        </p>
+        <p class="device num" id="device">Your phone: (works it out when the page loads)</p>
+        <button class="btn btn-ghost btn-sm" type="button" id="reset">Clear the ticks</button>
+      </section>
+    </div>
+  </div>
+</Layout>
+
+<!-- Inline, so this dev page never counts against the CSS budget of the pages players load. -->
+<style is:inline>
+  #check h2 {
+    font-size: 17px;
+  }
+  #check .tick {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    line-height: 1.45;
+  }
+  #check .tick input {
+    flex: none;
+    width: 20px;
+    height: 20px;
+    margin-top: 1px;
+  }
+  #check .device {
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: rgb(var(--lo) / 0.35);
+    font-size: 13px;
+    overflow-wrap: anywhere;
+  }
+</style>
+
+<script>
+  const KEY = 'hearts:phone-check';
+  const boxes = [...document.querySelectorAll<HTMLInputElement>('#check input[data-id]')];
+  let ticked = new Set<string>();
+  try {
+    ticked = new Set(JSON.parse(localStorage.getItem(KEY) ?? '[]') as string[]);
+  } catch {}
+  const save = () => {
+    try {
+      localStorage.setItem(KEY, JSON.stringify([...ticked]));
+    } catch {}
+  };
+  for (const box of boxes) {
+    box.checked = ticked.has(box.dataset.id!);
+    box.addEventListener('change', () => {
+      if (box.checked) ticked.add(box.dataset.id!);
+      else ticked.delete(box.dataset.id!);
+      save();
+    });
+  }
+  document.getElementById('reset')?.addEventListener('click', () => {
+    ticked.clear();
+    boxes.forEach((b) => (b.checked = false));
+    save();
+  });
+
+  // What the site sees of this phone, for whoever reads the screenshot.
+  const device = document.getElementById('device');
+  const describe = () => {
+    if (!device) return;
+    // iPhones say so with navigator.standalone; everything else with the display mode.
+    let app = (navigator as Navigator & { standalone?: boolean }).standalone === true;
+    try {
+      app ||= matchMedia('(display-mode: standalone)').matches;
+    } catch {}
+    device.textContent =
+      `Screen ${screen.width}×${screen.height}, page ${innerWidth}×${innerHeight}, ` +
+      `${innerWidth > innerHeight ? 'sideways' : 'upright'}, ${app ? 'home-screen app' : 'in the browser'}. ` +
+      navigator.userAgent;
+  };
+  describe();
+  addEventListener('resize', describe);
+</script>

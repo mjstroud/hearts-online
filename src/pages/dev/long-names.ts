@@ -7,8 +7,8 @@ import { createPlaytest, publishPlayerChange } from '../../lib/server/games';
 /**
  * Dev only: a playtest table where every other seat has an old 32-character, one-word name, for
  * checking layouts on a phone. /dev/long-names seats five (?players=4 for four), and &me=long gives
- * your own local account a 32-character name too. It also works on the dev site (SITE_ENV=dev);
- * the real site answers 404.
+ * your own local account a 32-character name too. &then=phones opens the table in /dev/phones. It
+ * also works on the dev site (SITE_ENV=dev); the real site answers 404.
  */
 
 // One word each, so nothing can wrap. The W's are about the widest letters there are.
@@ -55,5 +55,5 @@ export const GET: APIRoute = ({ locals, url, redirect }) => {
       sql('UPDATE game_players SET user_id = ? WHERE game_id = ? AND seat = ?').run(botId, id, i + 1),
     );
   });
-  return redirect(`/games/${id}`, 303);
+  return redirect(url.searchParams.get('then') === 'phones' ? `/dev/phones?game=${id}` : `/games/${id}`, 303);
 };

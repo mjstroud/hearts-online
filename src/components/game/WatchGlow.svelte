@@ -123,6 +123,13 @@
     }
   }
 
+  /* A phone on its side lays the plaques flat again (Table.svelte, same query), so the gap faces the name. */
+  @media (orientation: landscape) and (max-height: 500px) and (min-width: 540px) {
+    .glow {
+      rotate: none;
+    }
+  }
+
   /* Every part scales and turns around the avatar's centre (the box's 0,0), whatever the browser's default. */
   .glow * {
     transform-box: view-box;
