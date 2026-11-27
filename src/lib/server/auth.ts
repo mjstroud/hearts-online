@@ -4,6 +4,7 @@ import type { AstroCookies } from 'astro';
 import { displayNameError, normalizeDisplayName } from '../names';
 import { TERMS_VERSION } from '../terms';
 import { now, sql, transaction } from './db';
+import { takeAttempt } from './rate-limit';
 
 const scryptAsync = promisify(scrypt) as (pw: string, salt: Buffer, keylen: number, opts: object) => Promise<Buffer>;
 
@@ -158,52 +159,8 @@ export function setSessionCookie(cookies: AstroCookies, token: string, expires: 
   cookies.set(SESSION_COOKIE, token, { path: '/', httpOnly: true, sameSite: 'lax', secure, expires });
 }
 
-/**
- * Small in-memory rate limiter (fixed 15-minute windows). Attempts are counted
- * up front, before any slow password hashing, so parallel requests can't slip past.
- */
-const WINDOW = 15 * 60 * 1000;
-/** Hard ceiling on tracked keys, so a flood of distinct keys can't grow memory without bound. */
-const MAX_KEYS = 10_000;
-const attempts = new Map<string, { count: number; until: number }>();
-
-function prune() {
-  if (attempts.size < MAX_KEYS / 2) return;
-  const t = now();
-  for (const [k, v] of attempts) if (v.until < t) attempts.delete(k);
-  // Still full of live windows? Drop the oldest first (a Map iterates in insertion order).
-  for (const k of attempts.keys()) {
-    if (attempts.size < MAX_KEYS) break;
-    attempts.delete(k);
-  }
-}
-
-/**
- * Count an attempt for every key; returns false if any key is already at its limit.
- * A refused attempt isn't counted, so a blocked client stops adding entries.
- */
-export function takeAttempt(keys: { key: string; limit: number }[]): boolean {
-  prune();
-  const t = now();
-  const live = (key: string) => {
-    const a = attempts.get(key);
-    return a && a.until >= t ? a : undefined;
-  };
-  if (keys.some(({ key, limit }) => (live(key)?.count ?? 0) >= limit)) return false;
-  for (const { key } of keys) {
-    let a = live(key);
-    if (!a) attempts.set(key, (a = { count: 0, until: t + WINDOW }));
-    a.count += 1;
-  }
-  return true;
-}
-
-/** For tests: how many keys the limiter is tracking. */
-export const trackedAttemptKeys = () => attempts.size;
-
-export function clearAttempts(key: string) {
-  attempts.delete(key);
-}
+// The rate limiter is in rate-limit.ts. Re-exported for anything (the sign-in tests, say) that imports it from here.
+export { clearAttempts, takeAttempt, trackedAttemptKeys } from './rate-limit';
 
 /** If SIGNUP_CODE is set, new accounts need it (keeps the site family-only). */
 export const signupCodeRequired = () => !!process.env.SIGNUP_CODE;
