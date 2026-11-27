@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import { prefersReducedMotion } from 'svelte/motion';
   import { fly } from '../../lib/motion';
   import { type Card, cardLabel, isPenaltyCard } from '../../lib/engine/cards';
@@ -7,6 +7,8 @@
   import type { MoveTiming, TimedMove } from '../../lib/latency.svelte';
   import { endedLive, finalTrickHoldMs } from '../../lib/moments';
   import { postJson } from '../../lib/post-json';
+  import type { TauntShow } from '../../lib/taunt-client';
+  import { TAUNT_COOLDOWN_MS, type TauntEvent, type TauntRequest, tauntById } from '../../lib/taunts';
   import type { GameAction, GameView } from '../../lib/types';
   import { SITE_NAME } from '../../lib/ui';
   import FinalResults from './FinalResults.svelte';
@@ -341,6 +343,79 @@
     remember(seenKey, seenInMemory);
   }
 
+  // ----- Taunts: emotes and throws (src/lib/taunts.ts), during play only. They come over the live stream as
+  // their own event, never as a game update, and the table draws them (TauntLayer.svelte).
+  let tauntFeed = $state.raw<TauntShow[]>([]);
+  /** When you may taunt again, on this device's clock. The server keeps the real cooldown. */
+  let tauntCooldown = $state(0);
+  let tauntsShown = 0;
+  /** Taunts that arrived during the end of a hand or its result: they play afterwards, if still fresh. */
+  let heldTaunts: { ev: TauntEvent; at: number }[] = [];
+  /** This tab's own sends, by client id, so their echoes are skipped (they played when tapped). */
+  const sentTaunts = new Set<string>();
+  let tabId = '';
+  let sends = 0;
+  let tipped = false;
+
+  function showTaunt(ev: TauntEvent) {
+    const at = Date.now();
+    tauntFeed = [...tauntFeed.filter((s) => at - s.at < 5000), { ...ev, id: ++tauntsShown, at }].slice(-6);
+    // Once per device, the first time someone else taunts you.
+    if (ev.from === view.me.userId || tipped) return;
+    tipped = true;
+    try {
+      if (localStorage.getItem('hearts:taunt-tip')) return;
+    } catch {}
+    remember('hearts:taunt-tip', 1);
+    showToast('Tap any avatar to send one back.');
+  }
+
+  function onTaunt(ev: TauntEvent) {
+    if (ev.cid && sentTaunts.delete(ev.cid)) return;
+    const t = tauntById(ev.taunt);
+    const seated = (id: unknown) => view.players.some((p) => p.userId === id);
+    // An older tab with a newer list, someone who has left, or a tab out of sight (no pile to replay on return).
+    if (!t || view.status !== 'active' || document.hidden || !seated(ev.from) || (t.kind === 'throw' && !seated(ev.to))) return;
+    // From your other tab or device: the cooldown is yours here too.
+    if (ev.from === view.me.userId) tauntCooldown = Math.max(tauntCooldown, Date.now() + TAUNT_COOLDOWN_MS);
+    if (ending || resultOpen) heldTaunts.push({ ev, at: Date.now() });
+    else showTaunt(ev);
+  }
+
+  $effect(() => {
+    if (ending || resultOpen) return;
+    untrack(() => {
+      const now = Date.now();
+      const due = heldTaunts.filter((h) => now - h.at < 8000);
+      heldTaunts = [];
+      if (view.status === 'active' && !document.hidden) due.forEach((h) => showTaunt(h.ev));
+    });
+  });
+
+  /** Shows at once (ground rule 1) and never holds up the cards: it doesn't go through act(). */
+  function sendTaunt(taunt: string, to: number | null) {
+    const sentAt = Date.now();
+    if (!tauntById(taunt) || sentAt < tauntCooldown) return;
+    // Not crypto.randomUUID, which plain http (a phone on the LAN) doesn't have.
+    tabId ||= crypto.getRandomValues(new Uint32Array(1))[0].toString(36);
+    const cid = `${tabId}.${++sends}`;
+    sentTaunts.add(cid);
+    tauntCooldown = sentAt + TAUNT_COOLDOWN_MS;
+    showTaunt({ taunt, from: view.me.userId, to, cid });
+    const body: TauntRequest = { taunt, to, cid };
+    postJson(`/api/games/${view.id}/taunt`, body).then(({ ok, status, data }) => {
+      if (ok) {
+        if (typeof data.cooldownMs === 'number') tauntCooldown = sentAt + data.cooldownMs;
+        return;
+      }
+      // Timed out: it may have landed, and its echo may still come, so the id stays.
+      if (!status) return showToast('Network hiccup — please try again.');
+      sentTaunts.delete(cid);
+      if (status === 429 && typeof data.retryAfterMs === 'number') tauntCooldown = Date.now() + data.retryAfterMs;
+      showToast(data.error ?? 'Something went wrong.');
+    });
+  }
+
   // Alerts go through a service worker (public/sw.js), because Android Chrome won't let a page
   // construct a Notification. Every page also registers it (Layout.astro) so the site can be installed;
   // registering again here is harmless and gives us the registration to show alerts with.
@@ -459,6 +534,11 @@
         if (!leaving) location.href = '/games?notice=removed';
       });
       source.addEventListener('deleted', () => (location.href = '/games?notice=deleted'));
+      source.addEventListener('taunt', (e) => {
+        try {
+          onTaunt(JSON.parse((e as MessageEvent).data));
+        } catch {}
+      });
     };
     connect();
 
@@ -510,6 +590,9 @@
     finalBefore={ending?.held?.table ?? null}
     finalHand={ending?.held ? ending.hand : null}
     onShowResult={() => (resultOpen = true)}
+    {tauntFeed}
+    {tauntCooldown}
+    {sendTaunt}
   />
 {:else}
   <FinalResults {view} {act} {busy} onShowResult={() => (resultOpen = true)} />
