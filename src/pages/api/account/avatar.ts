@@ -1,9 +1,9 @@
 import type { APIRoute } from 'astro';
 import { AVATAR_MAX_BYTES, AVATAR_TYPES, avatarSrc } from '../../../lib/avatars';
-import { takeAttempt } from '../../../lib/server/auth';
 import { removeAvatar, saveAvatar } from '../../../lib/server/avatars';
 import { publishPlayerChange } from '../../../lib/server/games';
 import { jsonError } from '../../../lib/server/http';
+import { takeAttempt } from '../../../lib/server/rate-limit';
 
 /** Uploads per person per 15 minutes. Plenty for trying a few crops. */
 const UPLOAD_LIMIT = 30;

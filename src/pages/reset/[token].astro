@@ -1,8 +1,9 @@
 ---
 import AuthCard from '../../components/AuthCard.astro';
 import Layout from '../../layouts/Layout.astro';
-import { createSession, findPasswordReset, redeemPasswordReset, setSessionCookie, takeAttempt } from '../../lib/server/auth';
+import { createSession, findPasswordReset, redeemPasswordReset, setSessionCookie } from '../../lib/server/auth';
 import { clientIp, isSecure, readForm } from '../../lib/server/http';
+import { takeAttempt } from '../../lib/server/rate-limit';
 
 const token = Astro.params.token ?? '';
 const account = findPasswordReset(token);

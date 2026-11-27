@@ -4,10 +4,11 @@ import DeckToggle from '../components/DeckToggle.svelte';
 import PlayingCard from '../components/PlayingCard.svelte';
 import Layout from '../layouts/Layout.astro';
 import { avatarSrc } from '../lib/avatars';
-import { SESSION_COOKIE, changePassword, deleteOtherSessions, takeAttempt, updateDisplayName } from '../lib/server/auth';
+import { SESSION_COOKIE, changePassword, deleteOtherSessions, updateDisplayName } from '../lib/server/auth';
 import { DISPLAY_NAME_MAX, DISPLAY_NAME_MAX_UNITS, displayNameLength } from '../lib/names';
 import { publishPlayerChange } from '../lib/server/games';
 import { readForm } from '../lib/server/http';
+import { takeAttempt } from '../lib/server/rate-limit';
 
 const user = Astro.locals.user!;
 let error = '';
