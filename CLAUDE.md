@@ -41,7 +41,7 @@ npm start                 # run the production build
 2. **Stay within the budgets** (gzipped; CI fails a change that goes over):
    - Game page JS at most 55 KB (`npm run check:budgets`).
    - Any other single JS file at most 15 KB; aim for 10 KB or less for a new interactive component.
-   - All CSS together at most 14 KB (also `npm run check:budgets`).
+   - The CSS any one page loads at most 14 KB: its stylesheet files plus any inline CSS (also `npm run check:budgets`). Optional pieces bring their own CSS when they load (`<svelte:options css="injected" />`).
    - One player's live update at most 4 KB (`src/lib/server/view-size.test.ts`).
    Don't raise a budget to make a change fit without asking first.
 3. **Load only what's needed.** Optional pieces (the playtest panel, restaurant or taunt art) load with a dynamic `import()` only when they're switched on, never for every player.
