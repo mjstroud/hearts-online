@@ -113,6 +113,9 @@ function toFinalTrick(h: HandState) {
   while (!isFinalTrick(h)) playCard(h, h.turn!, legalPlays(h, h.turn!, settings)[0], settings);
 }
 
+/** How long the final trick takes to play itself at four seats: the trick pause, then the cats' pause before each later card. */
+const LAST_TRICK_MS = 1_700 + 3 * 900;
+
 /** Queue a card (or cancel with null) for the trick in progress, as the table showed it. */
 function queue(id: string, userId: number, card: Card | null, at: { hand?: number; trick?: number } = {}) {
   const h = hand(id);
@@ -141,7 +144,7 @@ function listen(id: string, userId: number) {
 }
 
 describe('one rule for seats the server is about to play', () => {
-  it('plays the final trick itself after the usual pause: nobody is on turn or timed, and every card goes down in one update', () => {
+  it('plays the final trick itself after the usual pause, one card at a time at the cats’ pace: nobody is on turn or timed', () => {
     const { id, users } = table(['person', 'person', 'person', 'person'], { moveTimer: 30 });
     deal(id, toFinalTrick);
     // Even with the move clock long run out, nobody is handed to a cat over the final trick.
@@ -152,18 +155,52 @@ describe('one rule for seats the server is about to play', () => {
 
     const tabs = users.map((user) => listen(id, user));
     const before = version(id);
-    vi.advanceTimersByTime(1_699);
-    expect(version(id)).toBe(before);
-    vi.advanceTimersByTime(1);
-    expect(version(id)).toBe(before + 1);
+    // The trick pause before the first card, then the cats' pause before each of the rest.
+    for (const [i, wait] of [1_700, 900, 900, 900].entries()) {
+      vi.advanceTimersByTime(wait - 1);
+      expect(version(id)).toBe(before + i);
+      vi.advanceTimersByTime(1);
+      expect(version(id)).toBe(before + i + 1);
+      if (i === 3) break;
+      // Between cards, whoever is next still isn't on turn, timed or listed as holding the table up.
+      const next = hand(id).turn!;
+      expect(myView(id, users[next])).toMatchObject({ toAct: [next], yourTurn: false, moveClock: null });
+      expect(listGamesForUser(users[next]).find((g) => g.id === id)).toMatchObject({ yourTurn: false, waitingOn: [] });
+    }
     expect(state(id).handsPlayed).toBe(1);
     expect(getHandRecord(id, 1)!.tricks).toHaveLength(12);
     expect(state(id).autopilot ?? []).not.toContain(true);
     for (const tab of tabs) {
-      expect(tab.views()).toHaveLength(1);
-      expect(tab.views()[0].lastHand!.finalTrick!.plays).toHaveLength(4);
+      // One update per card, so every tab sees each one land.
+      const views = tab.views();
+      expect(views).toHaveLength(4);
+      expect(views.slice(0, 3).map((v) => v.table!.current!.plays.length)).toEqual([1, 2, 3]);
+      expect(views[3].lastHand!.finalTrick!.plays).toHaveLength(4);
       tab.stop();
     }
+  });
+
+  it('lets the person on turn in the final trick tap their card early, and carries on at the same pace', () => {
+    const { id, users } = table(['person', 'person', 'person', 'person']);
+    deal(id, toFinalTrick);
+    vi.advanceTimersByTime(1_700);
+    expect(hand(id).current!.plays).toHaveLength(1);
+    // Partway through the pause before the next card, its person taps it.
+    vi.advanceTimersByTime(500);
+    const seat = hand(id).turn!;
+    const before = version(id);
+    play(id, users[seat], hand(id).hands[seat][0]);
+    expect(version(id)).toBe(before + 1);
+    expect(hand(id).current!.plays).toHaveLength(2);
+    // The next card waits the cats' full pause from the tap, not from the card before it.
+    vi.advanceTimersByTime(400);
+    expect(version(id)).toBe(before + 1);
+    vi.advanceTimersByTime(499);
+    expect(version(id)).toBe(before + 1);
+    vi.advanceTimersByTime(1);
+    expect(hand(id).current!.plays).toHaveLength(3);
+    vi.advanceTimersByTime(900);
+    expect(state(id).handsPlayed).toBe(1);
   });
 
   it('with the option off, waits for the person on turn, until the host switches it back on mid-trick', () => {
@@ -179,7 +216,7 @@ describe('one rule for seats the server is about to play', () => {
 
     performAction(id, host, { type: 'settings', settings: { autoPlayLast: true } });
     expect(myView(id, users[turn]).yourTurn).toBe(false);
-    vi.advanceTimersByTime(1_700);
+    vi.advanceTimersByTime(LAST_TRICK_MS);
     expect(state(id).handsPlayed).toBe(1);
   });
 
@@ -222,7 +259,7 @@ describe('late taps', () => {
       const { id, users } = table(['person', 'person', 'person', 'person'], { scoreLimit });
       deal(id, toFinalTrick);
       const last = hand(id).hands.map((cards) => cards[0]);
-      vi.advanceTimersByTime(1_700);
+      vi.advanceTimersByTime(LAST_TRICK_MS);
       expect(state(id).handsPlayed).toBe(1);
       // With a limit of 1, that was the last hand of the game.
       expect(loadGame(id)!.status).toBe(scoreLimit ? 'finished' : 'active');
@@ -236,7 +273,7 @@ describe('late taps', () => {
     const { id, users } = table(['person', 'person', 'person', 'person']);
     deal(id, toFinalTrick);
     const last = hand(id).hands[2][0];
-    vi.advanceTimersByTime(1_700);
+    vi.advanceTimersByTime(LAST_TRICK_MS);
     const res = await POST({
       params: { id },
       locals: { user: { id: users[2] } },

@@ -243,7 +243,7 @@ describe('the hand-end sequence', () => {
     // Three of its cards already down: the fourth lands at once.
     const threeDown = tv({ trickNumber: 12, handSizes: [0, 0, 0, 1], current: { ...s.finalTrick!, plays: s.finalTrick!.plays.slice(0, 3), winner: null } });
     expect(finalTrickHoldMs(threeDown, s.finalTrick!, s, onlooker())).toBe(2 * MIN_SHOW_MS);
-    // All four in one update (the last trick playing itself): they slide in one after another first.
+    // All four in one update (queued cards firing behind the lead): they slide in one after another first.
     expect(finalTrickHoldMs(null, s.finalTrick!, s, onlooker())).toBe(3 * STAGGER_MS + 2 * MIN_SHOW_MS);
     const quiet = summary({ finalTrick: won(0, '2D', '3D', '4D', '5D') });
     expect(finalTrickHoldMs(null, quiet.finalTrick!, quiet, onlooker())).toBe(3 * STAGGER_MS + FINAL_TRICK_MS);

@@ -199,7 +199,7 @@
     });
   });
 
-  // ----- Cards that land in one update (the last trick playing itself, queued cards firing together)
+  // ----- Cards that land in one update (queued cards firing together)
   // slide in one after another, in play order, so the order still reads; on trick 1 too, as the crib
   // gives way. Cards already on the felt don't wait. An update the table didn't watch shows the felt
   // as it is, and reduced motion has the cards appear together.
@@ -435,7 +435,7 @@
   let showCrib = $state(true);
   const manualBots = $derived(view.dev?.botMode === 'manual');
 
-  /** The last trick plays itself: every card in it is forced, so the server plays them after the usual pause. */
+  /** The last trick plays itself: every card in it is forced, so the server plays them one at a time after the usual pause. */
   const lastAuto = $derived(
     t.phase === 'playing' && t.trickNumber === t.totalTricks && !!view.settings.autoPlayLast && !manualBots && me !== null && !onAutopilot,
   );

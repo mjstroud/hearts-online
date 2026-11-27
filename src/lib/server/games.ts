@@ -1363,9 +1363,8 @@ function runBots(gameId: string) {
 
 /**
  * Hand anyone whose move timer ran out to a computer player, then make whatever moves the
- * computer owes right now: all its passes, or one card. In the final trick it's every card the
- * server plays, in one save and one update, and the browser staggers them. Returns true if
- * anything changed.
+ * computer owes right now: all its passes, or one card. The final trick goes one card at a time
+ * too, at the cats' pace, so the table can see who played what. Returns true if anything changed.
  */
 function botTurn(gameId: string): boolean {
   return transaction(() => {
@@ -1383,17 +1382,13 @@ function botTurn(gameId: string): boolean {
       changed = true;
     }
 
-    const hand = state.hand;
-    const finalTrick = !!hand && isFinalTrick(hand);
     const before = snapshot(game, 'bot');
-    let result = aiStep(state, game.settings, serverPlays(game, players));
-    // Below any queued card that fires in applyResult, so undo takes that back first.
-    if (result) remember(gameId, before);
-    while (result) {
+    const result = aiStep(state, game.settings, serverPlays(game, players));
+    if (result) {
+      // Below any queued card that fires in applyResult, so undo takes that back first.
+      remember(gameId, before);
       applyResult(game, result, players);
       changed = true;
-      if (!finalTrick || game.status !== 'active' || state.hand !== hand) break;
-      result = aiStep(state, game.settings, serverPlays(game, players));
     }
     if (changed) saveGame(game);
     return changed;
