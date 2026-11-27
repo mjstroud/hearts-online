@@ -704,10 +704,15 @@ table.data tbody tr:hover td {
 
 /* ---------- Page chrome ---------- */
 
+/*
+ * Top and bottom here: every .page is also a .container, whose side padding keeps the gutter (and the notch)
+ * on narrow screens. That padding sits outside the max-width, so on a wide screen a page keeps its full width.
+ */
 .page {
-  padding: 40px 0 80px;
-  padding-left: env(safe-area-inset-left, 0px);
-  padding-right: env(safe-area-inset-right, 0px);
+  box-sizing: content-box;
+  width: auto;
+  padding-top: 40px;
+  padding-bottom: 80px;
 }
 
 .page-head {
@@ -738,7 +743,8 @@ table.data tbody tr:hover td {
 
 @media (max-width: 640px) {
   .page {
-    padding: 24px 0 64px;
+    padding-top: 24px;
+    padding-bottom: 64px;
   }
 
   .panel-pad {

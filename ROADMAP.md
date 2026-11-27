@@ -208,6 +208,12 @@ The family nearly always plays on phones, and a player on Android Chrome had to 
   - Your cards run along the bottom edge, showing only their tops: the rank corners and a picked card always show. Your plaque sits bottom-left, and the hint and button sit in a dark box bottom-right.
   - The name and chips sit in the table's top corners on dark ground. The Playtest chip is hidden there (the panel under the table says so).
   - It costs 0.6 KB of CSS (12.9 of 14 KB) and a few lines of script. Upright phones and ordinary desktop windows are unchanged, apart from the 3px fix in [Bugs found](#bugs-found). Any window at least 540px wide and at most 500px tall (say, a quarter-screen window, or a laptop zoomed right in) gets the sideways layout too, which fits it better than the old one did.
+- **Polish after the owner tried it on their phone (2026-11-27), on the dev site, not released yet:** the table ran into the screen's edges, and the cards cut off at the bottom made it look as if there was more to scroll to.
+  - A little room above and below the table (8–16px, less on the shortest screens), and the felt's bottom edge now shows, with your cards tucked into it.
+  - The page centres the table when it opens or the phone turns, and again 400ms later once a turning phone has settled. The old scroll passed `behavior: 'instant'`, which some phone browsers reject outright, so it may never have scrolled at all.
+  - Sideways, the "Hand N" chip makes way so the chips take at most two rows.
+  - Pages beside the table (/games, the waiting room, final results and the rest) had no side margin on screens wider than 640px, every sideways phone included: `.page` wiped the container's gutter. They get the gutter now. Desktop widths are unchanged.
+  - Checked in headless Edge with iPhone notch and home-bar insets: all four phones, upright and sideways, in a browser and as an app, with 4 and 5 players.
 - **`/dev/phones`** shows one of your games at all eight sizes, as a browser leaves them (estimates) or as an installed app (`&fit=app`). It checks each for a page wider than the screen, pieces on top of each other, covered rank corners and, sideways, anything off the screen. **Check every size** runs all eight. `/dev/long-names?then=phones` starts a table there. The dev server and the dev site allow same-site frames for it; the real site still refuses all frames.
 - **`/dev/checklist`** is the family's five-minute check, on the dev site: upright, sideways, alerts and the app. It ends with a box that says what the phone told the site, for screenshots.
 - **The phone sizes** are in CLAUDE.md's phone rule and the README.
@@ -244,7 +250,7 @@ The family nearly always plays on phones, and a player on Android Chrome had to 
 Planned 2026-11-26 after a read of the code it touches (see [Phase 4 code pointers](#phase-4-code-pointers)). It comes after the [phone pass](#phone-pass-before-phase-4) and ships in two releases.
 
 **First step, after the phone pass and before 4a: [measure CSS per page](#follow-up-measure-css-per-page).**
-- The budget check reports 12.9 of 14 KB of CSS (the phone pass took 0.6 KB), but that adds up every page's CSS files. The game page loads 10.7 KB of those files, plus about 3 KB gzipped of inline CSS that the check never counts, so it really loads about 13.7 KB.
+- The budget check reports 13.0 of 14 KB of CSS (the phone pass took 0.7 KB), but that adds up every page's CSS files. The game page loads 10.7 KB of those files, plus about 3 KB gzipped of inline CSS that the check never counts, so it really loads about 13.7 KB.
 - Bubbles, throws, the taunt tray and the chat sheet won't fit in what's left. Measure per page first, then tell the owner the exact increase needed.
 - Game page JS is 48.2 of 55 KB. That's enough, as long as the chat sheet loads with `import()`.
 
