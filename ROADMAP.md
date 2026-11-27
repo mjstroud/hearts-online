@@ -208,7 +208,7 @@ The family nearly always plays on phones, and a player on Android Chrome had to 
   - Your cards run along the bottom edge, showing only their tops: the rank corners and a picked card always show. Your plaque sits bottom-left, and the hint and button sit in a dark box bottom-right.
   - The name and chips sit in the table's top corners on dark ground. The Playtest chip is hidden there (the panel under the table says so).
   - It costs 0.6 KB of CSS (12.9 of 14 KB) and a few lines of script. Upright phones and ordinary desktop windows are unchanged, apart from the 3px fix in [Bugs found](#bugs-found). Any window at least 540px wide and at most 500px tall (say, a quarter-screen window, or a laptop zoomed right in) gets the sideways layout too, which fits it better than the old one did.
-- **Polish after the owner tried it on their phone (2026-11-27), on the dev site, not released yet:** the table ran into the screen's edges, and the cards cut off at the bottom made it look as if there was more to scroll to.
+- **Polish after the owner tried it on their phone (2026-11-27), live in `release-2026-11-27.2` (Fly release v16):** the table ran into the screen's edges, and the cards cut off at the bottom made it look as if there was more to scroll to.
   - A little room above and below the table (8–16px, less on the shortest screens), and the felt's bottom edge now shows, with your cards tucked into it.
   - The page centres the table when it opens or the phone turns, and again 400ms later once a turning phone has settled. The old scroll passed `behavior: 'instant'`, which some phone browsers reject outright, so it may never have scrolled at all.
   - Sideways, the "Hand N" chip makes way so the chips take at most two rows.
