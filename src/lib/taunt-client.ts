@@ -26,31 +26,87 @@ export interface Box {
 }
 
 /** Half an emote bubble's width, so a bubble near an edge stays whole. */
-export const BUBBLE_R = 25;
-/** How far a bubble sits from its avatar's centre, in avatar widths. */
-const OUT = 0.9;
+export const BUBBLE_R = 22;
+/** The gap between an avatar and its bubble: enough to clear the plaque's own padding around the avatar. */
+const GAP = 6;
+/** Grazing an edge by this much doesn't count as covering it. */
+const GRAZE = 2;
 /** The highest a throw may fly, from the arena's top edge. */
 const TOP = 16;
+
+/** A rectangle measured from the arena's top-left corner. */
+export interface Rect {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+/**
+ * Something a bubble should keep off, and how much it matters. A card's rank corner is one it must never
+ * cover (ground rule: nothing does); a plaque, the message or the status cluster only for a moment's tidiness.
+ */
+export interface Obstacle extends Rect {
+  weight: number;
+}
+
+/**
+ * What it costs to cover each kind of thing. A rank corner never; the sender's own plaque only lightly,
+ * since a bubble on your own nameplate still reads as yours; someone else's more, as it would look like theirs.
+ */
+export const COVER = { corner: 100, button: 20, plaque: 12, own: 6, message: 4, tag: 2 } as const;
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), Math.max(lo, hi));
 
 /**
- * Beside an avatar, towards the middle of the table. Sideways, the top seats sit 6px from the top of the
- * screen, and upright your own plaque is at the bottom, so above or outwards would leave the screen. `ux`
- * and `uy` say which way it went (a unit vector), so the bubble can grow out of the avatar.
+ * A bubble at (x, y) overlaps this rectangle. Grazing a plaque's edge doesn't count; a rank corner gets no
+ * such allowance.
  */
-export function beside(a: Spot, box: Box): { x: number; y: number; ux: number; uy: number } {
+const meets = (x: number, y: number, o: Obstacle) =>
+  Math.hypot(clamp(x, o.left, o.right) - x, clamp(y, o.top, o.bottom) - y) < BUBBLE_R - (o.weight >= COVER.corner ? 0 : GRAZE);
+
+/**
+ * Beside an avatar, just clear of it: of sixteen spots around it, the one that covers the least, leaning
+ * towards the middle of the table, and always whole inside `bounds` (the table, unless told otherwise).
+ * Sideways the top seats sit 6px from the top of the screen, and upright your own plaque is at the bottom,
+ * so above or outwards would leave the screen; a flat plaque's name runs beside the avatar; and the trick's
+ * rank corners must always show. `ux` and `uy` say which way it went (a unit vector), so the bubble can
+ * grow out of the avatar.
+ */
+export function beside(
+  a: Spot,
+  box: Box,
+  avoid: readonly Obstacle[] = [],
+  bounds: Rect = { left: 0, top: 0, right: box.width, bottom: box.height },
+): { x: number; y: number; ux: number; uy: number } {
   const dx = box.width / 2 - a.x;
   const dy = box.height / 2 - a.y;
   const len = Math.hypot(dx, dy) || 1;
-  const ux = dx / len;
-  const uy = dy / len;
-  return {
-    x: clamp(a.x + ux * a.size * OUT, BUBBLE_R, box.width - BUBBLE_R),
-    y: clamp(a.y + uy * a.size * OUT, BUBBLE_R, box.height - BUBBLE_R),
-    ux,
-    uy,
-  };
+  const inward = Math.atan2(dy / len, dx / len);
+  const d = a.size / 2 + BUBBLE_R + GAP;
+  let best: { x: number; y: number; ux: number; uy: number } | null = null;
+  let least = Infinity;
+  // Straight in first, then round both ways a sixteenth of a turn at a time, so a tie goes to the more inward.
+  for (let k = 0; k < 16; k++) {
+    const step = Math.ceil(k / 2) * (k % 2 ? 1 : -1);
+    const ux = Math.cos(inward + (step * Math.PI) / 8);
+    const uy = Math.sin(inward + (step * Math.PI) / 8);
+    const x = a.x + ux * d;
+    const y = a.y + uy * d;
+    if (x - BUBBLE_R < bounds.left || y - BUBBLE_R < bounds.top || x + BUBBLE_R > bounds.right || y + BUBBLE_R > bounds.bottom) continue;
+    let cost = Math.abs(step) * 0.75;
+    for (const o of avoid) if (meets(x, y, o)) cost += o.weight;
+    if (cost < least) [least, best] = [cost, { x, y, ux, uy }];
+  }
+  // Nowhere fits (a table smaller than any phone's): inwards, kept on the table.
+  return (
+    best ?? {
+      x: clamp(a.x + (dx / len) * d, BUBBLE_R, box.width - BUBBLE_R),
+      y: clamp(a.y + (dy / len) * d, BUBBLE_R, box.height - BUBBLE_R),
+      ux: dx / len,
+      uy: dy / len,
+    }
+  );
 }
 
 /**

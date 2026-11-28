@@ -3,7 +3,7 @@
 
 <script lang="ts">
   import { untrack } from 'svelte';
-  import { type Spot, type TauntShow, arc, beside } from '../../lib/taunt-client';
+  import { COVER, type Obstacle, type Rect, type Spot, type TauntShow, arc, beside } from '../../lib/taunt-client';
   import { EMOTES, THROWS, tauntById } from '../../lib/taunts';
 
   interface Props {
@@ -15,8 +15,10 @@
     cooldownUntil: number;
     send: (taunt: string, to: number | null) => void;
     close: () => void;
+    /** Told each time a taunt is actually drawn, with who sent it. */
+    shown?: (from: number) => void;
   }
-  let { feed, tray, cooldownUntil, send, close }: Props = $props();
+  let { feed, tray, cooldownUntil, send, close, shown }: Props = $props();
 
   // ----- What's on screen: a bubble by an avatar, or something in flight. Each is placed once, when it
   // starts, and taken away by a timer (reduced motion finishes animations at once, so never animationend).
@@ -31,6 +33,40 @@
   let seen = 0;
   let keys = 0;
   const px = (n: number) => `${Math.round(n)}px`;
+
+  /** What a bubble should keep off, as things stand when it starts (sideways, the name, chips and hand lie over the table). */
+  function obstacles(box: DOMRect, sender: number): Obstacle[] {
+    const table = layer.closest('.layout') ?? document;
+    const all = (selector: string, weight: number | ((e: Element) => number)) =>
+      [...table.querySelectorAll(selector)].map((e) => {
+        const r = e.getBoundingClientRect();
+        const w = typeof weight === 'number' ? weight : weight(e);
+        return { left: r.left - box.left, top: r.top - box.top, right: r.right - box.left, bottom: r.bottom - box.top, weight: w };
+      });
+    const whose = (e: Element) => (e.closest<HTMLElement>('[data-user]')?.dataset.user === String(sender) ? COVER.own : COVER.plaque);
+    return [
+      ...all('.trick .played .index > *, .hand .pc .index > *', COVER.corner),
+      ...all('.action-bar', COVER.button),
+      ...all('.seat .plaque', whose),
+      ...all('.msg, .counter, .statusbar .game-name, .statusbar .badge', COVER.message),
+      ...all('.seat-tags .tag', COVER.tag),
+    ];
+  }
+
+  /**
+   * Where a bubble may go: the table, plus the bit of screen just around it that you can see. Upright,
+   * that's the name and chips above the top seats; never under the site's header, and never far off the table.
+   */
+  function room(box: DOMRect): Rect {
+    const header = document.querySelector('.site-header')?.getBoundingClientRect();
+    const MORE = 60;
+    return {
+      left: Math.max(-box.left, -MORE),
+      top: Math.max(Math.max(0, header?.bottom ?? 0) - box.top, -MORE),
+      right: Math.min(innerWidth - box.left, box.width + MORE),
+      bottom: Math.min(innerHeight - box.top, box.height + MORE),
+    };
+  }
 
   function start(s: TauntShow) {
     const t = tauntById(s.taunt);
@@ -59,13 +95,15 @@
         .join(';')};--r:${to.x < from.x ? -28 : 28}deg`;
     } else {
       // An emote, or (reduced motion) a throw that has simply landed beside its target.
-      const b = beside(to ?? from, { width: box.width, height: box.height });
+      // Beside whoever it's about: the sender's emote, or the target of a throw that has landed.
+      const b = beside(to ?? from, { width: box.width, height: box.height }, obstacles(box, to ? (s.to ?? s.from) : s.from), room(box));
       if (to) cls = 'b hit';
       style = `left:${px(b.x)};top:${px(b.y)};transform-origin:${Math.round(50 - b.ux * 50)}% ${Math.round(50 - b.uy * 50)}%`;
     }
     const key = ++keys;
     items.push({ key, emoji: t.emoji, cls, style });
     setTimeout(() => (items = items.filter((i) => i.key !== key)), ms);
+    shown?.(s.from);
   }
 
   // Each new arrival starts once. A tab that loads this late (on the first taunt) still plays that one.
@@ -98,6 +136,8 @@
 
   /** Focus moves into the tray, so Tab reaches its buttons and Escape closes it without reaching the hand result's. */
   function own(el: HTMLElement) {
+    // The avatar that opened it gets focus back when it closes, so a keyboard player isn't sent back to the top.
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     el.focus({ preventScroll: true });
     const key = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
@@ -105,7 +145,11 @@
       close();
     };
     el.addEventListener('keydown', key);
-    return () => el.removeEventListener('keydown', key);
+    return () => {
+      el.removeEventListener('keydown', key);
+      const lost = !document.activeElement || document.activeElement === document.body || el.contains(document.activeElement);
+      if (lost && opener?.isConnected && opener !== document.body) opener.focus({ preventScroll: true });
+    };
   }
 </script>
 
@@ -163,13 +207,13 @@
 
   /* An emote: a small light bubble that pops out of the avatar, holds, and fades. */
   .b {
-    width: 50px;
-    height: 50px;
-    margin: -25px 0 0 -25px;
+    width: 44px;
+    height: 44px;
+    margin: -22px 0 0 -22px;
     border-radius: 50%;
     background: var(--card-face);
     box-shadow: var(--plaque-shadow);
-    font-size: 32px;
+    font-size: 28px;
     animation: pop 2.2s var(--ease) both;
   }
 

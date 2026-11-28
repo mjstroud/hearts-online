@@ -5,7 +5,7 @@
   import { type Card, cardLabel, isPenaltyCard } from '../../lib/engine/cards';
   import type { HandSummary } from '../../lib/engine/view';
   import type { MoveTiming, TimedMove } from '../../lib/latency.svelte';
-  import { endedLive, finalTrickHoldMs } from '../../lib/moments';
+  import { SHOT_MS, endedLive, finalTrickHoldMs } from '../../lib/moments';
   import { postJson } from '../../lib/post-json';
   import type { TauntShow } from '../../lib/taunt-client';
   import { dueHeld, routeTaunt, sendOutcome } from '../../lib/taunt-route';
@@ -303,7 +303,8 @@
         shotInMemory = current.hand.number;
         remember(shotKey, shotInMemory);
         // Reduced motion gets a still banner, so it needn't stay as long.
-        endingTimer = setTimeout(endHand, prefersReducedMotion.current ? 1500 : 2200);
+        // SHOT_MS is shared with the server, whose cats wait for the result before they react.
+        endingTimer = setTimeout(endHand, prefersReducedMotion.current ? 1500 : SHOT_MS);
       },
       () => {
         clearTimeout(giveUp);
@@ -361,8 +362,11 @@
   function showTaunt(ev: TauntEvent) {
     const at = Date.now();
     tauntFeed = [...tauntFeed.filter((s) => at - s.at < 5000), { ...ev, id: ++tauntsShown, at }].slice(-6);
-    // Once per device, the first time someone else taunts you.
-    if (ev.from === view.me.userId || tipped) return;
+  }
+
+  /** Once per device, the first time the table actually draws someone else's taunt. */
+  function tauntShown(from: number) {
+    if (from === view.me.userId || tipped) return;
     tipped = true;
     try {
       if (localStorage.getItem('hearts:taunt-tip')) return;
@@ -590,6 +594,7 @@
     {tauntFeed}
     {tauntCooldown}
     {sendTaunt}
+    {tauntShown}
   />
 {:else}
   <FinalResults {view} {act} {busy} onShowResult={() => (resultOpen = true)} />

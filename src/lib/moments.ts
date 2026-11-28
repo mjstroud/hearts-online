@@ -12,7 +12,7 @@ import type { HandSummary, TableView } from './engine/view';
 export const MIN_SHOW_MS = 1200;
 /** The shortest time the hand's final trick sits on the felt before a Sun or Moon celebration or the result. */
 export const FINAL_TRICK_MS = 1200;
-/** How long the Sun or Moon banner stays up before the result (Game.svelte's showShot waits this long too). */
+/** How long the Sun or Moon banner stays up before the result (Game.svelte's showShot; the cats wait it out too). */
 export const SHOT_MS = 2200;
 /** Cards that land in one update slide in this far apart (ms), so the order they were played in still reads. */
 export const STAGGER_MS = 150;

@@ -40,10 +40,15 @@
   let Taunts = $state.raw<(typeof import('./TauntLayer.svelte'))['default'] | null>(null);
   let tauntsGone = $state(false);
   let tauntLayer: Promise<unknown> | undefined;
+  let tauntFails = 0;
   const loadTaunts = () =>
     (tauntLayer ??= import('./TauntLayer.svelte').then(
       (m) => (Taunts = m.default),
-      () => (tauntsGone = true),
+      () => {
+        // One more try on the next taunt or tap, in case it was a blip (a phone switching networks).
+        tauntLayer = undefined;
+        tauntsGone = ++tauntFails >= 2;
+      },
     ));
 
   interface Props {
@@ -70,6 +75,8 @@
     tauntCooldown?: number;
     /** Sends an emote (`to` null) or a throw. Without it, the avatars aren't buttons. */
     sendTaunt?: (taunt: string, to: number | null) => void;
+    /** A taunt was drawn, from this user. */
+    tauntShown?: (from: number) => void;
   }
   let {
     view,
@@ -85,6 +92,7 @@
     tauntFeed = [],
     tauntCooldown = 0,
     sendTaunt,
+    tauntShown,
   }: Props = $props();
 
   type Pos = 'bottom' | 'left' | 'top' | 'right' | 'top-left' | 'top-right';
@@ -283,10 +291,18 @@
     if (!canTaunt) return;
     loadTaunts();
     inspect = null;
-    tray = tray === userId ? null : userId;
+    // A second tap on the same avatar closes it, but only once the tray can show: before the layer has
+    // loaded, a repeat tap would otherwise close a tray nobody has seen yet.
+    tray = Taunts && tray === userId ? null : userId;
   }
   $effect(() => {
     if (tauntFeed.length) loadTaunts();
+  });
+  // A hand's result is coming, whether or not this tab saw its last trick live (say, after a dropped
+  // stream): the tray makes way, as it does for the final trick below.
+  $effect(() => {
+    void view.lastHand?.number;
+    untrack(() => (tray = null));
   });
 
   // ----- One message slot. Moments queue by priority and each stays up at least MIN_SHOW_MS;
@@ -769,7 +785,7 @@
 
       <!-- Bubbles and throws over the seats and the message, and the tray where the inspector opens. -->
       {#if Taunts && canTaunt && sendTaunt}
-        <Taunts feed={tauntFeed} tray={trayFor} cooldownUntil={tauntCooldown} send={sendTaunt} close={() => (tray = null)} />
+        <Taunts feed={tauntFeed} tray={trayFor} cooldownUntil={tauntCooldown} send={sendTaunt} close={() => (tray = null)} shown={tauntShown} />
       {/if}
 
       {#if inspected}

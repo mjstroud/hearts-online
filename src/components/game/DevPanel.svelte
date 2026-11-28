@@ -5,7 +5,6 @@
   import type { Card } from '../../lib/engine/cards';
   import { PRESETS, type PresetId } from '../../lib/engine/presets';
   import { latency, median } from '../../lib/latency.svelte';
-  import { postJson } from '../../lib/post-json';
   import { EMOTES, THROWS } from '../../lib/taunts';
   import type { BotMode, BotSpeed, GameAction, GameView } from '../../lib/types';
   import Avatar from '../Avatar.svelte';
@@ -102,8 +101,17 @@
     const throwing = Math.random() < 0.5;
     const taunt = pick(throwing ? THROWS : EMOTES).id;
     catNote = '';
-    const { ok, status, data } = await postJson(`/api/games/${view.id}/taunt`, { taunt, to: throwing ? view.me.userId : null, as: pick(cats).userId });
-    if (!ok) catNote = status ? (data.error ?? `Failed (${status}).`) : 'Network hiccup.';
+    // Plain fetch, not postJson: importing that here would split it out of the game page's own chunk.
+    try {
+      const res = await fetch(`/api/games/${view.id}/taunt`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taunt, to: throwing ? view.me.userId : null, as: pick(cats).userId }),
+      });
+      if (!res.ok) catNote = ((await res.json().catch(() => ({}))) as { error?: string }).error ?? `Failed (${res.status}).`;
+    } catch {
+      catNote = 'Network hiccup.';
+    }
   }
 
   function deal() {

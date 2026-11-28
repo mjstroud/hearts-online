@@ -19,9 +19,8 @@ const given = (value: unknown) => value !== undefined && value !== null;
 export const POST: APIRoute = async ({ params, request, locals }) => {
   const gameId = params.id!;
   const userId = locals.user!.id;
-  const players = getPlayers(gameId);
   // Same answer for "no such game" and "not your game", like the state endpoint.
-  if (!players.some((p) => p.userId === userId)) return jsonError('Game not found.', 404);
+  if (!getPlayers(gameId).some((p) => p.userId === userId)) return jsonError('Game not found.', 404);
 
   let body: Partial<Record<keyof TauntRequest | 'as', unknown>>;
   try {
@@ -35,7 +34,9 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
   const game = sql('SELECT status, mode, owner_id FROM games WHERE id = ?').get(gameId) as
     | { status: GameStatus; mode: string; owner_id: number }
     | undefined;
-  if (!game) return jsonError('Game not found.', 404);
+  // Who's seated is read again now: another request (a removal, say) can run while the body arrives.
+  const players = getPlayers(gameId);
+  if (!game || !players.some((p) => p.userId === userId)) return jsonError('Game not found.', 404);
 
   const taunt = tauntById(body.taunt);
   if (!taunt) return jsonError('That isn’t one of the taunts.');

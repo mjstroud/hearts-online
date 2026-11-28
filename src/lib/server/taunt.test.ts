@@ -6,7 +6,8 @@ import { TAUNT_COOLDOWN_MS, type TauntEvent } from '../taunts';
 
 // How a cat answers a throw is the chatter's own business: here we only check that it's asked.
 const { catHit } = vi.hoisted(() => ({ catHit: vi.fn() }));
-vi.mock('./chatter', () => ({ catHit }));
+// Partial, so games.ts still finds the chatter's other exports (catsReact, clearCatReaction).
+vi.mock('./chatter', async (original) => ({ ...(await original<typeof import('./chatter')>()), catHit }));
 
 // A throwaway database, set before the server modules open it.
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearts-taunt-test-'));
