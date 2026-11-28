@@ -8,6 +8,7 @@
   import { endedLive, finalTrickHoldMs } from '../../lib/moments';
   import { postJson } from '../../lib/post-json';
   import type { TauntShow } from '../../lib/taunt-client';
+  import { dueHeld, routeTaunt, sendOutcome } from '../../lib/taunt-route';
   import { TAUNT_COOLDOWN_MS, type TauntEvent, type TauntRequest, tauntById } from '../../lib/taunts';
   import type { GameAction, GameView } from '../../lib/types';
   import { SITE_NAME } from '../../lib/ui';
@@ -371,24 +372,25 @@
   }
 
   function onTaunt(ev: TauntEvent) {
-    if (ev.cid && sentTaunts.delete(ev.cid)) return;
-    const t = tauntById(ev.taunt);
-    const seated = (id: unknown) => view.players.some((p) => p.userId === id);
-    // An older tab with a newer list, someone who has left, or a tab out of sight (no pile to replay on return).
-    if (!t || view.status !== 'active' || document.hidden || !seated(ev.from) || (t.kind === 'throw' && !seated(ev.to))) return;
-    // From your other tab or device: the cooldown is yours here too.
-    if (ev.from === view.me.userId) tauntCooldown = Math.max(tauntCooldown, Date.now() + TAUNT_COOLDOWN_MS);
-    if (ending || resultOpen) heldTaunts.push({ ev, at: Date.now() });
-    else showTaunt(ev);
+    const { route, cooldown } = routeTaunt(ev, {
+      status: view.status,
+      players: view.players,
+      me: view.me.userId,
+      hidden: document.hidden,
+      holding: !!ending || resultOpen,
+      sent: sentTaunts,
+    });
+    if (cooldown) tauntCooldown = Math.max(tauntCooldown, Date.now() + TAUNT_COOLDOWN_MS);
+    if (route === 'hold') heldTaunts.push({ ev, at: Date.now() });
+    else if (route === 'show') showTaunt(ev);
   }
 
   $effect(() => {
     if (ending || resultOpen) return;
     untrack(() => {
-      const now = Date.now();
-      const due = heldTaunts.filter((h) => now - h.at < 8000);
+      const due = dueHeld(heldTaunts, Date.now(), { status: view.status, hidden: document.hidden });
       heldTaunts = [];
-      if (view.status === 'active' && !document.hidden) due.forEach((h) => showTaunt(h.ev));
+      due.forEach((h) => showTaunt(h.ev));
     });
   });
 
@@ -403,16 +405,11 @@
     tauntCooldown = sentAt + TAUNT_COOLDOWN_MS;
     showTaunt({ taunt, from: view.me.userId, to, cid });
     const body: TauntRequest = { taunt, to, cid };
-    postJson(`/api/games/${view.id}/taunt`, body).then(({ ok, status, data }) => {
-      if (ok) {
-        if (typeof data.cooldownMs === 'number') tauntCooldown = sentAt + data.cooldownMs;
-        return;
-      }
-      // Timed out: it may have landed, and its echo may still come, so the id stays.
-      if (!status) return showToast('Network hiccup — please try again.');
-      sentTaunts.delete(cid);
-      if (status === 429 && typeof data.retryAfterMs === 'number') tauntCooldown = Date.now() + data.retryAfterMs;
-      showToast(data.error ?? 'Something went wrong.');
+    postJson(`/api/games/${view.id}/taunt`, body).then((res) => {
+      const { until, forget, toast } = sendOutcome(res, sentAt, Date.now());
+      if (until !== null) tauntCooldown = until;
+      if (forget) sentTaunts.delete(cid);
+      if (toast) showToast(toast);
     });
   }
 
