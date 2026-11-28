@@ -33,7 +33,8 @@ npm start                 # run the production build
 - `src/pages/`: routes, plus the JSON and SSE API under `api/games/[id]/` (`action`, `state`, `events`, and `hands/[number]` for the trick review). `src/pages/dev/` holds dev-only routes.
 - `src/middleware.ts`: sessions, sign-in for protected paths, same-origin checks, security headers.
 - `src/styles/global.css`: shared styles and theme variables. `scripts/check-budgets.mjs`: the size budgets.
-- Tests sit next to the code as `*.test.ts`. Server tests point `DATABASE_PATH` at a throwaway file before importing any server module (see the top of `src/lib/server/games.test.ts`).
+- Tests sit next to the code as `*.test.ts`. Server tests point `DATABASE_PATH` at a throwaway file before importing any server module (see the top of `src/lib/server/games.test.ts`). The cats' chatter is random and on its own timers, so `vitest.setup.ts` switches it off for every test file; a test that wants it turns it on with scripted dice, as `chatter.test.ts` does.
+- Chatter (taunts now, chat in 4b) goes to seated players through `sendToSeated` in `games.ts`, never `publish()`. Taunts: `src/lib/taunts.ts` (the list), `api/games/[id]/taunt.ts`, `src/lib/server/chatter.ts` (the cats), and the lazy `TauntLayer.svelte` (tray, bubbles, throws).
 
 ## Ground rules
 

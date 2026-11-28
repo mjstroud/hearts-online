@@ -6,7 +6,7 @@ Built with [Astro](https://astro.build) (server-rendered), [Svelte](https://svel
 
 ## Features
 
-- **Accounts and private games.** Username and password sign-in. Each game has a 6-character join code and invite link, and only seated players can see it. Leave and come back from any device. Site admins can make one-time password reset links from `/admin`.
+- **Accounts and private games.** Username and password sign-in. Each game has a 6-character join code and invite link, and only seated players can see it. On a phone, Share invite in the waiting room opens the share sheet with the link. Leave and come back from any device. Site admins can make one-time password reset links from `/admin`.
 - **Profile photos.** Upload one from the Account page and it replaces your initials wherever players are shown. The browser crops it to a 256px square before uploading. It's stored in the SQLite file with camera and location metadata stripped. The cats always keep their 🐱.
 - **Live or at your own pace.** Moves sync instantly over Server-Sent Events. A game can also sit idle for days and resume where it left off. Optional browser alerts tell you when it's your turn, through a small service worker so they work on Android too. A tab left open across a deploy shows a "New version, tap to refresh" pill.
 - **Phone-first.** Built for phones: no zooming on text boxes or quick taps, notch-safe padding, an action bar that doesn't move the hand, and full reduced-motion support. Turned sideways, the table fills the screen with your cards along its bottom edge, and the page opens scrolled past the header to it. Add it to your home screen for an app-style icon and full-screen window. The Get the app page (`/app`, linked from the account menu, the footer and a dismissible card on /games on phones) shows a one-tap Install button when the browser offers one, and step-by-step instructions for iPhone, Android and computers when it doesn't.
@@ -16,6 +16,8 @@ Built with [Astro](https://astro.build) (server-rendered), [Svelte](https://svel
   - A corner of the felt shows tricks left and whether hearts are broken.
   - **Sun and Moon watches.** Anyone who could still shoot glows: sun rays behind the avatar of whoever has won every trick so far (from the first trick), and a pale Moon halo behind whoever has taken every point card so far (from the first heart). The glow grows in three steps as the run goes on, and from the second step (3 tricks in a row, or 5 hearts) the corner names them too. It's worked out from face-up cards only, so the crib stays secret. The host can turn the watches off.
 - **Table moments.** Short messages when hearts break, the Q♠ is played and eaten, or the J♦ is grabbed. A Sun or Moon watch has no message: its glow lights up, grows, and goes out when the run is broken. When someone shoots the Moon or the Sun, a sunrise or moonrise plays before the results.
+- **Taunts.** During play, tap your own avatar for an emote (😂 😎 😱 😭 😈 😴 👏 ❤️) that pops up beside it, or tap someone else's to throw a 🍅, 🌹, 🐟 or 🥧 at them. The tray opens in the middle of the table, and everyone seated sees the taunt at once. Each player gets one every 15 seconds, and taunts wait until the end of a hand and its result have cleared. They go out over the live stream (`POST /api/games/:id/taunt` sends one), never as a game update, so nothing is saved and /games keeps its order.
+  - **The cats chatter, lightly.** Now and then a cat answers a moment it's part of (about one in four: taking the Q♠ or J♦, breaking hearts, shooting, being hit), a person's Q♠ or shot, or very occasionally a trick it won. At most one cat reacts to any moment. What a cat says comes only from cards played face up, never from its hand or the crib.
 - **Trick review.** Every finished hand's tricks can be replayed from the results screen ("See the tricks") or by tapping a hand number on the scoreboard. They load on demand from `/api/games/:id/hands/:number`.
 - **Terms and privacy.** Short Terms and Privacy pages. New players agree at sign-up, and existing players agree once on their next visit.
 - **Less waiting.**
@@ -45,6 +47,7 @@ Built with [Astro](https://astro.build) (server-rendered), [Svelte](https://svel
   - computer players on auto at a chosen speed, or on manual so you play their cards yourself
   - AI-step one move, finish a trick or a hand, and undo
   - stacked deals: Moon and Sun setups, the Q♠, J♦ or lowest club in the crib, or your own custom deck, with a choice of pass direction
+  - Cat taunt: a random cat sends an emote, or throws something at you, with no cooldown
 
   The panel also shows latency: tap to screen, tap to server reply, and tap to live update. Playtest games don't count toward lifetime stats.
 - **Scoreboard.** Standings, a running-total chart, and a hand-by-hand score sheet marking who took the Q♠, the J♦, the crib, or shot the moon or sun.

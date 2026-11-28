@@ -5,6 +5,7 @@
   import type { Card } from '../../lib/engine/cards';
   import { PRESETS, type PresetId } from '../../lib/engine/presets';
   import { latency, median } from '../../lib/latency.svelte';
+  import { EMOTES, THROWS } from '../../lib/taunts';
   import type { BotMode, BotSpeed, GameAction, GameView } from '../../lib/types';
   import Avatar from '../Avatar.svelte';
   import PlayingCard from '../PlayingCard.svelte';
@@ -88,6 +89,31 @@
   const setBots = (botMode: BotMode) => act({ type: 'dev:bots', botMode });
   const setSpeed = (speed: BotSpeed) => act({ type: 'dev:bots', speed });
 
+  // A random cat sends a random emote, or throws something at you. The server lets a playtest's owner send
+  // as its cats, with no cooldown, so the table's taunts can be tried at will.
+  let catNote = $state('');
+  function pick<T>(list: readonly T[]): T {
+    return list[Math.floor(Math.random() * list.length)];
+  }
+  async function catTaunt() {
+    const cats = view.players.filter((p) => p.isBot);
+    if (!cats.length) return (catNote = 'No cats at this table.');
+    const throwing = Math.random() < 0.5;
+    const taunt = pick(throwing ? THROWS : EMOTES).id;
+    catNote = '';
+    // Plain fetch, not postJson: importing that here would split it out of the game page's own chunk.
+    try {
+      const res = await fetch(`/api/games/${view.id}/taunt`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taunt, to: throwing ? view.me.userId : null, as: pick(cats).userId }),
+      });
+      if (!res.ok) catNote = ((await res.json().catch(() => ({}))) as { error?: string }).error ?? `Failed (${res.status}).`;
+    } catch {
+      catNote = 'Network hiccup.';
+    }
+  }
+
   function deal() {
     act({
       type: 'dev:deal',
@@ -136,6 +162,12 @@
         <span class="label">Show</span>
         <label class="chip"><input type="checkbox" bind:checked={showHands} /> All hands</label>
         <label class="chip"><input type="checkbox" bind:checked={showCrib} /> Crib</label>
+      </div>
+
+      <div class="group">
+        <span class="label">Taunts</span>
+        <button class="btn btn-sm" onclick={catTaunt} title="A random cat sends an emote, or throws something at you">Cat taunt</button>
+        {#if catNote}<span class="faint small" role="status">{catNote}</span>{/if}
       </div>
     </div>
 

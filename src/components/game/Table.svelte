@@ -21,6 +21,7 @@
   } from '../../lib/moments';
   import { fade, fly, scale } from '../../lib/motion';
   import { SIDEWAYS } from '../../lib/phones';
+  import type { TauntShow } from '../../lib/taunt-client';
   import type { GameAction, GameView } from '../../lib/types';
   import { signed } from '../../lib/ui';
   import Avatar from '../Avatar.svelte';
@@ -33,6 +34,23 @@
   // One shared promise, so live updates never restart the load (or reset the panel).
   let devPanel: Promise<typeof import('./DevPanel.svelte')> | undefined;
   const loadDevPanel = () => (devPanel ??= import('./DevPanel.svelte'));
+
+  // Taunts' tray and overlay load on the first taunt, or the first touch on an avatar. If that fails (an
+  // old tab after a deploy, its chunks gone), taunts simply don't show and the avatars stop being buttons.
+  let Taunts = $state.raw<(typeof import('./TauntLayer.svelte'))['default'] | null>(null);
+  let tauntsGone = $state(false);
+  let tauntLayer: Promise<unknown> | undefined;
+  let tauntFails = 0;
+  const loadTaunts = () =>
+    (tauntLayer ??= import('./TauntLayer.svelte').then(
+      (m) => (Taunts = m.default),
+      () => {
+        // One more try on the next taunt or tap, in case it was a blip (a phone switching networks). After
+        // that the failed promise stays, so taunts arriving later don't ask for the missing file again.
+        tauntsGone = ++tauntFails >= 2;
+        if (!tauntsGone) tauntLayer = undefined;
+      },
+    ));
 
   interface Props {
     view: GameView;
@@ -52,6 +70,14 @@
     finalBefore?: TableView | null;
     /** With finalTrick: that hand's summary. */
     finalHand?: HandSummary | null;
+    /** Taunts to draw, newest last (Game.svelte keeps them). */
+    tauntFeed?: TauntShow[];
+    /** When you may taunt again, on this device's clock. */
+    tauntCooldown?: number;
+    /** Sends an emote (`to` null) or a throw. Without it, the avatars aren't buttons. */
+    sendTaunt?: (taunt: string, to: number | null) => void;
+    /** A taunt was drawn, from this user. */
+    tauntShown?: (from: number) => void;
   }
   let {
     view,
@@ -64,6 +90,10 @@
     finalTrick = null,
     finalBefore = null,
     finalHand = null,
+    tauntFeed = [],
+    tauntCooldown = 0,
+    sendTaunt,
+    tauntShown,
   }: Props = $props();
 
   type Pos = 'bottom' | 'left' | 'top' | 'right' | 'top-left' | 'top-right';
@@ -237,14 +267,47 @@
     const tr = which === 'last' ? lastOfHand : shown;
     inspectLead = tr?.plays[0]?.card;
     inspect = inspect === which || !inspectLead || finalTrick ? null : which;
+    tray = null;
   }
   // Close it once its trick leaves the felt (the next lead, or another trick finishing).
   $effect(() => {
     if (inspect && inspected?.plays[0]?.card !== inspectLead) inspect = null;
   });
   const closeOutside = (e: PointerEvent) => {
-    if (inspect && !(e.target as Element).closest?.('[data-insp]')) inspect = null;
+    const at = e.target as Element;
+    if (inspect && !at.closest?.('[data-insp]')) inspect = null;
+    if (tray !== null && !at.closest?.('[data-tray]')) tray = null;
   };
+
+  // ----- Taunts, during play: tap your own avatar for emotes, or someone else's to throw at them. The tray
+  // opens where the inspector does, so opening one closes the other.
+  const canTaunt = $derived(view.status === 'active' && me !== null && !!sendTaunt && !tauntsGone);
+  /** Whose avatar the tray is open for (yours for emotes), by user id. */
+  let tray = $state<number | null>(null);
+  const trayFor = $derived.by(() => {
+    const p = view.players.find((x) => x.userId === tray);
+    return p ? { to: p.seat === me ? null : p.userId, name: p.name } : null;
+  });
+  function openTray(userId: number) {
+    if (!canTaunt) return;
+    loadTaunts();
+    inspect = null;
+    // A second tap on the same avatar closes it, but only once the tray can show: before the layer has
+    // loaded, a repeat tap would otherwise close a tray nobody has seen yet.
+    tray = Taunts && tray === userId ? null : userId;
+  }
+  $effect(() => {
+    if (tauntFeed.length) loadTaunts();
+  });
+  // A hand's result is coming, whether or not this tab saw its last trick live (say, after a dropped
+  // stream): the tray makes way, as it does for the final trick below.
+  // Through a number, not the view itself: the view is a new object on every update (each card a cat plays,
+  // each online dot), and the tray must stay open through those.
+  const handsDone = $derived(view.lastHand?.number ?? 0);
+  $effect(() => {
+    void handsDone;
+    untrack(() => (tray = null));
+  });
 
   // ----- One message slot. Moments queue by priority and each stays up at least MIN_SHOW_MS;
   // with nothing queued it says who took the trick on the felt (and "your lead").
@@ -323,6 +386,8 @@
         finalKey = trickKey(ft);
         hush();
         inspect = null;
+        // The end of a hand takes over the table (and swallows taps), so the taunt tray makes way.
+        tray = null;
         if (ft && live) {
           // The next hand is dealt with the last card, so a Q♠ landing in the final trick gets its ripple here.
           if (ft.plays.some((p) => p.card === QUEEN_OF_SPADES) && !finalBefore?.current?.plays.some((p) => p.card === QUEEN_OF_SPADES)) {
@@ -530,7 +595,14 @@
   });
 </script>
 
-<svelte:window onpointerdown={closeOutside} onkeydown={(e) => e.key === 'Escape' && (inspect = null)} />
+<svelte:window
+  onpointerdown={closeOutside}
+  onkeydown={(e) => {
+    if (e.key !== 'Escape') return;
+    inspect = null;
+    tray = null;
+  }}
+/>
 
 <div class="container wide layout" bind:this={layoutEl}>
   <div class="main">
@@ -654,9 +726,31 @@
       {#each view.players as p (p.userId)}
         {@const pos = posOf(p.seat)}
         {@const acting = view.toAct.includes(p.seat)}
-        <div class={`seat at-${pos}`} class:acting class:me={p.seat === me} class:glowing={glow?.seat === p.seat || fading?.seat === p.seat}>
+        <div
+          class={`seat at-${pos}`}
+          class:acting
+          class:me={p.seat === me}
+          class:glowing={glow?.seat === p.seat || fading?.seat === p.seat}
+          data-user={p.userId}
+        >
           <div class="plaque">
-            <span class="seat-avatar">
+            <!-- During play, a tap on an avatar opens the taunt tray: emotes on yours, throws at anyone else.
+                 It's a button whenever it can be focused. -->
+            <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+            <span
+              class="seat-avatar"
+              role={canTaunt ? 'button' : undefined}
+              tabindex={canTaunt ? 0 : undefined}
+              aria-label={canTaunt ? (p.seat === me ? 'Send an emote' : `Throw something at ${p.name}`) : undefined}
+              data-tray={canTaunt || undefined}
+              onpointerdown={() => canTaunt && loadTaunts()}
+              onclick={() => openTray(p.userId)}
+              onkeydown={(e) => {
+                if (e.key !== 'Enter' && e.key !== ' ') return;
+                e.preventDefault(); // Space would scroll the page
+                openTray(p.userId);
+              }}
+            >
               {#if fading?.seat === p.seat}{#key fading}<WatchGlow kind={fading.kind} level={fading.level} out />{/key}{/if}
               {#if glow?.seat === p.seat}{#key glow.kind}<WatchGlow kind={glow.kind} level={glow.level} ignite={glow.ignite} flare={glow.flare} />{/key}{/if}
               <Avatar name={p.name} seed={p.username} isBot={p.isBot} src={p.avatar} size="var(--av)" />
@@ -692,6 +786,11 @@
           </div>
         </div>
       {/each}
+
+      <!-- Bubbles and throws over the seats and the message, and the tray where the inspector opens. -->
+      {#if Taunts && canTaunt && sendTaunt}
+        <Taunts feed={tauntFeed} tray={trayFor} cooldownUntil={tauntCooldown} send={sendTaunt} close={() => (tray = null)} shown={tauntShown} />
+      {/if}
 
       {#if inspected}
         {@const done = inspected.winner !== null}
@@ -1056,10 +1155,11 @@
     }
   }
 
-  /* The trick inspector: a strip over the middle of the table (it's a panel, so it may cover plaques). */
+  /* The trick inspector: a strip over the middle of the table (it's a panel, so it may cover plaques), and
+     over the taunts' layer (5). The taunt tray opens in the same spot, at the same height. */
   .insp {
     position: absolute;
-    z-index: 5;
+    z-index: 6;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
@@ -1347,6 +1447,11 @@
     flex: none;
     border-radius: 50%;
     padding: 2px;
+  }
+
+  /* A taunt target during play (the focus ring is the site's own, round with the avatar). */
+  .seat-avatar[role='button'] {
+    cursor: pointer;
   }
 
   @container arena (width < 520px) {
