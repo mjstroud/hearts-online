@@ -1,6 +1,6 @@
 # Roadmap
 
-Updated 2026-11-28, checked against the code and the git history. Phases 1 to 3 are live, and so is the [phone pass](#phone-pass-before-phase-4) (`release-2026-11-27.1`, polished in `.2`). Phase 4 is next. It was planned on 2026-11-26 after a read of the code it touches, and its [code pointers](#phase-4-code-pointers) now cover the sideways layout. Every open question is answered (see [Decisions](#decisions)). Phase 4 is live: 4a (taunts) as `release-2026-11-27.4` and 4b (chat, migration v9) as `release-2026-11-28.1` (see [Phase 4](#phase-4-talk-and-tease)). Neither needed a budget rise. Phase 5 (personality) is next.
+Updated 2026-11-28, checked against the code and the git history. Phases 1 to 3 are live, and so is the [phone pass](#phone-pass-before-phase-4) (`release-2026-11-27.1`, polished in `.2`). Phase 4 was planned on 2026-11-26 after a read of the code it touches, and its [code pointers](#phase-4-code-pointers) cover the sideways layout. Every open question is answered (see [Decisions](#decisions)). Phase 4 is live: 4a (taunts) as `release-2026-11-27.4` and 4b (chat, migration v9) as `release-2026-11-28.1` (see [Phase 4](#phase-4-talk-and-tease)). Neither needed a budget rise. Phase 5 (personality) is next.
 
 Sizes are in Claude Code working sessions:
 
