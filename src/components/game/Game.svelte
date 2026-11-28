@@ -458,8 +458,16 @@
   let chatSkew = 0;
   /** Wide enough for chat to open beside the table (over the standings) rather than over it. */
   let wideScreen = $state(false);
-  /** The sheet is over the table: the end of a hand waits for it to close, and plays then. */
-  const chatCovers = $derived(chatOpen && !wideScreen);
+  // The sheet's code, fetched the first time chat is opened (or the button is first touched).
+  type ChatSheetModule = typeof import('./ChatSheet.svelte');
+  let chatSheet: Promise<unknown> | undefined;
+  let ChatSheet = $state.raw<ChatSheetModule['default'] | null>(null);
+  /**
+   * The sheet is drawn over the screen (not just asked for): the end of a hand waits for it to go, and plays
+   * then. Only the table keeps room beside it (the standings column); the waiting room and the end screen
+   * would lose their buttons under a panel, so there it covers, with a backdrop, on any screen.
+   */
+  const chatCovers = $derived(chatOpen && !!ChatSheet && !(wideScreen && !!tableView));
   /** Typing in the panel beside the table: the hand result waits until the message is sent or you look away. */
   const chatTyping = $derived(chatOpen && !chatCovers && chatFocus && !!chatDraft.trim());
   const chatReadKey = $derived(`hearts:chat-read:${view.id}`);
@@ -471,51 +479,59 @@
   /** How far down the page was when a sheet over the table opened, to go back to when it closes. */
   let scrollBefore: number | null = null;
 
-  type ChatSheetModule = typeof import('./ChatSheet.svelte');
-  let chatSheet: Promise<unknown> | undefined;
-  let chatFails = 0;
-  let ChatSheet = $state.raw<ChatSheetModule['default'] | null>(null);
   const loadChat = () =>
     (chatSheet ??= import('./ChatSheet.svelte').then(
       (m) => (ChatSheet = m.default),
       () => {
-        // Say, an old tab after a deploy, its chunks gone. One more try in case it was a blip, then the
-        // failed promise stays, and the New version pill says what to do.
-        if (++chatFails < 2) chatSheet = undefined;
-        else newVersion = true;
+        // Offline for a moment, or an old tab whose chunks went with a deploy (the stream's build event then
+        // shows the New version pill). Either way the next tap tries again.
+        chatSheet = undefined;
         if (chatOpen) {
           closeChat();
-          showToast(chatFails < 2 ? 'Chat didn’t load. Tap it to try again.' : 'Chat has been updated. Refresh the page to open it.');
+          showToast('Chat didn’t load. Check your connection and tap it again.');
         }
       },
     ));
 
   function openChat() {
-    if (chatFails >= 2) return showToast('Chat has been updated. Refresh the page to open it.');
     loadChat();
     if (chatOpen) return;
     chatOpen = true;
-    if (chatCovers) {
-      scrollBefore = window.scrollY;
-      // The end of a hand would play unseen under the sheet: it stops here, and plays as on a page load once
-      // chat closes (straight to any Sun or Moon not yet seen, then the result).
-      if (ending || resultWaiting) {
-        clearTimeout(endingTimer);
-        ending = null;
-        resultWaiting = false;
-        endedHidden = true;
-      }
-    }
     // Insurance against anything the stream missed; its reconnects ask too.
     syncChat();
   }
 
   function closeChat() {
     if (!chatOpen) return;
-    const covered = chatCovers;
     chatOpen = false;
     chatFocus = false;
-    if (covered && scrollBefore !== null) {
+    // Now, not on the next tick, so taunts held for chat don't play before the hand end they belong after.
+    setCovering(false);
+  }
+
+  /**
+   * Whether chat is covering the table, so the end of a hand is held. It starts once the sheet is actually
+   * drawn over it (opened, or a tablet turned upright with chat open) and ends when chat closes or the screen
+   * turns wide enough for chat to sit beside the table.
+   */
+  let covering = false;
+  function setCovering(on: boolean) {
+    if (on === covering) return;
+    covering = on;
+    if (on) {
+      scrollBefore = window.scrollY;
+      // The end of a hand would play unseen under the sheet: it stops, and plays as on a page load once the
+      // sheet is out of the way (straight to any Sun or Moon not yet seen, then the result, if not seen).
+      if (ending || resultWaiting || resultOpen) {
+        clearTimeout(endingTimer);
+        ending = null;
+        resultWaiting = false;
+        resultOpen = false;
+        endedHidden = true;
+      }
+      return;
+    }
+    if (!chatOpen && scrollBefore !== null) {
       // A phone may have scrolled the page to the box you typed in. Back to where it was; sideways, the
       // table centres itself again (Table.svelte).
       window.scrollTo(0, scrollBefore);
@@ -527,6 +543,10 @@
       handEnded(view.lastHand, null);
     }
   }
+  $effect(() => {
+    const on = chatCovers;
+    untrack(() => setCovering(on));
+  });
 
   function addChat(incoming: readonly ChatMessage[]) {
     if (incoming.length) chat = mergeChat(chat, incoming, Date.now() + chatSkew);
@@ -539,6 +559,11 @@
    */
   let syncing = false;
   let syncAgain = false;
+  /**
+   * The newest id history has answered with. Only history moves it, never the stream or your own send: a
+   * message you send while the stream is down mustn't hide the ones others sent meanwhile.
+   */
+  let chatSynced = 0;
   async function syncChat() {
     if (syncing) {
       syncAgain = true;
@@ -547,13 +572,15 @@
     syncing = true;
     try {
       for (let page = 0; page < 20; page++) {
-        const after = lastChatId(chat);
+        const after = chatSynced;
         const res = await fetch(`/api/games/${view.id}/chat?after=${after}`, { cache: 'no-store' });
         if (!res.ok) break;
         const data = await res.json();
         if (!Array.isArray(data?.messages)) break;
         if (typeof data.now === 'number') chatSkew = data.now - Date.now();
         addChat(data.messages);
+        // Oldest first either way, so the last is the newest.
+        chatSynced = Math.max(chatSynced, data.messages.at(-1)?.id ?? 0);
         // From nothing, the newest page is enough. From an id, keep going until caught up.
         if (!after || !data.more || !data.messages.length) break;
       }
@@ -590,16 +617,22 @@
     });
     if (route === 'hold') heldChat = hold(heldChat, { m, at: Date.now() });
     else if (route === 'show') showPreview(m);
-    else if (route === 'toast') showToast(`💬 ${clip(m.name, 20)}: ${clip(m.text, 70)}`);
+    else if (route === 'toast') noteChat(m);
   }
 
-  // Held previews play once the end of the hand and its result have cleared, if they're still fresh.
+  /** A short note off the table (the waiting room, the end screen), which has no avatars to put a preview on. */
+  const noteChat = (m: ChatMessage) => showToast(`💬 ${clip(m.name, 20)}: ${clip(m.text, 70)}`);
+
+  // Held previews play once the end of the hand and its result have cleared, if they're still fresh: on the
+  // table's avatars, or after a game's last hand, as notes on the end screen.
   $effect(() => {
     if (ending || resultOpen || resultWaiting || chatCovers) return;
     untrack(() => {
-      const due = newestEach(dueHeld(heldChat, Date.now(), { status: view.status, hidden: document.hidden }));
+      const atTable = view.status === 'active';
+      const due = newestEach(dueHeld(heldChat, Date.now(), { status: 'active', hidden: document.hidden }));
       heldChat = [];
-      if (!chatMuted && !chatOpen) due.forEach((h) => showPreview(h.m));
+      if (chatMuted || chatOpen) return;
+      for (const h of due) atTable ? showPreview(h.m) : noteChat(h.m);
     });
   });
 
@@ -897,10 +930,14 @@
     box-shadow: var(--shadow-lg);
     /* Just words: taps go through to the hand or felt beneath (a tip can show up mid-play, unasked). */
     pointer-events: none;
+    /* A message's long word wraps rather than running off the screen. */
+    overflow-wrap: anywhere;
   }
 
   /* The sticky header grows by the top safe-area inset in a home-screen app, so these pills move down with it. */
+  /* Just words, so a tap goes through to the chat button beneath. */
   .conn {
+    pointer-events: none;
     position: fixed;
     top: calc(72px + env(safe-area-inset-top, 0px));
     left: 50%;

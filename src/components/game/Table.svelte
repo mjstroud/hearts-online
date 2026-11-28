@@ -807,6 +807,7 @@
         <Taunts
           feed={tauntFeed}
           {chatFeed}
+          trickKey={`${t.handNumber}.${t.trickNumber}.${t.current?.plays.length ?? 0}`}
           tray={trayFor}
           cooldownUntil={tauntCooldown}
           send={sendTaunt}

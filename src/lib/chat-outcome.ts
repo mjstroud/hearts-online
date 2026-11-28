@@ -34,7 +34,8 @@ export function sendOutcome({ ok, status, data }: PostResult): SendOutcome {
   if (ok && data?.message && typeof data.message.id === 'number') return { kind: 'sent', message: data.message };
   const said = typeof data?.error === 'string' ? data.error : null;
   if (status === 400) return { kind: 'refused', error: said ?? 'That message can’t be sent.' };
-  if (status === 404) return { kind: 'gone', error: 'You’re not at this table any more.' };
+  // The server's own "not your game", not a page from an older server without chat (mid-deploy, or rolled back).
+  if (status === 404 && said) return { kind: 'gone', error: 'You’re not at this table any more.' };
   if (status === 429) return { kind: 'retry', error: said ?? 'Slow down a little.' };
   return { kind: 'retry', error: 'May not have sent.' };
 }

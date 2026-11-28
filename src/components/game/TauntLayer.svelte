@@ -12,6 +12,8 @@
     feed: TauntShow[];
     /** Chat previews to draw on their senders' avatars, newest last. */
     chatFeed?: ChatShow[];
+    /** Changes with every card played to the trick, so a preview a card lands under makes way. */
+    trickKey?: string;
     /** The tray: your own emotes (`to` null), or throws at someone, or closed. */
     tray: { to: number | null; name: string } | null;
     /** When you may taunt again, on this device's clock. */
@@ -21,7 +23,7 @@
     /** Told each time a taunt is actually drawn, with who sent it. */
     shown?: (from: number) => void;
   }
-  let { feed, chatFeed = [], tray, cooldownUntil, send, close, shown }: Props = $props();
+  let { feed, chatFeed = [], trickKey = '', tray, cooldownUntil, send, close, shown }: Props = $props();
 
   // ----- What's on screen: a bubble by an avatar, or something in flight. Each is placed once, when it
   // starts, and taken away by a timer (reduced motion finishes animations at once, so never animationend).
@@ -152,21 +154,49 @@
     });
   });
 
+  /** Another preview or emote already up: a new one goes elsewhere rather than on top of it. */
+  const OTHER_NOTE = 30;
+
   /** Beside its sender's avatar, clear of rank corners. If every spot would cover one, it isn't shown: the count on the chat button still says there's a message. */
   const place = (from: number) => (el: HTMLElement) => {
     const box = layer.getBoundingClientRect();
     const r = layer.parentElement?.querySelector(`[data-user="${from}"] .seat-avatar`)?.getBoundingClientRect();
-    // Its laid-out size: the box on screen is still scaled down by the animation's first frame.
+    // Its laid-out size: the box on screen is still scaled down by the animation's first frame. The width is
+    // fixed at that, so moving it near an edge can't make it wrap onto more lines than were measured.
     if (!r || !el.offsetWidth) return;
+    el.style.width = px(el.offsetWidth + 1);
     const half = { x: el.offsetWidth / 2, y: el.offsetHeight / 2 };
     const a = { x: r.left + r.width / 2 - box.left, y: r.top + r.height / 2 - box.top, size: r.width };
-    const b = beside(a, { width: box.width, height: box.height }, obstacles(box, from), room(box), half);
+    const others = [...layer.querySelectorAll<HTMLElement>('.note, .b')]
+      .filter((o) => o !== el && o.style.visibility !== 'hidden' && (o.classList.contains('b') || o.style.visibility === 'visible'))
+      .map((o) => {
+        const q = o.getBoundingClientRect();
+        return { left: q.left - box.left, top: q.top - box.top, right: q.right - box.left, bottom: q.bottom - box.top, weight: OTHER_NOTE };
+      });
+    const b = beside(a, { width: box.width, height: box.height }, [...obstacles(box, from), ...others], room(box), half);
     if (b.cost >= COVER.corner) return;
     el.style.left = px(b.x - half.x);
     el.style.top = px(b.y - half.y);
     el.style.transformOrigin = `${Math.round(50 - b.ux * 50)}% ${Math.round(50 - b.uy * 50)}%`;
     el.style.visibility = 'visible';
   };
+
+  // A card played after a preview went up may land under it: once the card has slid in, any preview over a
+  // rank corner makes way (the count on the chat button still says there's a message).
+  $effect(() => {
+    void trickKey;
+    const timer = setTimeout(() => {
+      if (!notes.length) return;
+      const corners = [...(layer.closest('.layout') ?? document).querySelectorAll('.trick .played .index > *')].map((c) => c.getBoundingClientRect());
+      const over = new Set<number>();
+      for (const el of layer.querySelectorAll<HTMLElement>('.note')) {
+        const q = el.getBoundingClientRect();
+        if (corners.some((c) => c.left < q.right && c.right > q.left && c.top < q.bottom && c.bottom > q.top)) over.add(Number(el.dataset.key));
+      }
+      if (over.size) notes = notes.filter((n) => !over.has(n.key));
+    }, 450);
+    return () => clearTimeout(timer);
+  });
 
   // ----- The tray. While the cooldown runs it counts down, once a second, only while it's open.
   let now = $state(Date.now());
@@ -205,7 +235,9 @@
 
 <div class="taunts" bind:this={layer} aria-hidden="true">
   {#each items as it (it.key)}<span class={it.cls} style={it.style}>{it.emoji}</span>{/each}
-  {#each notes as n (n.key)}<span class="note" style={`--ms: ${n.ms}ms`} {@attach place(n.from)}><span>{n.text}</span></span>{/each}
+  {#each notes as n (n.key)}<span class="note" data-key={n.key} style={`--ms: ${n.ms}ms`} {@attach place(n.from)}
+      ><span>{n.text}</span></span
+    >{/each}
 </div>
 
 {#if tray}

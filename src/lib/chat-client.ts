@@ -84,9 +84,10 @@ export interface ChatTable {
  */
 export function routeChat(m: ChatMessage, t: ChatTable): 'drop' | 'hold' | 'show' | 'toast' {
   if (m.from === t.me || t.muted || t.open || t.hidden) return 'drop';
+  // First: the end of a game's last hand is still on the table though the game is already over.
+  if (t.holding) return 'hold';
   if (t.status !== 'active') return 'toast';
-  if (!t.players.some((p) => p.userId === m.from)) return 'drop';
-  return t.holding ? 'hold' : 'show';
+  return t.players.some((p) => p.userId === m.from) ? 'show' : 'drop';
 }
 
 /** Only each person's newest of the held previews: a newer one would replace the older at once anyway. */

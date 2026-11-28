@@ -55,6 +55,8 @@ describe('routeChat', () => {
   it('says it in a note in the waiting room and on the end screen, which have no avatars', () => {
     expect(routeChat(msg(1, 2), { ...table, status: 'lobby' })).toBe('toast');
     expect(routeChat(msg(1, 9), { ...table, status: 'finished' })).toBe('toast');
+    // The end of a game's last hand is still playing: held, like any other hand's.
+    expect(routeChat(msg(1, 2), { ...table, status: 'finished', holding: true })).toBe('hold');
   });
 
   it('never for your own, while muted, with the sheet open, out of sight, or from someone gone', () => {
@@ -89,6 +91,8 @@ describe('sendOutcome', () => {
       { ok: false, status: 0, data: {} },
       { ok: false, status: 502, data: {} },
       { ok: false, status: 403, data: {} },
+      // An older server's HTML 404, with no chat route: not the same as being removed.
+      { ok: false, status: 404, data: {} },
       { ok: true, status: 200, data: {} },
     ]) {
       expect(sendOutcome(res)).toEqual({ kind: 'retry', error: 'May not have sent.' });

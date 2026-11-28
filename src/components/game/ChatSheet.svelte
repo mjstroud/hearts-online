@@ -67,7 +67,6 @@
   let newBelow = $state(false);
   /** Why your last message couldn't go, said here rather than in a toast (which the keyboard would hide). */
   let notice = $state('');
-  let composing = false;
 
   onMount(() => {
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -78,7 +77,10 @@
       raf = requestAnimationFrame(() => {
         if (!vv) return;
         const keyboard = vv.offsetTop + vv.height < document.documentElement.clientHeight - 80;
+        // The keyboard coming up shrinks the list from below: keep the newest message in view if it was.
+        const pinned = atBottom;
         frame = { top: vv.offsetTop, height: vv.height, keyboard };
+        if (pinned) tick().then(() => list && (list.scrollTop = list.scrollHeight));
       });
     };
     track();
@@ -100,8 +102,13 @@
       // Back to a chat button, without scrolling, unless focus has already gone somewhere on purpose (the hand
       // result, say). The one that opened it may be gone: the table turns into the end screen.
       const lost = !document.activeElement || document.activeElement === document.body || sheet.contains(document.activeElement);
-      const back = opener?.isConnected && opener !== document.body ? opener : document.querySelector<HTMLElement>('.chat-btn');
-      if (lost) back?.focus({ preventScroll: true });
+      if (!lost) return;
+      // After this update, once the screen behind is no longer inert (focus can't land there before).
+      queueMicrotask(() => {
+        if (document.activeElement && document.activeElement !== document.body) return;
+        const back = opener?.isConnected && opener !== document.body ? opener : document.querySelector<HTMLElement>('.chat-btn');
+        back?.focus({ preventScroll: true });
+      });
     };
   });
 
@@ -177,14 +184,18 @@
     readIfSeen();
   }
 
+  /** After a tap on a button that then goes away (Retry, Remove, the pill): focus stays in the sheet, so Escape and Tab still work here. */
+  function refocus() {
+    if (document.activeElement && document.activeElement !== document.body && sheet.contains(document.activeElement)) return;
+    (matchMedia('(pointer: fine)').matches ? input : sheet).focus({ preventScroll: true });
+  }
+
   // ----- Typing. Counted the way the server counts, after cleaning (line breaks become spaces, and so on).
   const length = $derived(graphemes(cleanChat(draft)).length);
   const left = $derived(CHAT_MAX - length);
 
   function submit(e: SubmitEvent) {
     e.preventDefault();
-    // Enter while a word is still being put together (some phone keyboards, Japanese input) isn't a send.
-    if (composing) return;
     const text = cleanChat(draft);
     const problem = chatError(text);
     if (problem) {
@@ -263,36 +274,56 @@
 
     {#if !connected}<p class="status">Reconnecting… new messages will show once it’s back.</p>{/if}
 
-    <div class="list" role="log" aria-label="Messages" bind:this={list} onscroll={onScroll}>
-      {#if !rows.length}
-        <p class="empty">No messages yet. Only the players at this table can read them, and each one goes after 24 hours.</p>
+    <div class="list-box">
+      <div class="list" role="log" aria-label="Messages" bind:this={list} onscroll={onScroll}>
+        {#if !rows.length}
+          <p class="empty">No messages yet. Only the players at this table can read them, and each one goes after 24 hours.</p>
+        {/if}
+        {#each rows as r (r.key)}
+          {@const cid = r.cid}
+          <div class="msg" class:first={r.first} class:mine={r.from === me} class:sending={r.state === 'sending'}>
+            {#if r.first}
+              <p class="who">
+                <span class="nm" title={r.from === me ? undefined : r.name}>{who(r)}</span>
+                <span class="when num">{when(r.at)}</span>
+              </p>
+            {/if}
+            <!-- Plain text, never HTML: a link stays words. Each line says who to a screen reader. -->
+            <p class="text">{#if !r.first}<span class="sr">{who(r)}: </span>{/if}{r.text}</p>
+            {#if r.state === 'sending'}
+              <p class="state" aria-hidden="true">Sending…</p>
+            {:else if r.state === 'failed' && cid}
+              <p class="state bad">
+                {r.error}
+                <button
+                  class="link"
+                  onclick={() => {
+                    retryChat(gameId, cid, hooks);
+                    tick().then(refocus);
+                  }}>Retry</button
+                >
+                <button
+                  class="link"
+                  onclick={() => {
+                    discardChat(cid);
+                    tick().then(refocus);
+                  }}>Remove</button
+                >
+              </p>
+            {/if}
+          </div>
+        {/each}
+      </div>
+      {#if newBelow}
+        <button
+          class="below"
+          onclick={() => {
+            toBottom();
+            tick().then(refocus);
+          }}>New messages ↓</button
+        >
       {/if}
-      {#each rows as r (r.key)}
-        {@const cid = r.cid}
-        <div class="msg" class:first={r.first} class:mine={r.from === me} class:sending={r.state === 'sending'}>
-          {#if r.first}
-            <p class="who">
-              <span class="nm" title={r.from === me ? undefined : r.name}>{who(r)}</span>
-              <span class="when num">{when(r.at)}</span>
-            </p>
-          {/if}
-          <!-- Plain text, never HTML: a link stays words. Each line says who to a screen reader. -->
-          <p class="text">{#if !r.first}<span class="sr">{who(r)}: </span>{/if}{r.text}</p>
-          {#if r.state === 'sending'}
-            <p class="state" aria-hidden="true">Sending…</p>
-          {:else if r.state === 'failed' && cid}
-            <p class="state bad">
-              {r.error}
-              <button class="link" onclick={() => retryChat(gameId, cid, hooks)}>Retry</button>
-              <button class="link" onclick={() => discardChat(cid)}>Remove</button>
-            </p>
-          {/if}
-        </div>
-      {/each}
     </div>
-    {#if newBelow}
-      <button class="below" onclick={toBottom}>New messages ↓</button>
-    {/if}
 
     {#if notice}<p class="notice" role="alert">{notice}</p>{/if}
     <form class="compose" onsubmit={submit}>
@@ -309,8 +340,11 @@
         onfocus={() => onfocus?.(true)}
         onblur={() => onfocus?.(false)}
         oninput={() => (notice = '')}
-        oncompositionstart={() => (composing = true)}
-        oncompositionend={() => (composing = false)}
+        onkeydown={(e) => {
+          // Enter that finishes a word being put together (Japanese input, some phone keyboards) isn't a send.
+          // A tap on Send still is: Android keyboards keep the last word open until a space.
+          if (e.key === 'Enter' && (e.isComposing || e.keyCode === 229)) e.preventDefault();
+        }}
       />
       {#if left <= 30}
         <span class="left num" class:over={left < 0} aria-live="polite">{left < 0 ? `${-left} over` : left}</span>
@@ -348,6 +382,11 @@
   /* Beside the table on a wide screen: under the hand result and the Sun or Moon, which are a tap to close. */
   .frame.beside {
     z-index: 65;
+  }
+
+  /* No wider than the standings column it covers, with its gap and the page's edge, so the table stays whole. */
+  .beside .sheet {
+    width: 344px !important;
   }
 
   /* Upright phones: a sheet from the bottom, most of the way up, and all of the room above the keyboard. */
@@ -481,6 +520,15 @@
     font-weight: 600;
   }
 
+  /* The list and the "New messages" pill, which sits at the list's foot whatever is below it. */
+  .list-box {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
   .list {
     flex: 1;
     min-height: 0;
@@ -567,7 +615,7 @@
   .below {
     position: absolute;
     left: 50%;
-    bottom: 76px;
+    bottom: 8px;
     transform: translateX(-50%);
     padding: 6px 14px;
     border: 1px solid var(--border-strong);
