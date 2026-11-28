@@ -67,9 +67,10 @@ function coveredBy(doc: Document, own: Element, x: number, y: number): Element |
   const top = doc.elementFromPoint(x, y);
   if (!top) return 'offscreen';
   if (own.contains(top)) return null;
-  // The trick inspector opens over the table on purpose, and a moment's message sits on top for a moment.
-  // Astro's own toolbar only exists under npm run dev.
-  if (top.closest('.insp, .msg, astro-dev-toolbar')) return null;
+  // The trick inspector and the taunt tray open over the table on purpose, and a moment's message sits on
+  // top for a moment. (Bubbles and throws let taps through, so they're never what's found here.) Astro's own
+  // toolbar only exists under npm run dev.
+  if (top.closest('.insp, .taunt-tray, .msg, astro-dev-toolbar')) return null;
   return top;
 }
 
