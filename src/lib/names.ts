@@ -40,8 +40,10 @@ export function clipToLength(text: string, maxUnits: number): string {
 // hide a name or flip the text around it. Keep the joiners, variation selectors and tags that emoji
 // and some scripts (Persian, Mongolian, Indic) need.
 const INVISIBLE = /(?![\u200c\u200d\u180b-\u180f\ufe00-\ufe0f\u{E0020}-\u{E007F}\u{E0100}-\u{E01EF}])[\p{Cf}\p{Default_Ignorable_Code_Point}\u2800]/gu;
-// Tag characters only mean something inside a flag emoji (England, Scotland, Wales).
-const STRAY_TAGS = /(?<!\p{Extended_Pictographic}[\u{E0020}-\u{E007E}]*)[\u{E0020}-\u{E007F}]/gu;
+// Tag characters only mean something inside a flag emoji (England, Scotland, Wales): an emoji, its tags and
+// at most one cancel tag stay, and any other tag goes. One pass, in step with the text (a lookbehind here
+// cost a second of CPU for a long run of tags).
+const STRAY_TAGS = /(\p{Extended_Pictographic}[\u{E0020}-\u{E007E}]*\u{E007F}?)|[\u{E0020}-\u{E007F}]/gu;
 // Half of an emoji, left over from a broken copy and paste.
 const LONE_SURROGATES = /\p{Cs}/gu;
 // A joiner or tag between two accents does nothing except split up a pile of accents.
@@ -58,7 +60,7 @@ export function normalizeDisplayName(raw: string): string {
     .replace(LONE_SURROGATES, '')
     .replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, ' ')
     .replace(INVISIBLE, '')
-    .replace(STRAY_TAGS, '')
+    .replace(STRAY_TAGS, (_, flag?: string) => flag ?? '')
     .replace(JOINERS_BETWEEN_MARKS, '')
     .normalize('NFC')
     .replace(STACKED_MARKS, '$1')

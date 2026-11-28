@@ -58,12 +58,23 @@ export const COVER = { corner: 100, button: 20, plaque: 12, own: 6, message: 4, 
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), Math.max(lo, hi));
 
+/** Half a rectangular bubble's size: a chat preview, wider than it's tall. Taunts' bubbles are round. */
+export interface Half {
+  x: number;
+  y: number;
+}
+
 /**
  * A bubble at (x, y) overlaps this rectangle. Grazing a plaque's edge doesn't count; a rank corner gets no
- * such allowance.
+ * such allowance. A round one (a taunt's) by its radius, a rectangular one (a chat preview's) by its sides.
  */
-const meets = (x: number, y: number, o: Obstacle) =>
-  Math.hypot(clamp(x, o.left, o.right) - x, clamp(y, o.top, o.bottom) - y) < BUBBLE_R - (o.weight >= COVER.corner ? 0 : GRAZE);
+function meets(x: number, y: number, o: Obstacle, half: Half | null): boolean {
+  const graze = o.weight >= COVER.corner ? 0 : GRAZE;
+  if (!half) return Math.hypot(clamp(x, o.left, o.right) - x, clamp(y, o.top, o.bottom) - y) < BUBBLE_R - graze;
+  const w = Math.min(x + half.x, o.right) - Math.max(x - half.x, o.left);
+  const h = Math.min(y + half.y, o.bottom) - Math.max(y - half.y, o.top);
+  return w > graze && h > graze;
+}
 
 /**
  * Beside an avatar, just clear of it: of sixteen spots around it, the one that covers the least, leaning
@@ -71,42 +82,47 @@ const meets = (x: number, y: number, o: Obstacle) =>
  * Sideways the top seats sit 6px from the top of the screen, and upright your own plaque is at the bottom,
  * so above or outwards would leave the screen; a flat plaque's name runs beside the avatar; and the trick's
  * rank corners must always show. `ux` and `uy` say which way it went (a unit vector), so the bubble can
- * grow out of the avatar.
+ * grow out of the avatar. `half` makes it a rectangle of that half-size (a chat preview) instead of a taunt's
+ * round bubble, and `cost` says what the chosen spot covers (COVER.corner or more: a rank corner).
  */
 export function beside(
   a: Spot,
   box: Box,
   avoid: readonly Obstacle[] = [],
   bounds: Rect = { left: 0, top: 0, right: box.width, bottom: box.height },
-): { x: number; y: number; ux: number; uy: number } {
+  half: Half | null = null,
+): { x: number; y: number; ux: number; uy: number; cost: number } {
+  const hx = half?.x ?? BUBBLE_R;
+  const hy = half?.y ?? BUBBLE_R;
   const dx = box.width / 2 - a.x;
   const dy = box.height / 2 - a.y;
   const len = Math.hypot(dx, dy) || 1;
   const inward = Math.atan2(dy / len, dx / len);
-  const d = a.size / 2 + BUBBLE_R + GAP;
-  let best: { x: number; y: number; ux: number; uy: number } | null = null;
+  // How far the bubble reaches back towards the avatar from its centre, along the line between them: a round
+  // one's radius, or a rectangle's furthest corner that way, so none of it lands on the avatar.
+  const reach = (ux: number, uy: number) => (half ? hx * Math.abs(ux) + hy * Math.abs(uy) : BUBBLE_R);
+  let best: { x: number; y: number; ux: number; uy: number; cost: number } | null = null;
   let least = Infinity;
   // Straight in first, then round both ways a sixteenth of a turn at a time, so a tie goes to the more inward.
   for (let k = 0; k < 16; k++) {
     const step = Math.ceil(k / 2) * (k % 2 ? 1 : -1);
     const ux = Math.cos(inward + (step * Math.PI) / 8);
     const uy = Math.sin(inward + (step * Math.PI) / 8);
+    const d = a.size / 2 + reach(ux, uy) + GAP;
     const x = a.x + ux * d;
     const y = a.y + uy * d;
-    if (x - BUBBLE_R < bounds.left || y - BUBBLE_R < bounds.top || x + BUBBLE_R > bounds.right || y + BUBBLE_R > bounds.bottom) continue;
-    let cost = Math.abs(step) * 0.75;
-    for (const o of avoid) if (meets(x, y, o)) cost += o.weight;
-    if (cost < least) [least, best] = [cost, { x, y, ux, uy }];
+    if (x - hx < bounds.left || y - hy < bounds.top || x + hx > bounds.right || y + hy > bounds.bottom) continue;
+    let covered = 0;
+    for (const o of avoid) if (meets(x, y, o, half)) covered += o.weight;
+    const cost = Math.abs(step) * 0.75 + covered;
+    if (cost < least) [least, best] = [cost, { x, y, ux, uy, cost: covered }];
   }
+  if (best) return best;
   // Nowhere fits (a table smaller than any phone's): inwards, kept on the table.
-  return (
-    best ?? {
-      x: clamp(a.x + (dx / len) * d, BUBBLE_R, box.width - BUBBLE_R),
-      y: clamp(a.y + (dy / len) * d, BUBBLE_R, box.height - BUBBLE_R),
-      ux: dx / len,
-      uy: dy / len,
-    }
-  );
+  const d = a.size / 2 + reach(dx / len, dy / len) + GAP;
+  const x = clamp(a.x + (dx / len) * d, hx, box.width - hx);
+  const y = clamp(a.y + (dy / len) * d, hy, box.height - hy);
+  return { x, y, ux: dx / len, uy: dy / len, cost: avoid.reduce((c, o) => c + (meets(x, y, o, half) ? o.weight : 0), 0) };
 }
 
 /**

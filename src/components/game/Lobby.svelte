@@ -1,17 +1,20 @@
 <script lang="ts">
   import { CRIB_SIZE, MAX_PLAYERS, MIN_PLAYERS, cardsPerPlayer, moveTimerLabel, passCycle, passLabel } from '../../lib/engine/rules';
+  import type { ChatControls } from '../../lib/chat-client';
   import type { GameAction, GameView } from '../../lib/types';
   import { onMount } from 'svelte';
   import { SITE_NAME } from '../../lib/ui';
   import Avatar from '../Avatar.svelte';
+  import ChatButton from './ChatButton.svelte';
 
   interface Props {
     view: GameView;
     act: (a: GameAction) => Promise<boolean>;
     leave: () => void;
     busy: boolean;
+    chat?: ChatControls;
   }
-  let { view, act, leave, busy }: Props = $props();
+  let { view, act, leave, busy, chat }: Props = $props();
 
   let copied = $state<'code' | 'link' | null>(null);
   const isOwner = $derived(view.me.isOwner);
@@ -52,9 +55,12 @@
       <span class="eyebrow">Waiting room</span>
       <h1 class="display">{view.name}</h1>
     </div>
-    {#if isOwner}
-      <a class="btn btn-sm" href={`/games/${view.id}/settings`}>Room settings</a>
-    {/if}
+    <div class="head-actions">
+      {#if chat}<ChatButton label unread={chat.unread} open={chat.open} onopen={chat.show} onpreload={chat.preload} />{/if}
+      {#if isOwner}
+        <a class="btn btn-sm" href={`/games/${view.id}/settings`}>Room settings</a>
+      {/if}
+    </div>
   </div>
 
   <div class="grid">
@@ -159,6 +165,12 @@
 </div>
 
 <style>
+  .head-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
   /* Zero minimums, so a long name ellipsizes instead of widening the columns. */
   .grid {
     display: grid;

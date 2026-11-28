@@ -54,6 +54,14 @@ const mailto = contactHref();
             from them. Games are kept until the host deletes them.
           </dd>
 
+          <dt>Chat</dt>
+          <dd>
+            What you write in a game’s chat, who wrote it and when. At 24 hours old a message stops showing, and it’s deleted
+            the next time anyone uses chat (or with its game, if that goes first). Nobody can delete one by hand, not even
+            whoever wrote it. Which messages you’ve read, and whether chat bubbles are switched off, are kept only in your
+            browser.
+          </dd>
+
           <dt>Your profile photo</dt>
           <dd>
             Only if you add one. Your browser crops it to a small square before it’s uploaded. The server then checks it,
@@ -86,6 +94,10 @@ const mailto = contactHref();
           <li>
             <strong>Players at your tables</strong> see your display name, username and photo, your plays and scores, and
             whether you have the game open. They never see the cards in your hand: the server only sends each player their own.
+          </li>
+          <li>
+            <strong>The players seated at a game</strong> can read its chat, and nobody else. Someone the host takes out of a
+            game can’t read it any more, but what they wrote stays, under their name, until it’s 24 hours old.
           </li>
           <li>
             <strong>Anyone signed in with a game’s join code</strong> can see the game’s name and who’s sitting at it before

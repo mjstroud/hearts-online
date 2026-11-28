@@ -2,10 +2,13 @@
   import { onMount, untrack } from 'svelte';
   import { prefersReducedMotion } from 'svelte/motion';
   import { fly } from '../../lib/motion';
+  import type { ChatMessage } from '../../lib/chat';
+  import { CHAT_BESIDE, type ChatControls, type ChatShow, lastChatId, mergeChat, newestEach, routeChat, unreadCount } from '../../lib/chat-client';
   import { type Card, cardLabel, isPenaltyCard } from '../../lib/engine/cards';
   import type { HandSummary } from '../../lib/engine/view';
   import type { MoveTiming, TimedMove } from '../../lib/latency.svelte';
   import { SHOT_MS, endedLive, finalTrickHoldMs } from '../../lib/moments';
+  import { clipToLength } from '../../lib/names';
   import { postJson } from '../../lib/post-json';
   import type { TauntShow } from '../../lib/taunt-client';
   import { dueHeld, hold, routeTaunt, sendOutcome } from '../../lib/taunt-route';
@@ -269,12 +272,14 @@
   let Celebration = $state.raw<CelebrationModule['default'] | null>(null);
 
   function handEnded(hand: HandSummary, before: GameView | null) {
-    if (document.visibilityState === 'hidden') {
+    // Out of sight, or under a chat sheet: it plays as a page load once it's back in view.
+    if (document.visibilityState === 'hidden' || chatCovers) {
       endedHidden = true;
       return;
     }
     clearTimeout(endingTimer);
     resultOpen = false;
+    resultWaiting = false;
     const shot = hand.number > seen(seenKey, seenInMemory) && (hand.sun ?? hand.moon) !== null && hand.number > seen(shotKey, shotInMemory);
     if (shot) loadCelebration().catch(() => {});
     ending = { hand, stage: 'trick', held: before };
@@ -324,12 +329,29 @@
       shotInMemory = hand.number;
       remember(shotKey, shotInMemory);
     }
-    if (hand.number > seen(seenKey, seenInMemory)) resultOpen = true;
+    if (hand.number > seen(seenKey, seenInMemory)) resultWaiting = true;
   }
 
+  /**
+   * The result is due. Beside the chat panel on a wide screen, it waits while you're typing a message, so
+   * the end of a hand never takes over mid-sentence, and opens a moment after you send it or look away.
+   */
+  let resultWaiting = $state(false);
+  $effect(() => {
+    if (!resultWaiting || chatTyping) return;
+    const show = () => {
+      resultWaiting = false;
+      resultOpen = true;
+    };
+    if (!chatOpen) return show();
+    const t = setTimeout(show, 400);
+    return () => clearTimeout(t);
+  });
+
   // The tap that skips does nothing else, so it can't also pick a card or land on the result's backdrop.
+  // Typing in the chat, or opening it, never skips: a space or Enter there is part of a message.
   function skipEnding(e: Event) {
-    if (!ending) return;
+    if (!ending || (e.target as Element | null)?.closest?.('[data-chat]')) return;
     e.preventDefault();
     e.stopPropagation();
     endHand();
@@ -341,6 +363,7 @@
 
   function closeResult() {
     resultOpen = false;
+    resultWaiting = false;
     seenInMemory = view.lastHand?.number ?? 0;
     remember(seenKey, seenInMemory);
   }
@@ -381,7 +404,7 @@
       players: view.players,
       me: view.me.userId,
       hidden: document.hidden,
-      holding: !!ending || resultOpen,
+      holding: !!ending || resultOpen || resultWaiting || chatCovers,
       sent: sentTaunts,
     });
     if (cooldown) tauntCooldown = Math.max(tauntCooldown, Date.now() + TAUNT_COOLDOWN_MS);
@@ -390,7 +413,7 @@
   }
 
   $effect(() => {
-    if (ending || resultOpen) return;
+    if (ending || resultOpen || resultWaiting || chatCovers) return;
     untrack(() => {
       const due = dueHeld(heldTaunts, Date.now(), { status: view.status, hidden: document.hidden });
       heldTaunts = [];
@@ -417,6 +440,223 @@
       if (toast) showToast(toast);
     });
   }
+
+  // ----- Chat (src/lib/chat.ts): the game's own, open in the waiting room, at the table and on the end screen.
+  // History comes from its own endpoint and new messages over the live stream as their own event, never as
+  // a game update. The sheet, and sending, load the first time it's opened.
+  let chat = $state.raw<readonly ChatMessage[]>([]);
+  let chatOpen = $state(false);
+  /** What's typed and not yet sent, kept while the sheet is closed. */
+  let chatDraft = $state('');
+  /** The box you type in has focus (the sheet says so). */
+  let chatFocus = $state(false);
+  /** Per device: the chat previews (on avatars, or a note off the table) are switched off. The count and the sheet stay. */
+  let chatMuted = $state(false);
+  /** Per device: the newest message read here. */
+  let chatRead = $state(0);
+  /** The server's clock less this device's, so messages go at 24 hours even on a device whose clock is off. */
+  let chatSkew = 0;
+  /** Wide enough for chat to open beside the table (over the standings) rather than over it. */
+  let wideScreen = $state(false);
+  // The sheet's code, fetched the first time chat is opened (or the button is first touched).
+  type ChatSheetModule = typeof import('./ChatSheet.svelte');
+  let chatSheet: Promise<unknown> | undefined;
+  let ChatSheet = $state.raw<ChatSheetModule['default'] | null>(null);
+  /**
+   * The sheet is drawn over the screen (not just asked for): the end of a hand waits for it to go, and plays
+   * then. Only the table keeps room beside it (the standings column); the waiting room and the end screen
+   * would lose their buttons under a panel, so there it covers, with a backdrop, on any screen.
+   */
+  const chatCovers = $derived(chatOpen && !!ChatSheet && !(wideScreen && !!tableView));
+  /** Typing in the panel beside the table: the hand result waits until the message is sent or you look away. */
+  const chatTyping = $derived(chatOpen && !chatCovers && chatFocus && !!chatDraft.trim());
+  const chatReadKey = $derived(`hearts:chat-read:${view.id}`);
+  const chatUnread = $derived(unreadCount(chat, view.me.userId, chatRead));
+  /** Previews for the table to draw on avatars, newest last. */
+  let chatFeed = $state.raw<ChatShow[]>([]);
+  let previews = 0;
+  let heldChat: { m: ChatMessage; at: number }[] = [];
+  /** How far down the page was when a sheet over the table opened, to go back to when it closes. */
+  let scrollBefore: number | null = null;
+
+  const loadChat = () =>
+    (chatSheet ??= import('./ChatSheet.svelte').then(
+      (m) => (ChatSheet = m.default),
+      () => {
+        // Offline for a moment, or an old tab whose chunks went with a deploy (the stream's build event then
+        // shows the New version pill). Either way the next tap tries again.
+        chatSheet = undefined;
+        if (chatOpen) {
+          closeChat();
+          showToast('Chat didn’t load. Check your connection and tap it again.');
+        }
+      },
+    ));
+
+  function openChat() {
+    loadChat();
+    if (chatOpen) return;
+    chatOpen = true;
+    // Insurance against anything the stream missed; its reconnects ask too.
+    syncChat();
+  }
+
+  function closeChat() {
+    if (!chatOpen) return;
+    chatOpen = false;
+    chatFocus = false;
+    // Now, not on the next tick, so taunts held for chat don't play before the hand end they belong after.
+    setCovering(false);
+  }
+
+  /**
+   * Whether chat is covering the table, so the end of a hand is held. It starts once the sheet is actually
+   * drawn over it (opened, or a tablet turned upright with chat open) and ends when chat closes or the screen
+   * turns wide enough for chat to sit beside the table.
+   */
+  let covering = false;
+  function setCovering(on: boolean) {
+    if (on === covering) return;
+    covering = on;
+    if (on) {
+      scrollBefore = window.scrollY;
+      // The end of a hand would play unseen under the sheet: it stops, and plays as on a page load once the
+      // sheet is out of the way (straight to any Sun or Moon not yet seen, then the result, if not seen).
+      if (ending || resultWaiting || resultOpen) {
+        clearTimeout(endingTimer);
+        ending = null;
+        resultWaiting = false;
+        resultOpen = false;
+        endedHidden = true;
+      }
+      return;
+    }
+    if (!chatOpen && scrollBefore !== null) {
+      // A phone may have scrolled the page to the box you typed in. Back to where it was; sideways, the
+      // table centres itself again (Table.svelte).
+      window.scrollTo(0, scrollBefore);
+      window.dispatchEvent(new Event('hearts:refit'));
+    }
+    scrollBefore = null;
+    if (endedHidden && view.lastHand && document.visibilityState === 'visible') {
+      endedHidden = false;
+      handEnded(view.lastHand, null);
+    }
+  }
+  $effect(() => {
+    const on = chatCovers;
+    untrack(() => setCovering(on));
+  });
+
+  function addChat(incoming: readonly ChatMessage[]) {
+    if (incoming.length) chat = mergeChat(chat, incoming, Date.now() + chatSkew);
+  }
+
+  /**
+   * Everything newer than what this tab holds, a page at a time: the stream doesn't replay what a tab missed.
+   * One at a time; asked again meanwhile, it goes once more when done. Failures wait for the next reconnect:
+   * a deploy's 502, or an older server with no chat. Being removed is the live stream's business, not this.
+   */
+  let syncing = false;
+  let syncAgain = false;
+  /**
+   * The newest id history has answered with. Only history moves it, never the stream or your own send: a
+   * message you send while the stream is down mustn't hide the ones others sent meanwhile.
+   */
+  let chatSynced = 0;
+  async function syncChat() {
+    if (syncing) {
+      syncAgain = true;
+      return;
+    }
+    syncing = true;
+    try {
+      for (let page = 0; page < 20; page++) {
+        const after = chatSynced;
+        const res = await fetch(`/api/games/${view.id}/chat?after=${after}`, { cache: 'no-store' });
+        if (!res.ok) break;
+        const data = await res.json();
+        if (!Array.isArray(data?.messages)) break;
+        if (typeof data.now === 'number') chatSkew = data.now - Date.now();
+        addChat(data.messages);
+        // Oldest first either way, so the last is the newest.
+        chatSynced = Math.max(chatSynced, data.messages.at(-1)?.id ?? 0);
+        // From nothing, the newest page is enough. From an id, keep going until caught up.
+        if (!after || !data.more || !data.messages.length) break;
+      }
+    } catch {
+      /* offline; the next reconnect asks again */
+    } finally {
+      syncing = false;
+      if (syncAgain) {
+        syncAgain = false;
+        syncChat();
+      }
+    }
+  }
+
+  function showPreview(m: ChatMessage) {
+    const at = Date.now();
+    chatFeed = [...chatFeed.filter((s) => at - s.at < 8000), { id: ++previews, from: m.from, text: m.text, at }].slice(-6);
+  }
+
+  /** Cut short for a note: a 32-character name and 280 characters won't fit in one. */
+  const clip = (text: string, units: number) => (text.length > units ? `${clipToLength(text, units - 1)}…` : text);
+
+  function onChat(m: ChatMessage) {
+    if (chat.some((x) => x.id === m.id)) return;
+    addChat([m]);
+    const route = routeChat(m, {
+      status: view.status,
+      players: view.players,
+      me: view.me.userId,
+      muted: chatMuted,
+      open: chatOpen,
+      hidden: document.hidden,
+      holding: !!ending || resultOpen || resultWaiting,
+    });
+    if (route === 'hold') heldChat = hold(heldChat, { m, at: Date.now() });
+    else if (route === 'show') showPreview(m);
+    else if (route === 'toast') noteChat(m);
+  }
+
+  /** A short note off the table (the waiting room, the end screen), which has no avatars to put a preview on. */
+  const noteChat = (m: ChatMessage) => showToast(`💬 ${clip(m.name, 20)}: ${clip(m.text, 70)}`);
+
+  // Held previews play once the end of the hand and its result have cleared, if they're still fresh: on the
+  // table's avatars, or after a game's last hand, as notes on the end screen.
+  $effect(() => {
+    if (ending || resultOpen || resultWaiting || chatCovers) return;
+    untrack(() => {
+      const atTable = view.status === 'active';
+      const due = newestEach(dueHeld(heldChat, Date.now(), { status: 'active', hidden: document.hidden }));
+      heldChat = [];
+      if (chatMuted || chatOpen) return;
+      for (const h of due) atTable ? showPreview(h.m) : noteChat(h.m);
+    });
+  });
+
+  /** The sheet says what's been scrolled into view; only that counts as read. */
+  function markChatRead(id: number) {
+    if (id <= chatRead) return;
+    chatRead = id;
+    remember(chatReadKey, id);
+  }
+
+  function toggleChatMute() {
+    chatMuted = !chatMuted;
+    remember('hearts:chat-mute', chatMuted ? '1' : '0');
+    if (chatMuted) chatFeed = [];
+  }
+
+  const chatControls = $derived<ChatControls>({
+    unread: chatUnread,
+    open: chatOpen,
+    show: openChat,
+    preload: loadChat,
+    muted: chatMuted,
+    toggleMute: toggleChatMute,
+  });
 
   // Alerts go through a service worker (public/sw.js), because Android Chrome won't let a page
   // construct a Notification. Every page also registers it (Layout.astro) so the site can be installed;
@@ -494,6 +734,20 @@
     try {
       notify = localStorage.getItem('hearts:notify') === '1' && Notification.permission === 'granted';
     } catch {}
+    try {
+      chatMuted = localStorage.getItem('hearts:chat-mute') === '1';
+      chatRead = Number(localStorage.getItem(chatReadKey)) || 0;
+    } catch {}
+    // Read in another tab on this device: the count here goes down too.
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === chatReadKey) chatRead = Math.max(chatRead, Number(e.newValue) || 0);
+      else if (e.key === 'hearts:chat-mute') chatMuted = e.newValue === '1';
+    };
+    window.addEventListener('storage', onStorage);
+    const beside = matchMedia(CHAT_BESIDE);
+    const onBeside = () => (wideScreen = beside.matches);
+    onBeside();
+    beside.addEventListener('change', onBeside);
     if (view.dev) import('../../lib/latency.svelte').then((m) => (timeMove = m.timeMove), () => {});
 
     let es: EventSource | null = null;
@@ -507,6 +761,8 @@
       source.addEventListener('open', () => {
         connected = true;
         retries = 0;
+        // On page load and after every drop: the stream only carries what's said from now on.
+        syncChat();
       });
       source.addEventListener('error', () => {
         connected = false;
@@ -541,11 +797,18 @@
           onTaunt(JSON.parse((e as MessageEvent).data));
         } catch {}
       });
+      source.addEventListener('chat', (e) => {
+        try {
+          onChat(JSON.parse((e as MessageEvent).data));
+        } catch {}
+      });
     };
     connect();
 
     const onVisible = () => {
       if (document.visibilityState !== 'visible') return;
+      // A stream that's down asks when it's back up.
+      if (es?.readyState === EventSource.OPEN) syncChat();
       if (endedHidden && view.lastHand) {
         endedHidden = false;
         handEnded(view.lastHand, null);
@@ -561,6 +824,8 @@
       clearTimeout(retryTimer);
       es?.close();
       document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('storage', onStorage);
+      beside.removeEventListener('change', onBeside);
     };
   });
 </script>
@@ -577,8 +842,10 @@
 
 <svelte:window onclickcapture={skipEnding} onkeydowncapture={(e) => (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') && skipEnding(e)} />
 
+<!-- While chat covers the screen, nothing behind it can be reached by keyboard or tapped. -->
+<div class="screen" inert={chatCovers}>
 {#if view.status === 'lobby'}
-  <Lobby {view} {act} {leave} {busy} />
+  <Lobby {view} {act} {leave} {busy} chat={chatControls} />
 {:else if tableView}
   <!-- A held table is a picture of the past: nothing on it can be played. -->
   <Table
@@ -596,9 +863,32 @@
     {tauntCooldown}
     {sendTaunt}
     {tauntShown}
+    chat={chatControls}
+    {chatFeed}
   />
 {:else}
-  <FinalResults {view} {act} {busy} onShowResult={() => (resultOpen = true)} />
+  <FinalResults {view} {act} {busy} onShowResult={() => (resultOpen = true)} chat={chatControls} />
+{/if}
+</div>
+
+<!-- Outside every screen, so it lasts from the waiting room through the table to the end screen. -->
+{#if chatOpen && ChatSheet}
+  <ChatSheet
+    gameId={view.id}
+    messages={chat}
+    me={view.me.userId}
+    bind:draft={chatDraft}
+    covers={chatCovers}
+    muted={chatMuted}
+    toggleMute={toggleChatMute}
+    received={(m: ChatMessage) => addChat([m])}
+    markRead={markChatRead}
+    close={closeChat}
+    onfocus={(f: boolean) => (chatFocus = f)}
+    {connected}
+    yourTurn={myTurn}
+    {clockEndsAt}
+  />
 {/if}
 
 {#if ending && shooter !== null && Celebration}
@@ -619,6 +909,10 @@
 {/if}
 
 <style>
+  .screen {
+    display: contents;
+  }
+
   .toast {
     position: fixed;
     left: 50%;
@@ -636,10 +930,14 @@
     box-shadow: var(--shadow-lg);
     /* Just words: taps go through to the hand or felt beneath (a tip can show up mid-play, unasked). */
     pointer-events: none;
+    /* A message's long word wraps rather than running off the screen. */
+    overflow-wrap: anywhere;
   }
 
   /* The sticky header grows by the top safe-area inset in a home-screen app, so these pills move down with it. */
+  /* Just words, so a tap goes through to the chat button beneath. */
   .conn {
+    pointer-events: none;
     position: fixed;
     top: calc(72px + env(safe-area-inset-top, 0px));
     left: 50%;

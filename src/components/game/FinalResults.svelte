@@ -5,9 +5,11 @@
 </script>
 
 <script lang="ts">
+  import type { ChatControls } from '../../lib/chat-client';
   import type { GameAction, GameView } from '../../lib/types';
   import { ordinal } from '../../lib/ui';
   import Avatar from '../Avatar.svelte';
+  import ChatButton from './ChatButton.svelte';
 
   interface Props {
     view: GameView;
@@ -15,8 +17,9 @@
     busy: boolean;
     /** Reopens the last hand's result, with its final trick and trick review. */
     onShowResult?: () => void;
+    chat?: ChatControls;
   }
-  let { view, act, busy, onShowResult }: Props = $props();
+  let { view, act, busy, onShowResult, chat }: Props = $props();
 
   const ranked = $derived(
     view.players
@@ -27,6 +30,9 @@
 </script>
 
 <div class="container page">
+  {#if chat}
+    <div class="end-top"><ChatButton label unread={chat.unread} open={chat.open} onopen={chat.show} onpreload={chat.preload} /></div>
+  {/if}
   <div class="hero panel">
     <span class="eyebrow">Final · {view.handsPlayed} hands played</span>
     <h1 class="display">{view.name}</h1>
@@ -73,6 +79,14 @@
 </div>
 
 <style>
+  /* The chat stays open after the game: its button sits just above the results. */
+  .end-top {
+    display: flex;
+    justify-content: flex-end;
+    max-width: 640px;
+    margin: 0 auto 10px;
+  }
+
   .hero {
     max-width: 640px;
     margin: 0 auto;
