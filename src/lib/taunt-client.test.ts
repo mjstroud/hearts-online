@@ -122,3 +122,45 @@ describe('a throw’s flight', () => {
     for (const [, y] of arc({ x: 40, y: 20, size: 34 }, { x: 300, y: 250, size: 34 })) expect(y).toBeGreaterThanOrEqual(16);
   });
 });
+
+describe('a chat preview (a rectangular bubble)', () => {
+  const half = { x: 80, y: 18 };
+  const inside = (b: { x: number; y: number }, r: Rect) =>
+    b.x - half.x >= r.left && b.y - half.y >= r.top && b.x + half.x <= r.right && b.y + half.y <= r.bottom;
+
+  it('clears the avatar along its nearer side, and stays whole on the table', () => {
+    // The left seat, upright: the preview goes right, its left edge just clear of the avatar.
+    const left = beside({ x: 23, y: 140, size: 38 }, UPRIGHT, [], undefined, half);
+    expect(left.x - half.x).toBeGreaterThanOrEqual(23 + 19);
+    expect(inside(left, { left: 0, top: 0, right: UPRIGHT.width, bottom: UPRIGHT.height })).toBe(true);
+    // Your own plaque, at the bottom: straight up, its bottom edge just clear of the avatar.
+    const mine = beside({ x: 164, y: 288, size: 38 }, UPRIGHT, [], undefined, half);
+    expect(mine.y + half.y).toBeCloseTo(288 - 19 - 6);
+    expect(mine.cost).toBe(0);
+  });
+
+  it('never lands on the avatar, whichever way it tips', () => {
+    // A wide preview beside a small avatar, at every angle beside() tries: no part of it within the avatar.
+    const a = { x: 164, y: 165, size: 30 };
+    for (const toward of [
+      { x: 10, y: 165 },
+      { x: 164, y: 10 },
+      { x: 300, y: 300 },
+      { x: 40, y: 60 },
+    ]) {
+      const box = { width: 2 * (a.x - toward.x) + 2 * a.x, height: 2 * (a.y - toward.y) + 2 * a.y };
+      const p = beside(a, { width: Math.max(box.width, 40), height: Math.max(box.height, 40) }, [], { left: -999, top: -999, right: 999, bottom: 999 }, { x: 75, y: 18 });
+      const nearest = Math.hypot(Math.min(Math.max(a.x, p.x - 75), p.x + 75) - a.x, Math.min(Math.max(a.y, p.y - 18), p.y + 18) - a.y);
+      expect(nearest).toBeGreaterThanOrEqual(15);
+    }
+  });
+
+  it('says when every spot covers a rank corner, so the table can leave the preview out', () => {
+    const everywhere = { left: -999, top: -999, right: 999, bottom: 999, weight: COVER.corner };
+    expect(beside({ x: 164, y: 288, size: 38 }, UPRIGHT, [everywhere], undefined, half).cost).toBeGreaterThanOrEqual(COVER.corner);
+    // A corner straight in from the left seat: the preview tips down, below it.
+    const corner = { left: 60, top: 140, right: 80, bottom: 170, weight: COVER.corner };
+    const b = beside({ x: 23, y: 165, size: 38 }, UPRIGHT, [corner], undefined, half);
+    expect(b.cost).toBe(0);
+  });
+});

@@ -56,6 +56,7 @@ function solidPieces(doc: Document, win: Window): Piece[] {
   }
   doc.querySelectorAll('.counter').forEach((c) => add(c, c.classList.contains('last') ? 'the Last trick button' : 'the status cluster'));
   doc.querySelectorAll('.statusbar .game-name, .statusbar .badge').forEach((b) => add(b, `the “${quote(b.textContent?.trim() ?? '')}” heading`));
+  doc.querySelectorAll('.statusbar .chat-btn').forEach((b) => add(b, 'the Chat button'));
   doc.querySelectorAll('.action-bar .hint, .action-bar .act').forEach((b) =>
     add(b, b.classList.contains('hint') ? 'the hint' : `the “${quote(b.textContent?.trim() ?? '')}” button`),
   );
@@ -70,7 +71,8 @@ function coveredBy(doc: Document, own: Element, x: number, y: number): Element |
   // The trick inspector and the taunt tray open over the table on purpose, and a moment's message sits on
   // top for a moment. (Bubbles and throws let taps through, so they're never what's found here.) Astro's own
   // toolbar only exists under npm run dev.
-  if (top.closest('.insp, .taunt-tray, .msg, astro-dev-toolbar')) return null;
+  // The chat sheet too, once it's opened: it covers the table on purpose (its button doesn't count).
+  if (top.closest('.insp, .taunt-tray, .msg, [data-chat]:not(.chat-btn), astro-dev-toolbar')) return null;
   return top;
 }
 
@@ -189,6 +191,10 @@ export function checkFrame(frame: HTMLIFrameElement, sideways: boolean, query: s
   doc.querySelectorAll('.seat').forEach((s) => check(s.querySelector('.plaque'), `${seatName(s)}’s plaque`));
   check(doc.querySelector('.counter'), 'The status cluster');
   check(doc.querySelector('.action-bar .act'), 'The action button');
+  check(doc.querySelector('.statusbar .chat-btn'), 'The Chat button');
+  // With chat open, the box to type in and its Send button.
+  check(doc.querySelector('[data-chat] .compose .input'), 'The chat’s message box');
+  check(doc.querySelector('[data-chat] .compose .send'), 'The chat’s Send button');
   const lowest = handCards
     .flatMap((c) => corners(c))
     .reduce<Element | null>((low, el) => (!low || el.getBoundingClientRect().bottom > low.getBoundingClientRect().bottom ? el : low), null);

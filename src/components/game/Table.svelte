@@ -21,12 +21,14 @@
   } from '../../lib/moments';
   import { fade, fly, scale } from '../../lib/motion';
   import { SIDEWAYS } from '../../lib/phones';
+  import type { ChatControls, ChatShow } from '../../lib/chat-client';
   import type { TauntShow } from '../../lib/taunt-client';
   import type { GameAction, GameView } from '../../lib/types';
   import { signed } from '../../lib/ui';
   import Avatar from '../Avatar.svelte';
   import PlayingCard from '../PlayingCard.svelte';
   import DeckToggle from '../DeckToggle.svelte';
+  import ChatButton from './ChatButton.svelte';
   import Standings from './Standings.svelte';
   import WatchGlow from './WatchGlow.svelte';
 
@@ -78,6 +80,10 @@
     sendTaunt?: (taunt: string, to: number | null) => void;
     /** A taunt was drawn, from this user. */
     tauntShown?: (from: number) => void;
+    /** The chat button, and the mute switch for its previews. */
+    chat?: ChatControls;
+    /** Chat previews to draw on their senders' avatars, newest last. */
+    chatFeed?: ChatShow[];
   }
   let {
     view,
@@ -94,6 +100,8 @@
     tauntCooldown = 0,
     sendTaunt,
     tauntShown,
+    chat,
+    chatFeed = [],
   }: Props = $props();
 
   type Pos = 'bottom' | 'left' | 'top' | 'right' | 'top-left' | 'top-right';
@@ -297,7 +305,7 @@
     tray = Taunts && tray === userId ? null : userId;
   }
   $effect(() => {
-    if (tauntFeed.length) loadTaunts();
+    if (tauntFeed.length || chatFeed.length) loadTaunts();
   });
   // A hand's result is coming, whether or not this tab saw its last trick live (say, after a dropped
   // stream): the tray makes way, as it does for the final trick below.
@@ -513,10 +521,14 @@
       again = setTimeout(place, 400);
     };
     const turn = () => fit(true);
+    // Chat closing (Game.svelte): a phone may have scrolled the page to the box you typed in.
+    const refit = () => fit(false);
     fit(false);
     sideways.addEventListener('change', turn);
+    window.addEventListener('hearts:refit', refit);
     return () => {
       sideways.removeEventListener('change', turn);
+      window.removeEventListener('hearts:refit', refit);
       clearTimeout(again);
     };
   });
@@ -607,7 +619,10 @@
 <div class="container wide layout" bind:this={layoutEl}>
   <div class="main">
     <div class="statusbar">
-      <h1 class="game-name">{view.name}</h1>
+      <div class="title">
+        <h1 class="game-name">{view.name}</h1>
+        {#if chat}<ChatButton unread={chat.unread} open={chat.open} onopen={chat.show} onpreload={chat.preload} />{/if}
+      </div>
       <div class="chips">
         {#if view.mode === 'playtest'}<span class="badge sky">⚗ Playtest</span>{/if}
         {#if view.endAfterHand}<span class="badge gold" title="The host is ending the game when this hand is finished">⚑ Final hand</span>{/if}
@@ -789,7 +804,15 @@
 
       <!-- Bubbles and throws over the seats and the message, and the tray where the inspector opens. -->
       {#if Taunts && canTaunt && sendTaunt}
-        <Taunts feed={tauntFeed} tray={trayFor} cooldownUntil={tauntCooldown} send={sendTaunt} close={() => (tray = null)} shown={tauntShown} />
+        <Taunts
+          feed={tauntFeed}
+          {chatFeed}
+          tray={trayFor}
+          cooldownUntil={tauntCooldown}
+          send={sendTaunt}
+          close={() => (tray = null)}
+          shown={tauntShown}
+        />
       {/if}
 
       {#if inspected}
@@ -949,6 +972,13 @@
           <span aria-hidden="true">🔕</span> Alert me when it’s my turn
         {/if}
       </button>
+      {#if chat}
+        <!-- Only the previews on avatars: the count and the chat itself stay. -->
+        <button class="btn btn-ghost btn-sm" aria-pressed={!chat.muted} onclick={chat.toggleMute}>
+          <span aria-hidden="true">💬</span>
+          {chat.muted ? 'Show chat bubbles' : 'Chat bubbles on · Turn off'}
+        </button>
+      {/if}
     </div>
   </aside>
 </div>
@@ -979,6 +1009,15 @@
     justify-content: space-between;
     gap: 10px;
     flex-wrap: wrap;
+  }
+
+  /* The game's name, cut short when it must be, with the chat button just after it. */
+  .title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    max-width: 100%;
   }
 
   .game-name {
@@ -1975,9 +2014,18 @@
       pointer-events: none;
     }
 
+    /* The chat button in the corner (taps turned back on for it; the pills have the other corner), then the name. */
+    .title {
+      max-width: calc(50% - 164px);
+      gap: 6px;
+    }
+
+    .title :global(.chat-btn) {
+      order: -1;
+    }
+
     .game-name {
       font-size: 16px;
-      max-width: calc(50% - 164px);
     }
 
     .chips {

@@ -114,6 +114,31 @@
     }
   }
 
+  // A random cat says one of these in the chat, so the previews on avatars can be tried without a second
+  // account. One is long, and one is a single long word, to check that they wrap and get cut short.
+  const CAT_LINES = [
+    'Meow.',
+    'Is it my turn yet?',
+    'I would never pass you the Queen. 😇',
+    'Purrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr',
+    'Every trick I take is a trick someone else didn’t take, and that’s how I like it. Now, who left the tuna out?',
+  ];
+  async function catChat() {
+    const cats = view.players.filter((p) => p.isBot);
+    if (!cats.length) return (catNote = 'No cats at this table.');
+    catNote = '';
+    try {
+      const res = await fetch(`/api/games/${view.id}/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: pick(CAT_LINES), as: pick(cats).userId }),
+      });
+      if (!res.ok) catNote = ((await res.json().catch(() => ({}))) as { error?: string }).error ?? `Failed (${res.status}).`;
+    } catch {
+      catNote = 'Network hiccup.';
+    }
+  }
+
   function deal() {
     act({
       type: 'dev:deal',
@@ -165,8 +190,9 @@
       </div>
 
       <div class="group">
-        <span class="label">Taunts</span>
+        <span class="label">Chatter</span>
         <button class="btn btn-sm" onclick={catTaunt} title="A random cat sends an emote, or throws something at you">Cat taunt</button>
+        <button class="btn btn-sm" onclick={catChat} title="A random cat says something in the chat">Cat chat</button>
         {#if catNote}<span class="faint small" role="status">{catNote}</span>{/if}
       </div>
     </div>

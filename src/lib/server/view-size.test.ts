@@ -106,3 +106,25 @@ describe('live update size', () => {
     expect(largest.bytes).toBeLessThan(LIVE_UPDATE_BUDGET);
   });
 });
+
+describe('chat message size', () => {
+  it('a longest-possible message, from a 32-character name, stays under 4 KB on the live stream', async () => {
+    const { CHAT_MAX_UNITS, chatError, cleanChat } = await import('../chat');
+    const { subscribe } = await import('./hub');
+    const users = [addLongNamedUser(), addLongNamedUser()];
+    const id = createGame(users[0], 'Chat size', normalizeSettings({}));
+    joinGame(id, users[1]);
+    // The most bytes a message may hold: every code unit of the backstop, each one 3 bytes of UTF-8, as a
+    // heart with three combining marks (cleaning keeps up to four on one letter).
+    const text = cleanChat('♥⃝⃝⃝'.repeat(CHAT_MAX_UNITS / 4));
+    expect(chatError(text)).toBeNull();
+    let bytes = 0;
+    const stop = subscribe(id, { userId: users[1], send: (event, data) => (bytes = Buffer.byteLength(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)) });
+    const { sendChat } = await import('./chat');
+    sendChat(id, users[0], text, 'abcdefghijklmnopqrstuvwxyz012345');
+    stop();
+    console.log(`Largest chat message on the live stream: ${bytes} bytes of ${LIVE_UPDATE_BUDGET}`);
+    expect(bytes).toBeGreaterThan(3000);
+    expect(bytes).toBeLessThan(LIVE_UPDATE_BUDGET);
+  });
+});
