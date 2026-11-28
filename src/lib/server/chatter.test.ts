@@ -208,8 +208,12 @@ describe('a cat at the table reacts, lightly', () => {
     react(a.id);
     vi.advanceTimersByTime(700);
     expect(tabs[0].taunts()).toHaveLength(1);
-    // The cooldown began when the first went out, 1.4s ago.
-    vi.advanceTimersByTime(14_000);
+    // The cooldown began when the first went out (+0.7s), not when it was planned, so it lasts until
+    // +15.7s: one landing at exactly +15.7s is still held back, one after it isn't.
+    vi.advanceTimersByTime(13_600);
+    react(a.id);
+    vi.advanceTimersByTime(700);
+    expect(tabs[0].taunts()).toHaveLength(1);
     react(a.id);
     vi.advanceTimersByTime(700);
     expect(tabs[0].taunts()).toHaveLength(2);

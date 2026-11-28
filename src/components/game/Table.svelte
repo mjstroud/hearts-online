@@ -45,9 +45,10 @@
     (tauntLayer ??= import('./TauntLayer.svelte').then(
       (m) => (Taunts = m.default),
       () => {
-        // One more try on the next taunt or tap, in case it was a blip (a phone switching networks).
-        tauntLayer = undefined;
+        // One more try on the next taunt or tap, in case it was a blip (a phone switching networks). After
+        // that the failed promise stays, so taunts arriving later don't ask for the missing file again.
         tauntsGone = ++tauntFails >= 2;
+        if (!tauntsGone) tauntLayer = undefined;
       },
     ));
 
@@ -300,8 +301,11 @@
   });
   // A hand's result is coming, whether or not this tab saw its last trick live (say, after a dropped
   // stream): the tray makes way, as it does for the final trick below.
+  // Through a number, not the view itself: the view is a new object on every update (each card a cat plays,
+  // each online dot), and the tray must stay open through those.
+  const handsDone = $derived(view.lastHand?.number ?? 0);
   $effect(() => {
-    void view.lastHand?.number;
+    void handsDone;
     untrack(() => (tray = null));
   });
 

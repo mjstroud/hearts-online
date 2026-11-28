@@ -272,6 +272,43 @@ describe('POST /api/games/:id/taunt', () => {
     expect((await send(id, host, { taunt: 'rose', to: users[1] })).status).toBe(200);
     expect((await send(id, users[1], { taunt: 'clap' })).status).toBe(200);
     expect(catHit).not.toHaveBeenCalled();
+
+    // A throw that's refused never went out, so no cat hears about it: inside the cooldown (429)...
+    expect((await send(id, host, { taunt: 'tomato', to: cats[0] })).status).toBe(429);
+    // ...or before the game has started (409).
+    const lobby = createGame(host, 'Not yet', normalizeSettings({}));
+    performAction(lobby, host, { type: 'addBot' });
+    const lobbyCat = getPlayers(lobby).find((p) => p.isBot)!.userId;
+    expect((await send(lobby, host, { taunt: 'tomato', to: lobbyCat })).status).toBe(409);
+    expect(catHit).not.toHaveBeenCalled();
+  });
+
+  it('reads who is seated again once the body has arrived, so a removal meanwhile is a 404', async () => {
+    const { id, host, users, cats } = table(3, 1);
+    const gone = users[2];
+    const t = tab(id, users[1]);
+    // The body trickles in: the route checks the seats, then waits for it.
+    let push!: (text: string) => void;
+    const body = new ReadableStream<Uint8Array>({
+      start(c) {
+        push = (text) => {
+          c.enqueue(new TextEncoder().encode(text));
+          c.close();
+        };
+      },
+    });
+    const pending = POST({
+      params: { id },
+      locals: { user: { id: gone } },
+      request: new Request(`http://localhost/api/games/${id}/taunt`, { method: 'POST', body, duplex: 'half' } as RequestInit),
+    } as never);
+    // While it's on its way, the host takes them out of the game.
+    performAction(id, host, { type: 'removePlayer', userId: gone });
+    push(JSON.stringify({ taunt: 'tomato', to: cats[0] }));
+    const res = await pending;
+    expect(res.status).toBe(404);
+    expect(taunts(t)).toEqual([]);
+    expect(catHit).not.toHaveBeenCalled();
   });
 
   it('lets the owner of a playtest table send as its cats, with no cooldown', async () => {

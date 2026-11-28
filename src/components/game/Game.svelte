@@ -8,7 +8,7 @@
   import { SHOT_MS, endedLive, finalTrickHoldMs } from '../../lib/moments';
   import { postJson } from '../../lib/post-json';
   import type { TauntShow } from '../../lib/taunt-client';
-  import { dueHeld, routeTaunt, sendOutcome } from '../../lib/taunt-route';
+  import { dueHeld, hold, routeTaunt, sendOutcome } from '../../lib/taunt-route';
   import { TAUNT_COOLDOWN_MS, type TauntEvent, type TauntRequest, tauntById } from '../../lib/taunts';
   import type { GameAction, GameView } from '../../lib/types';
   import { SITE_NAME } from '../../lib/ui';
@@ -385,7 +385,7 @@
       sent: sentTaunts,
     });
     if (cooldown) tauntCooldown = Math.max(tauntCooldown, Date.now() + TAUNT_COOLDOWN_MS);
-    if (route === 'hold') heldTaunts.push({ ev, at: Date.now() });
+    if (route === 'hold') heldTaunts = hold(heldTaunts, { ev, at: Date.now() });
     else if (route === 'show') showTaunt(ev);
   }
 
@@ -406,11 +406,12 @@
     tabId ||= crypto.getRandomValues(new Uint32Array(1))[0].toString(36);
     const cid = `${tabId}.${++sends}`;
     sentTaunts.add(cid);
+    const before = tauntCooldown;
     tauntCooldown = sentAt + TAUNT_COOLDOWN_MS;
     showTaunt({ taunt, from: view.me.userId, to, cid });
     const body: TauntRequest = { taunt, to, cid };
     postJson(`/api/games/${view.id}/taunt`, body).then((res) => {
-      const { until, forget, toast } = sendOutcome(res, sentAt, Date.now());
+      const { until, forget, toast } = sendOutcome(res, before, Date.now());
       if (until !== null) tauntCooldown = until;
       if (forget) sentTaunts.delete(cid);
       if (toast) showToast(toast);
@@ -633,6 +634,8 @@
     font-size: 14px;
     font-weight: 500;
     box-shadow: var(--shadow-lg);
+    /* Just words: taps go through to the hand or felt beneath (a tip can show up mid-play, unasked). */
+    pointer-events: none;
   }
 
   /* The sticky header grows by the top safe-area inset in a home-screen app, so these pills move down with it. */
@@ -706,7 +709,6 @@
 
     .toast {
       bottom: calc(84px + env(safe-area-inset-bottom, 0px));
-      pointer-events: none;
     }
   }
 </style>

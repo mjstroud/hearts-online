@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { HOLD_MS, type TauntTable, dueHeld, routeTaunt, sendOutcome } from './taunt-route';
+import { HELD_MAX, HOLD_MS, type TauntTable, dueHeld, hold, routeTaunt, sendOutcome } from './taunt-route';
 import type { TauntEvent } from './taunts';
 
 // You are user 1, at a table with users 2 and 3.
@@ -79,9 +79,14 @@ describe('the held taunts, once the end of a hand clears', () => {
   const held = [{ at: now - HOLD_MS - 1 }, { at: now - HOLD_MS }, { at: now - HOLD_MS + 1 }, { at: now - 10 }];
   const live = { status: 'active' as const, hidden: false };
 
-  it('plays only those under 8 seconds old, in the order they came', () => {
-    expect(HOLD_MS).toBe(8000);
+  it('plays only those under 30 seconds old, in the order they came', () => {
+    expect(HOLD_MS).toBe(30_000);
     expect(dueHeld(held, now, live)).toEqual([held[2], held[3]]);
+  });
+
+  it('plays at most the newest few, however many came while the result was up', () => {
+    const many = Array.from({ length: 9 }, (_, i) => ({ at: now - 1000 + i }));
+    expect(dueHeld(many, now, live)).toEqual(many.slice(-HELD_MAX));
   });
 
   it('plays none on a finished game or a hidden tab', () => {
@@ -94,38 +99,54 @@ describe('the held taunts, once the end of a hand clears', () => {
   });
 });
 
+describe('holding one more', () => {
+  it('drops the stale ones and keeps only the newest few, so a result left open all evening holds a handful', () => {
+    let held: { at: number }[] = [];
+    for (let i = 0; i < 20; i++) held = hold(held, { at: i * 1000 });
+    expect(held.map((h) => h.at)).toEqual([16_000, 17_000, 18_000, 19_000]);
+    expect(hold([{ at: 0 }, { at: 5000 }], { at: HOLD_MS + 1 })).toEqual([{ at: 5000 }, { at: HOLD_MS + 1 }]);
+  });
+});
+
 describe('the answer to a send', () => {
-  const sentAt = 50_000;
+  // The cooldown that was running before the tap (none here).
+  const before = 0;
   const now = 50_400;
 
-  it('takes the server’s cooldown, counted from the send, and keeps the id for the echo', () => {
-    expect(sendOutcome({ ok: true, status: 200, data: { ok: true, cooldownMs: 15_000 } }, sentAt, now)).toEqual({ until: 65_000, forget: false, toast: null });
+  it('takes the server’s cooldown, counted from the answer (the server’s began when the request reached it), and keeps the id for the echo', () => {
+    expect(sendOutcome({ ok: true, status: 200, data: { ok: true, cooldownMs: 15_000 } }, before, now)).toEqual({ until: 65_400, forget: false, toast: null });
+    // The owner sending as a playtest's cat: no cooldown.
+    expect(sendOutcome({ ok: true, status: 200, data: { ok: true, cooldownMs: 0 } }, before, now).until).toBe(now);
   });
 
   it('leaves the cooldown as it is when an answer doesn’t give one', () => {
-    expect(sendOutcome({ ok: true, status: 200, data: {} }, sentAt, now)).toEqual({ until: null, forget: false, toast: null });
+    expect(sendOutcome({ ok: true, status: 200, data: {} }, before, now)).toEqual({ until: null, forget: false, toast: null });
   });
 
   it('on a 429, waits as long as the server says, counted from now, and says why', () => {
     const res = { ok: false, status: 429, data: { error: 'Slow down a little.', retryAfterMs: 9000 } };
-    expect(sendOutcome(res, sentAt, now)).toEqual({ until: 59_400, forget: true, toast: 'Slow down a little.' });
+    expect(sendOutcome(res, before, now)).toEqual({ until: 59_400, forget: true, toast: 'Slow down a little.' });
   });
 
   it('on a 429 with no body (a proxy’s page), leaves the cooldown and says something general', () => {
-    expect(sendOutcome({ ok: false, status: 429, data: {} }, sentAt, now)).toEqual({ until: null, forget: true, toast: 'Something went wrong.' });
+    expect(sendOutcome({ ok: false, status: 429, data: {} }, before, now)).toEqual({ until: null, forget: true, toast: 'Something went wrong.' });
   });
 
-  it('keeps the id when no answer came, since it may have landed and its echo may still come', () => {
-    expect(sendOutcome({ ok: false, status: 0, data: {} }, sentAt, now)).toEqual({ until: null, forget: false, toast: 'Network hiccup — please try again.' });
+  it('keeps the id and the cooldown when no answer came, since it may have landed and its echo may still come', () => {
+    expect(sendOutcome({ ok: false, status: 0, data: {} }, before, now)).toEqual({
+      until: null,
+      forget: false,
+      toast: 'Network hiccup — that one may not have gone through.',
+    });
   });
 
-  it('passes on any other refusal, and forgets the id', () => {
+  it('gives the 15s back on any other refusal, since the server counted nothing, and forgets the id', () => {
     const res = { ok: false, status: 409, data: { error: 'The game isn’t being played.' } };
-    expect(sendOutcome(res, sentAt, now)).toEqual({ until: null, forget: true, toast: 'The game isn’t being played.' });
-    expect(sendOutcome({ ok: false, status: 502, data: {} }, sentAt, now)).toEqual({ until: null, forget: true, toast: 'Something went wrong.' });
+    expect(sendOutcome(res, before, now)).toEqual({ until: before, forget: true, toast: 'The game isn’t being played.' });
+    expect(sendOutcome({ ok: false, status: 502, data: {} }, 42_000, now)).toEqual({ until: 42_000, forget: true, toast: 'Something went wrong.' });
   });
 
   it('never takes a retryAfterMs from anything but a 429', () => {
-    expect(sendOutcome({ ok: false, status: 400, data: { error: 'No such taunt.', retryAfterMs: 9000 } }, sentAt, now).until).toBeNull();
+    expect(sendOutcome({ ok: false, status: 400, data: { error: 'No such taunt.', retryAfterMs: 9000 } }, before, now).until).toBe(before);
   });
 });
