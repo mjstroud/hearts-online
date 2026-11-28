@@ -118,6 +118,21 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX removed_players_user ON removed_players(user_id);
   `,
+  // v9: table chat, kept 24 hours. Deleting a game deletes its chat. AUTOINCREMENT so an id is never used
+  // twice, even after every message has aged out: devices remember the last id they read.
+  `
+  CREATE TABLE chat_messages (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    game_id    TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    body       TEXT NOT NULL,
+    cid        TEXT, -- the sending tab's id for it, so a retry after a timeout isn't stored twice
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX chat_messages_game ON chat_messages(game_id, id);
+  CREATE INDEX chat_messages_created ON chat_messages(created_at);
+  CREATE UNIQUE INDEX chat_messages_cid ON chat_messages(game_id, user_id, cid) WHERE cid IS NOT NULL;
+  `,
 ];
 
 function migrate(db: DatabaseSync) {

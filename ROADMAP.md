@@ -1,6 +1,6 @@
 # Roadmap
 
-Updated 2026-11-27, checked against the code and the git history. Phases 1 to 3 are live, and so is the [phone pass](#phone-pass-before-phase-4) (`release-2026-11-27.1`, polished in `.2`). Phase 4 is next. It was planned on 2026-11-26 after a read of the code it touches, and its [code pointers](#phase-4-code-pointers) now cover the sideways layout. Every open question is answered (see [Decisions](#decisions)). Phase 4a (taunts) is built (see [Phase 4](#phase-4-talk-and-tease)); it needed no budget rise, and the owner chose the taunt list. 4b (chat) is next.
+Updated 2026-11-27, checked against the code and the git history. Phases 1 to 3 are live, and so is the [phone pass](#phone-pass-before-phase-4) (`release-2026-11-27.1`, polished in `.2`). Phase 4 is next. It was planned on 2026-11-26 after a read of the code it touches, and its [code pointers](#phase-4-code-pointers) now cover the sideways layout. Every open question is answered (see [Decisions](#decisions)). Phase 4a (taunts) is live as `release-2026-11-27.4` (see [Phase 4](#phase-4-talk-and-tease)); it needed no budget rise, and the owner chose the taunt list. 4b (chat) is next.
 
 Sizes are in Claude Code working sessions:
 
@@ -269,7 +269,7 @@ Planned 2026-11-26 after a read of the code it touches (see [Phase 4 code pointe
 
 **Release 4a: taunts (no migration)**
 
-**Status (2026-11-27): built.** The owner chose the starter list (below), the gesture, the cats' chattiness and the release (see [Decisions](#decisions), 20–23). What was built, and where it differs from the plan below:
+**Status (2026-11-27): live** as `release-2026-11-27.4` (main c03bf39, Fly release v18), after the real site had been quiet for hours. No migration, so no snapshot. Checked in the browser at every phone size and on desktop, and the cats were seen chattering on their own in a local playtest; not yet checked on a real phone. The owner chose the starter list (below), the gesture, the cats' chattiness and the release (see [Decisions](#decisions), 20–23). What was built, and where it differs from the plan below:
 
 - **Tap any avatar, during play.** Your own opens the 8 emotes; anyone else's opens the 4 throws, aimed at them. The tray opens mid-table where the inspector does (they share the spot, z 6; `.insp` moved from 5 to 6). That replaces "tap your own avatar, then theirs", and it needs no placement rules of its own sideways.
 - **One overlay layer** (`.taunts`, z 5) inside the arena, after the seats. Bubbles look round their avatar for the spot that covers least: never a card's rank corner, rarely someone else's plaque, and they may use the visible screen just above the table (never under the site header). Upright, a top seat's bubble sits on its own plaque, as nothing else fits. Checked in the browser at all eight phone sizes and desktop, with 4 and 5 players and 32-character names.
@@ -302,6 +302,17 @@ Planned 2026-11-26 after a read of the code it touches (see [Phase 4 code pointe
 - **XS: Share invite** in the waiting room. It opens the phone's share sheet with the join link.
 
 **Release 4b: chat (migration v9; take a volume snapshot first)**
+
+**Status (2026-11-28): RELEASE_STATUS** The design was checked by four critics (phones and the keyboard, data safety, the hand-end and focus rules, budgets) before it was built, and the change by five reviewers with a skeptic each. Checked in the browser at all eight phone sizes with the sheet open and closed, 5 players and 32-character names, and on a wide screen; not yet on a real phone. What was built, and where it differs from the plan below:
+
+- **Server:** migration v9, `chat_messages` with `AUTOINCREMENT` ids (devices remember the last id they read, so an id must never come back after a quiet day empties the table). `GET /api/games/:id/chat` answers `{ messages, more, now }` a page of 200 at a time: the newest page, or with `?after=<id>` what's newer, oldest first. `POST` takes `{ text, cid? }`: a retry with the same `cid` within 24 hours gets the saved message back, uncounted. About 5 messages in 10 seconds per person; the playtest owner's `as` (Cat chat) has a looser limit of its own, since every message is a row. Old messages are deleted on every send and on reads at most every 5 minutes (no background job), and left out of reads at 24 hours.
+- **names.ts:** the stray-tag pass of `normalizeDisplayName` is now one linear regex. The old lookbehind took about 0.9s of CPU for a 64 KB run of tag characters, which any sign-up or rename could send; its output is unchanged (fuzzed against the old one).
+- **The button:** 💬 with an unread count (per device, `hearts:chat-read:<id>`) just after the game's name; sideways it takes the top-left corner and the name shortens. In the waiting room beside Room settings, and above the results on the end screen.
+- **The sheet** (`ChatSheet.svelte`, lazy, 6.1 KB) follows `visualViewport`, so the box stays above the keyboard on iOS and Android without touching the viewport meta. Upright: a bottom sheet. Sideways and up to 1080px: a panel from the right (full width while a sideways keyboard is up). Wider (`CHAT_BESIDE`): a panel beside the table over the standings, under the hand result, and the table stays playable. It shows "Your turn" and the move timer, which it may be covering, and a Reconnecting line. Errors show inside it, not as a toast (the keyboard would hide one). Sending (`chat-send.svelte.ts`) loads with it.
+- **The end of a hand** (replaces "the result waits until it's closed"): while the sheet covers the table, the whole hand end waits and then plays as on a page load once chat closes, so a Sun or Moon isn't spent unseen. Beside the table, only the result waits, while you have a message half typed. Taps and keys in chat never skip the hand end.
+- **Previews:** on the sender's avatar at the table, at most two lines, one per person, four at once, never over a rank corner (left out instead), held through the hand end like taunts. In the waiting room and on the end screen, which have no avatars, a short note instead. Never your own. Mute is "Bubbles on/off", in the sheet and under the table.
+- **Budgets:** game page JS 52.7 of 55 KB (+2.4), its CSS 12.9 of 14 KB (+0.2); a longest-possible chat event is 3.5 KB of the 4 KB live-update budget (view-size.test.ts checks it).
+- **Releasing:** the quiet check now also looks at the newest `chat_messages.created_at`, since chat in a waiting room or on an end screen never touches `games.updated_at` (README → Branches and releases).
 
 - **M–L: text chat.**
   - **It belongs to one game.** It carries on through Keep playing, and a rematch starts empty.
@@ -589,6 +600,10 @@ From a read of the code on 2026-11-26, with the phone layout brought up to date 
   - During the hand-end sequence, `skipEnding` in Game.svelte swallows every click and the Escape, Enter and Space keys. HandResult takes focus when it opens and closes on any Escape pressed anywhere in the window.
 - **Per-device settings:** localStorage keys start with `hearts:` (`hearts:notify`, `hearts:seen-hand:<id>`, `hearts:seen-shot:<id>`, `hearts:app-nudge`, and `hearts:phone-check` on /dev/checklist). The 4-colour deck is the `hearts_deck` cookie, read on the server.
 - **Rematch:** `insertRematch` makes a new game id, so chat stored per game starts empty there. Keep playing keeps the same id.
+- **What 4a left for chat to reuse:**
+  - `sendToSeated(gameId, event, data)` in games.ts sends a named live-stream event to seated players only. Game.svelte's `connect()` adds one listener per event name (`taunt` today).
+  - `beside()` in src/lib/taunt-client.ts places a bubble beside an avatar, clear of rank corners, plaques and the message slot. TauntLayer.svelte measures what to avoid (`obstacles()`) and the visible part of the screen (`room()`). A chat preview on an avatar can use the same.
+  - `routeTaunt`, `hold` and `dueHeld` in src/lib/taunt-route.ts drop a tab's own echo and hold taunts while the hand-end sequence or the result is showing. Chat previews likely want the same hold; the chat sheet itself doesn't.
 - **Phone layout:** Table.svelte has three sets of rules for small screens, in this order:
   - **Below 1080px** the side panel (standings, the deck and alerts switches) moves under the table.
   - **Upright phones:** `@media (max-width: 640px)`, plus `max-width: 374px` for 360px phones. Plaques stack (avatar over name), the status cluster sits in the felt's bottom-left corner and "Last trick" bottom-right, and the hand and action bar sit under the table.

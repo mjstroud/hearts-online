@@ -18,6 +18,12 @@ Built with [Astro](https://astro.build) (server-rendered), [Svelte](https://svel
 - **Table moments.** Short messages when hearts break, the Q♠ is played and eaten, or the J♦ is grabbed. A Sun or Moon watch has no message: its glow lights up, grows, and goes out when the run is broken. When someone shoots the Moon or the Sun, a sunrise or moonrise plays before the results.
 - **Taunts.** During play, tap your own avatar for an emote (😂 😎 😱 😭 😈 😴 👏 ❤️) that pops up beside it, or tap someone else's to throw a 🍅, 🌹, 🐟 or 🥧 at them. The tray opens in the middle of the table, and everyone seated sees the taunt at once. Each player gets one every 15 seconds, and taunts wait until the end of a hand and its result have cleared. They go out over the live stream (`POST /api/games/:id/taunt` sends one), never as a game update, so nothing is saved and /games keeps its order.
   - **The cats chatter, lightly.** Now and then a cat answers a moment it's part of (about one in four: taking the Q♠ or J♦, breaking hearts, shooting, being hit), a person's Q♠ or shot, or very occasionally a trick it won. At most one cat reacts to any moment. What a cat says comes only from cards played face up, never from its hand or the crib.
+- **Table chat.** Each game has its own text chat, open in the waiting room, during play and after the game ends. The 💬 button by the game's name shows how many messages you haven't read on this device. Messages are one line of plain text, up to 280 characters, emoji welcome, and only the players seated at that game can read them. They're kept 24 hours; nobody deletes one by hand.
+  - **On a phone** it opens as a sheet from the bottom, or from the right when the phone is sideways, and follows the keyboard so the box you type in stays in view. **On a wide screen** it opens beside the table, over the standings, and you can keep playing.
+  - **New messages also show** for a few seconds as a bubble beside the sender's avatar at the table, or as a short note in the waiting room and on the end screen. "Bubbles on/off" (in the chat, and under the table) switches those off on this device; the count and the chat stay.
+  - **The end of a hand never interrupts you.** While chat covers the table, the hand end waits until you close it. Beside the table, the result waits until you've sent what you're typing.
+  - A rematch starts with an empty chat; Keep playing keeps it. Someone the host removes can't read it any more, and what they wrote stays under their name.
+  - History comes from `GET /api/games/:id/chat` (a page at a time; `?after=<id>` for what's newer) and `POST /api/games/:id/chat` sends one. New messages go out over the live stream, never as a game update. About five messages in ten seconds per person is the limit.
 - **Trick review.** Every finished hand's tricks can be replayed from the results screen ("See the tricks") or by tapping a hand number on the scoreboard. They load on demand from `/api/games/:id/hands/:number`.
 - **Terms and privacy.** Short Terms and Privacy pages. New players agree at sign-up, and existing players agree once on their next visit.
 - **Less waiting.**
@@ -48,6 +54,7 @@ Built with [Astro](https://astro.build) (server-rendered), [Svelte](https://svel
   - AI-step one move, finish a trick or a hand, and undo
   - stacked deals: Moon and Sun setups, the Q♠, J♦ or lowest club in the crib, or your own custom deck, with a choice of pass direction
   - Cat taunt: a random cat sends an emote, or throws something at you, with no cooldown
+  - Cat chat: a random cat says something in the chat, to try the previews on avatars
 
   The panel also shows latency: tap to screen, tap to server reply, and tap to live update. Playtest games don't count toward lifetime stats.
 - **Scoreboard.** Standings, a running-total chart, and a hand-by-hand score sheet marking who took the Q♠, the J♦, the crib, or shot the moon or sun.
@@ -161,8 +168,8 @@ Two long-lived branches, each deployed by CI when it's pushed:
   ```
 
   Pushing `dev` deploys the dev site. Try it there, on real phones too, before it goes any further.
-- **A release** merges `dev` into `main`. Do it between play sessions: every push to `main` restarts the real site's one machine, mid-game for anyone playing.
-  - If the release adds a database migration, snapshot the real site's volume first: `fly volumes list` shows the id, then `fly volumes snapshots create <volume id>`. (Bare `fly` commands act on the real app.)
+- **A release** merges `dev` into `main`. Do it between play sessions: every push to `main` restarts the real site's one machine, mid-game for anyone playing. A quiet table shows in two places: the newest `games.updated_at` among active games, and the newest `chat_messages.created_at` (chat in a waiting room or on an end screen never touches the game row).
+  - If the release adds a database migration, snapshot the real site's volume just before pushing: `fly volumes list` shows the id, then `fly volumes snapshots create <volume id>`, and `fly volumes snapshots list <volume id>` to see it's there. (Bare `fly` commands act on the real app.)
   - Then merge and push. Pushing `main` deploys the real site once CI passes.
 
     ```bash

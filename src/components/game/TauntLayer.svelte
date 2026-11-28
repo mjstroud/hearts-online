@@ -3,12 +3,17 @@
 
 <script lang="ts">
   import { untrack } from 'svelte';
+  import type { ChatShow } from '../../lib/chat-client';
   import { COVER, type Obstacle, type Rect, type Spot, type TauntShow, arc, beside } from '../../lib/taunt-client';
   import { EMOTES, THROWS, tauntById } from '../../lib/taunts';
 
   interface Props {
     /** Taunts to draw, newest last (Game.svelte keeps them). */
     feed: TauntShow[];
+    /** Chat previews to draw on their senders' avatars, newest last. */
+    chatFeed?: ChatShow[];
+    /** Changes with every card played to the trick, so a preview a card lands under makes way. */
+    trickKey?: string;
     /** The tray: your own emotes (`to` null), or throws at someone, or closed. */
     tray: { to: number | null; name: string } | null;
     /** When you may taunt again, on this device's clock. */
@@ -18,7 +23,7 @@
     /** Told each time a taunt is actually drawn, with who sent it. */
     shown?: (from: number) => void;
   }
-  let { feed, tray, cooldownUntil, send, close, shown }: Props = $props();
+  let { feed, chatFeed = [], trickKey = '', tray, cooldownUntil, send, close, shown }: Props = $props();
 
   // ----- What's on screen: a bubble by an avatar, or something in flight. Each is placed once, when it
   // starts, and taken away by a timer (reduced motion finishes animations at once, so never animationend).
@@ -48,7 +53,7 @@
       ...all('.trick .played .index > *, .hand .pc .index > *', COVER.corner),
       ...all('.action-bar', COVER.button),
       ...all('.seat .plaque', whose),
-      ...all('.msg, .counter, .statusbar .game-name, .statusbar .badge', COVER.message),
+      ...all('.msg, .counter, .statusbar .game-name, .statusbar .badge, .statusbar .chat-btn', COVER.message),
       ...all('.seat-tags .tag', COVER.tag),
     ];
   }
@@ -118,6 +123,81 @@
     });
   });
 
+  // ----- Chat previews: a new message, cut short, beside its sender's avatar for a few seconds. One per person
+  // at a time (a newer one replaces it), and placed once it's drawn, when its size is known.
+  interface Note {
+    key: number;
+    from: number;
+    text: string;
+    ms: number;
+  }
+  let notes = $state<Note[]>([]);
+  let seenChat = 0;
+
+  function startNote(s: ChatShow) {
+    // Long enough to read a line or two.
+    const ms = Math.min(6000, 2500 + s.text.length * 40);
+    const key = ++keys;
+    // Four at most: everyone else at a table of five.
+    notes = [...notes.filter((n) => n.from !== s.from).slice(-3), { key, from: s.from, text: s.text, ms }];
+    setTimeout(() => (notes = notes.filter((n) => n.key !== key)), ms);
+  }
+
+  $effect(() => {
+    const list = chatFeed;
+    untrack(() => {
+      for (const s of list) {
+        if (s.id <= seenChat) continue;
+        seenChat = s.id;
+        if (Date.now() - s.at < 3000) startNote(s);
+      }
+    });
+  });
+
+  /** Another preview or emote already up: a new one goes elsewhere rather than on top of it. */
+  const OTHER_NOTE = 30;
+
+  /** Beside its sender's avatar, clear of rank corners. If every spot would cover one, it isn't shown: the count on the chat button still says there's a message. */
+  const place = (from: number) => (el: HTMLElement) => {
+    const box = layer.getBoundingClientRect();
+    const r = layer.parentElement?.querySelector(`[data-user="${from}"] .seat-avatar`)?.getBoundingClientRect();
+    // Its laid-out size: the box on screen is still scaled down by the animation's first frame. The width is
+    // fixed at that, so moving it near an edge can't make it wrap onto more lines than were measured.
+    if (!r || !el.offsetWidth) return;
+    el.style.width = px(el.offsetWidth + 1);
+    const half = { x: el.offsetWidth / 2, y: el.offsetHeight / 2 };
+    const a = { x: r.left + r.width / 2 - box.left, y: r.top + r.height / 2 - box.top, size: r.width };
+    const others = [...layer.querySelectorAll<HTMLElement>('.note, .b')]
+      .filter((o) => o !== el && o.style.visibility !== 'hidden' && (o.classList.contains('b') || o.style.visibility === 'visible'))
+      .map((o) => {
+        const q = o.getBoundingClientRect();
+        return { left: q.left - box.left, top: q.top - box.top, right: q.right - box.left, bottom: q.bottom - box.top, weight: OTHER_NOTE };
+      });
+    const b = beside(a, { width: box.width, height: box.height }, [...obstacles(box, from), ...others], room(box), half);
+    if (b.cost >= COVER.corner) return;
+    el.style.left = px(b.x - half.x);
+    el.style.top = px(b.y - half.y);
+    el.style.transformOrigin = `${Math.round(50 - b.ux * 50)}% ${Math.round(50 - b.uy * 50)}%`;
+    el.style.visibility = 'visible';
+  };
+
+  // A card played after a preview went up may land under it: once the card has slid in, any preview over a
+  // rank corner makes way (the count on the chat button still says there's a message).
+  $effect(() => {
+    void trickKey;
+    const timer = setTimeout(() => {
+      if (!notes.length) return;
+      const corners = [...(layer.closest('.layout') ?? document).querySelectorAll('.trick .played .index > *')].map((c) => c.getBoundingClientRect());
+      const over = new Set<number>();
+      for (const el of layer.querySelectorAll<HTMLElement>('.note')) {
+        const q = el.getBoundingClientRect();
+        if (corners.some((c) => c.left < q.right && c.right > q.left && c.top < q.bottom && c.bottom > q.top)) over.add(Number(el.dataset.key));
+      }
+      if (over.size) notes = notes.filter((n) => !over.has(n.key));
+    }, 450);
+    return () => clearTimeout(timer);
+  });
+
   // ----- The tray. While the cooldown runs it counts down, once a second, only while it's open.
   let now = $state(Date.now());
   $effect(() => {
@@ -155,6 +235,9 @@
 
 <div class="taunts" bind:this={layer} aria-hidden="true">
   {#each items as it (it.key)}<span class={it.cls} style={it.style}>{it.emoji}</span>{/each}
+  {#each notes as n (n.key)}<span class="note" data-key={n.key} style={`--ms: ${n.ms}ms`} {@attach place(n.from)}
+      ><span>{n.text}</span></span
+    >{/each}
 </div>
 
 {#if tray}
@@ -284,9 +367,56 @@
     }
   }
 
+  /* A chat preview: two lines at most, cut short with "…". Hidden until it's placed (TauntLayer's place()). */
+  .note {
+    position: absolute;
+    left: 0;
+    top: 0;
+    visibility: hidden;
+    max-width: min(176px, 56%);
+    padding: 6px 10px;
+    border-radius: 12px;
+    background: var(--card-face);
+    box-shadow: var(--plaque-shadow);
+    color: #1d1b19;
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.3;
+    animation: note var(--ms, 4s) var(--ease) both;
+  }
+
+  /* Clamped inside the padding, so a third line can't show through it. */
+  .note > span {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+  }
+
+  /* Grows out of the avatar (transform-origin points at it), holds, and fades. */
+  @keyframes note {
+    from {
+      opacity: 0;
+      transform: scale(0.6);
+    }
+    6% {
+      opacity: 1;
+      transform: none;
+    }
+    90% {
+      opacity: 1;
+    }
+    to {
+      opacity: 0;
+    }
+  }
+
   /* Reduced motion: a still bubble (a throw is drawn already landed), taken away by its timer. */
   @media (prefers-reduced-motion: reduce) {
-    .b {
+    .b,
+    .note {
       animation: none;
     }
   }
