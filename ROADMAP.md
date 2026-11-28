@@ -1,6 +1,6 @@
 # Roadmap
 
-Updated 2026-11-27, checked against the code and the git history. Phases 1 to 3 are live, and so is the [phone pass](#phone-pass-before-phase-4) (`release-2026-11-27.1`, polished in `.2`). Phase 4 is next. It was planned on 2026-11-26 after a read of the code it touches, and its [code pointers](#phase-4-code-pointers) now cover the sideways layout. Every open question is answered (see [Decisions](#decisions)). Phase 4a (taunts) is live as `release-2026-11-27.4` (see [Phase 4](#phase-4-talk-and-tease)); it needed no budget rise, and the owner chose the taunt list. 4b (chat) is next.
+Updated 2026-11-28, checked against the code and the git history. Phases 1 to 3 are live, and so is the [phone pass](#phone-pass-before-phase-4) (`release-2026-11-27.1`, polished in `.2`). Phase 4 is next. It was planned on 2026-11-26 after a read of the code it touches, and its [code pointers](#phase-4-code-pointers) now cover the sideways layout. Every open question is answered (see [Decisions](#decisions)). Phase 4 is live: 4a (taunts) as `release-2026-11-27.4` and 4b (chat, migration v9) as `release-2026-11-28.1` (see [Phase 4](#phase-4-talk-and-tease)). Neither needed a budget rise. Phase 5 (personality) is next.
 
 Sizes are in Claude Code working sessions:
 
@@ -303,7 +303,7 @@ Planned 2026-11-26 after a read of the code it touches (see [Phase 4 code pointe
 
 **Release 4b: chat (migration v9; take a volume snapshot first)**
 
-**Status (2026-11-28): RELEASE_STATUS** The design was checked by four critics (phones and the keyboard, data safety, the hand-end and focus rules, budgets) before it was built, and the change by five reviewers with a skeptic each. Checked in the browser at all eight phone sizes with the sheet open and closed, 5 players and 32-character names, and on a wide screen; not yet on a real phone. What was built, and where it differs from the plan below:
+**Status (2026-11-28): live** as `release-2026-11-28.1` (main 3f9a198, Fly release v19), after the real site had been quiet for over an hour. Migration v9 ran on the real database with nothing lost (4 games, 39 hands, 12 users, integrity ok); the volume snapshot taken just before is `vs_yy8n03XNbZKfm7Yo3wwDbn`. The design was checked by four critics (phones and the keyboard, data safety, the hand-end and focus rules, budgets) before it was built, and the change by five reviewers with a skeptic each. Checked in the browser at all eight phone sizes with the sheet open and closed, 5 players and 32-character names, and on a wide screen; not yet on a real phone. What was built, and where it differs from the plan below:
 
 - **Server:** migration v9, `chat_messages` with `AUTOINCREMENT` ids (devices remember the last id they read, so an id must never come back after a quiet day empties the table). `GET /api/games/:id/chat` answers `{ messages, more, now }` a page of 200 at a time: the newest page, or with `?after=<id>` what's newer, oldest first. `POST` takes `{ text, cid? }`: a retry with the same `cid` within 24 hours gets the saved message back, uncounted. About 5 messages in 10 seconds per person; the playtest owner's `as` (Cat chat) has a looser limit of its own, since every message is a row. Old messages are deleted on every send and on reads at most every 5 minutes (no background job), and left out of reads at 24 hours.
 - **names.ts:** the stray-tag pass of `normalizeDisplayName` is now one linear regex. The old lookbehind took about 0.9s of CPU for a 64 KB run of tag characters, which any sign-up or rename could send; its output is unchanged (fuzzed against the old one).
@@ -506,7 +506,7 @@ Ideas worth keeping that aren't planned:
 
 ## Rollout
 
-- **Try everything on the dev site first** (dev.shootthesun.com, deployed from the `dev` branch), then release `dev` to `main` between play sessions. Take a Fly volume snapshot of the real site before each migration: v7 (terms acceptance, done), v8 (removed players, done), v9 (chat, Phase 4b), then later ones for themes, email sign-in and public lobbies.
+- **Try everything on the dev site first** (dev.shootthesun.com, deployed from the `dev` branch), then release `dev` to `main` between play sessions. Take a Fly volume snapshot of the real site before each migration: v7 (terms acceptance, done), v8 (removed players, done), v9 (chat, Phase 4b, done), then later ones for themes, email sign-in and public lobbies.
 - **The dev site is the https test bed** for service workers, home-screen installs and push on real phones.
 - **Real-iPhone loop:** run `npm run dev -- --host`, then open the PC's network address on an iPhone on the same Wi-Fi. Sign-in works over plain http there. Service workers, home-screen installs and push need https, so test those on the dev site (dev.shootthesun.com).
 - **The GitHub repo is public.** Cat photos go in the database, not the repo.
