@@ -83,3 +83,8 @@ export async function readForm(request: Request): Promise<Record<string, string>
 export function jsonError(message: string, status = 400): Response {
   return Response.json({ error: message }, { status });
 }
+
+/** A 429 that says when to try again: `retryAfterMs` for a countdown, Retry-After in whole seconds for everyone else. */
+export function jsonTooSoon(message: string, retryAfterMs: number): Response {
+  return Response.json({ error: message, retryAfterMs }, { status: 429, headers: { 'Retry-After': String(Math.ceil(retryAfterMs / 1000)) } });
+}
