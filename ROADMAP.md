@@ -589,6 +589,10 @@ From a read of the code on 2026-11-26, with the phone layout brought up to date 
   - During the hand-end sequence, `skipEnding` in Game.svelte swallows every click and the Escape, Enter and Space keys. HandResult takes focus when it opens and closes on any Escape pressed anywhere in the window.
 - **Per-device settings:** localStorage keys start with `hearts:` (`hearts:notify`, `hearts:seen-hand:<id>`, `hearts:seen-shot:<id>`, `hearts:app-nudge`, and `hearts:phone-check` on /dev/checklist). The 4-colour deck is the `hearts_deck` cookie, read on the server.
 - **Rematch:** `insertRematch` makes a new game id, so chat stored per game starts empty there. Keep playing keeps the same id.
+- **What 4a left for chat to reuse:**
+  - `sendToSeated(gameId, event, data)` in games.ts sends a named live-stream event to seated players only. Game.svelte's `connect()` adds one listener per event name (`taunt` today).
+  - `beside()` in src/lib/taunt-client.ts places a bubble beside an avatar, clear of rank corners, plaques and the message slot. TauntLayer.svelte measures what to avoid (`obstacles()`) and the visible part of the screen (`room()`). A chat preview on an avatar can use the same.
+  - `routeTaunt`, `hold` and `dueHeld` in src/lib/taunt-route.ts drop a tab's own echo and hold taunts while the hand-end sequence or the result is showing. Chat previews likely want the same hold; the chat sheet itself doesn't.
 - **Phone layout:** Table.svelte has three sets of rules for small screens, in this order:
   - **Below 1080px** the side panel (standings, the deck and alerts switches) moves under the table.
   - **Upright phones:** `@media (max-width: 640px)`, plus `max-width: 374px` for 360px phones. Plaques stack (avatar over name), the status cluster sits in the felt's bottom-left corner and "Last trick" bottom-right, and the hand and action bar sit under the table.
