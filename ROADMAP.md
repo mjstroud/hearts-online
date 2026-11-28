@@ -1,6 +1,6 @@
 # Roadmap
 
-Updated 2026-11-27, checked against the code and the git history. Phases 1 to 3 are live, and so is the [phone pass](#phone-pass-before-phase-4) (`release-2026-11-27.1`, polished in `.2`). Phase 4 is next. It was planned on 2026-11-26 after a read of the code it touches, and its [code pointers](#phase-4-code-pointers) now cover the sideways layout. Every open question is answered (see [Decisions](#decisions)). Phase 4a (taunts) is built (see [Phase 4](#phase-4-talk-and-tease)); it needed no budget rise, and the owner chose the taunt list. 4b (chat) is next.
+Updated 2026-11-27, checked against the code and the git history. Phases 1 to 3 are live, and so is the [phone pass](#phone-pass-before-phase-4) (`release-2026-11-27.1`, polished in `.2`). Phase 4 is next. It was planned on 2026-11-26 after a read of the code it touches, and its [code pointers](#phase-4-code-pointers) now cover the sideways layout. Every open question is answered (see [Decisions](#decisions)). Phase 4a (taunts) is live as `release-2026-11-27.4` (see [Phase 4](#phase-4-talk-and-tease)); it needed no budget rise, and the owner chose the taunt list. 4b (chat) is next.
 
 Sizes are in Claude Code working sessions:
 
@@ -269,7 +269,7 @@ Planned 2026-11-26 after a read of the code it touches (see [Phase 4 code pointe
 
 **Release 4a: taunts (no migration)**
 
-**Status (2026-11-27): built.** The owner chose the starter list (below), the gesture, the cats' chattiness and the release (see [Decisions](#decisions), 20–23). What was built, and where it differs from the plan below:
+**Status (2026-11-27): live** as `release-2026-11-27.4` (main c03bf39, Fly release v18), after the real site had been quiet for hours. No migration, so no snapshot. Checked in the browser at every phone size and on desktop, and the cats were seen chattering on their own in a local playtest; not yet checked on a real phone. The owner chose the starter list (below), the gesture, the cats' chattiness and the release (see [Decisions](#decisions), 20–23). What was built, and where it differs from the plan below:
 
 - **Tap any avatar, during play.** Your own opens the 8 emotes; anyone else's opens the 4 throws, aimed at them. The tray opens mid-table where the inspector does (they share the spot, z 6; `.insp` moved from 5 to 6). That replaces "tap your own avatar, then theirs", and it needs no placement rules of its own sideways.
 - **One overlay layer** (`.taunts`, z 5) inside the arena, after the seats. Bubbles look round their avatar for the spot that covers least: never a card's rank corner, rarely someone else's plaque, and they may use the visible screen just above the table (never under the site header). Upright, a top seat's bubble sits on its own plaque, as nothing else fits. Checked in the browser at all eight phone sizes and desktop, with 4 and 5 players and 32-character names.
