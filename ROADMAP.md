@@ -1,6 +1,6 @@
 # Roadmap
 
-Updated 2026-11-27, checked against the code and the git history. Phases 1 to 3 are live, and so is the [phone pass](#phone-pass-before-phase-4) (`release-2026-11-27.1`, polished in `.2`). Phase 4 is next. It was planned on 2026-11-26 after a read of the code it touches, and its [code pointers](#phase-4-code-pointers) now cover the sideways layout. Every open question is answered (see [Decisions](#decisions)). Phase 4 will still ask the owner to OK a CSS budget increase and the starter taunt list.
+Updated 2026-11-27, checked against the code and the git history. Phases 1 to 3 are live, and so is the [phone pass](#phone-pass-before-phase-4) (`release-2026-11-27.1`, polished in `.2`). Phase 4 is next. It was planned on 2026-11-26 after a read of the code it touches, and its [code pointers](#phase-4-code-pointers) now cover the sideways layout. Every open question is answered (see [Decisions](#decisions)). Phase 4a (taunts) is built (see [Phase 4](#phase-4-talk-and-tease)); it needed no budget rise, and the owner chose the taunt list. 4b (chat) is next.
 
 Sizes are in Claude Code working sessions:
 
@@ -269,6 +269,16 @@ Planned 2026-11-26 after a read of the code it touches (see [Phase 4 code pointe
 
 **Release 4a: taunts (no migration)**
 
+**Status (2026-11-27): built.** The owner chose the starter list (below), the gesture, the cats' chattiness and the release (see [Decisions](#decisions), 20–23). What was built, and where it differs from the plan below:
+
+- **Tap any avatar, during play.** Your own opens the 8 emotes; anyone else's opens the 4 throws, aimed at them. The tray opens mid-table where the inspector does (they share the spot, z 6; `.insp` moved from 5 to 6). That replaces "tap your own avatar, then theirs", and it needs no placement rules of its own sideways.
+- **One overlay layer** (`.taunts`, z 5) inside the arena, after the seats. Bubbles look round their avatar for the spot that covers least: never a card's rank corner, rarely someone else's plaque, and they may use the visible screen just above the table (never under the site header). Upright, a top seat's bubble sits on its own plaque, as nothing else fits. Checked in the browser at all eight phone sizes and desktop, with 4 and 5 players and 32-character names.
+- **Lazy:** `TauntLayer.svelte` (tray, bubbles, throws, their CSS) loads on the first taunt or the first touch on an avatar, 4.0 KB. The game page grew 1.9 KB of JS (50.3 of 55) and no CSS (12.7 of 14), so no budget rise was needed.
+- **The starter list:** emotes 😂 laugh, 😎 cool, 😱 shock, 😭 sob, 😈 devil, 😴 sleepy, 👏 clap, ❤️ heart; throws 🍅 tomato, 🌹 rose, 🐟 fish, 🥧 pie (src/lib/taunts.ts).
+- **Server:** `POST /api/games/:id/taunt` (validation before the cooldown, so a bad tap never costs the 15s; 409 outside play), `sendToSeated` in games.ts, the cooldown kept per table (`taunt:<game>:<user>`), because the cats sit at several tables at once. The owner of a playtest table can send as its cats (`as`, no cooldown): the panel's **Cat taunt**.
+- **The cats:** `tableEvents` (src/lib/engine/table-events.ts) turns a change into face-up moments; `chatter.ts` picks at most one and at most one cat, with the chances in one table at the top of the file. Hand-end reactions wait out the final-trick hold, any Sun or Moon banner (`SHOT_MS`, shared with Game.svelte) and a second's margin, so they arrive once the result is up; every tab holds taunts while its result is open and plays the newest four, up to 30 seconds old, when it closes. Tests switch the chatter off (vitest.setup.ts) unless they turn it on.
+- **Share invite** in the waiting room, where the browser has a share sheet.
+
 - **S: a broadcast to seated players only.** A new helper in games.ts beside `publishTo`, which already looks up the players and then calls the hub's `sendTo`. hub.ts knows nothing about seats.
   - It looks up who is seated each time it sends, because a removed player's stream stays open until `publish()` hangs it up.
   - It uses a new named live-stream event, which tabs running old code ignore.
@@ -521,6 +531,13 @@ Made while planning Phase 4, 2026-11-26:
 18. **The long view:** more card games (Euchre first) come last. Public players and paying for the site guide decisions now, but aren't tasks yet (see [Thinking ahead](#thinking-ahead)).
 19. **Phase 4 ships in two releases:** measuring CSS per page comes first, then 4a (taunts, no migration), then 4b (chat, migration v9, with a volume snapshot of the real site first).
 
+Made when starting 4a, 2026-11-27:
+
+20. **The starter taunt list:** the emotes 😂 😎 😱 😭 😈 😴 👏 ❤️ and the throws 🍅 🌹 🐟 🥧.
+21. **The gesture:** tap any avatar. Your own opens the emotes, anyone else's the throws at them, in a tray mid-table.
+22. **The cats chatter lightly:** about 1 in 4 of the moments a cat is part of, rarely a plain trick.
+23. **4a releases after Claude's own checks** on the dev site, between play sessions, without waiting for the owner's phone check.
+
 ## Code pointers
 
 Function and component names rather than line numbers, because those move.
@@ -567,7 +584,7 @@ From a read of the code on 2026-11-26, with the phone layout brought up to date 
 
   action.ts itself answers non-members with a 403 from `performAction` and has no rate limit. Chat and taunts get their own routes, not new `GameAction` types, because every change through `performAction` is saved with `saveGame` and then sent to everyone with `publish()`. `saveGame` bumps the version and `updated_at`, which reorders /games.
 - **Layers and focus:**
-  - Inside the arena, `.msg` is z 4 and `.insp` is z 5.
+  - Inside the arena, since 4a: the seats are z 3, `.msg` z 4, the taunt layer (`.taunts` in TauntLayer.svelte, bubbles and throws) z 5, and `.insp` and the taunt tray z 6. 4b's chat previews on avatars belong in the taunt layer's level, or one between it and the tray.
   - `.arena` and `.hand-zone` are size containers. That doesn't make them stacking contexts, or containing blocks for fixed children (a `position: fixed` child is still placed against the screen). A chat sheet still belongs in Game.svelte, so it outlasts the table.
   - During the hand-end sequence, `skipEnding` in Game.svelte swallows every click and the Escape, Enter and Space keys. HandResult takes focus when it opens and closes on any Escape pressed anywhere in the window.
 - **Per-device settings:** localStorage keys start with `hearts:` (`hearts:notify`, `hearts:seen-hand:<id>`, `hearts:seen-shot:<id>`, `hearts:app-nudge`, and `hearts:phone-check` on /dev/checklist). The 4-colour deck is the `hearts_deck` cookie, read on the server.

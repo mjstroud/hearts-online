@@ -1,12 +1,15 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import { prefersReducedMotion } from 'svelte/motion';
   import { fly } from '../../lib/motion';
   import { type Card, cardLabel, isPenaltyCard } from '../../lib/engine/cards';
   import type { HandSummary } from '../../lib/engine/view';
   import type { MoveTiming, TimedMove } from '../../lib/latency.svelte';
-  import { endedLive, finalTrickHoldMs } from '../../lib/moments';
+  import { SHOT_MS, endedLive, finalTrickHoldMs } from '../../lib/moments';
   import { postJson } from '../../lib/post-json';
+  import type { TauntShow } from '../../lib/taunt-client';
+  import { dueHeld, hold, routeTaunt, sendOutcome } from '../../lib/taunt-route';
+  import { TAUNT_COOLDOWN_MS, type TauntEvent, type TauntRequest, tauntById } from '../../lib/taunts';
   import type { GameAction, GameView } from '../../lib/types';
   import { SITE_NAME } from '../../lib/ui';
   import FinalResults from './FinalResults.svelte';
@@ -300,7 +303,8 @@
         shotInMemory = current.hand.number;
         remember(shotKey, shotInMemory);
         // Reduced motion gets a still banner, so it needn't stay as long.
-        endingTimer = setTimeout(endHand, prefersReducedMotion.current ? 1500 : 2200);
+        // SHOT_MS is shared with the server, whose cats wait for the result before they react.
+        endingTimer = setTimeout(endHand, prefersReducedMotion.current ? 1500 : SHOT_MS);
       },
       () => {
         clearTimeout(giveUp);
@@ -339,6 +343,79 @@
     resultOpen = false;
     seenInMemory = view.lastHand?.number ?? 0;
     remember(seenKey, seenInMemory);
+  }
+
+  // ----- Taunts: emotes and throws (src/lib/taunts.ts), during play only. They come over the live stream as
+  // their own event, never as a game update, and the table draws them (TauntLayer.svelte).
+  let tauntFeed = $state.raw<TauntShow[]>([]);
+  /** When you may taunt again, on this device's clock. The server keeps the real cooldown. */
+  let tauntCooldown = $state(0);
+  let tauntsShown = 0;
+  /** Taunts that arrived during the end of a hand or its result: they play afterwards, if still fresh. */
+  let heldTaunts: { ev: TauntEvent; at: number }[] = [];
+  /** This tab's own sends, by client id, so their echoes are skipped (they played when tapped). */
+  const sentTaunts = new Set<string>();
+  let tabId = '';
+  let sends = 0;
+  let tipped = false;
+
+  function showTaunt(ev: TauntEvent) {
+    const at = Date.now();
+    tauntFeed = [...tauntFeed.filter((s) => at - s.at < 5000), { ...ev, id: ++tauntsShown, at }].slice(-6);
+  }
+
+  /** Once per device, the first time the table actually draws someone else's taunt. */
+  function tauntShown(from: number) {
+    if (from === view.me.userId || tipped) return;
+    tipped = true;
+    try {
+      if (localStorage.getItem('hearts:taunt-tip')) return;
+    } catch {}
+    remember('hearts:taunt-tip', 1);
+    showToast('Tap any avatar to send one back.');
+  }
+
+  function onTaunt(ev: TauntEvent) {
+    const { route, cooldown } = routeTaunt(ev, {
+      status: view.status,
+      players: view.players,
+      me: view.me.userId,
+      hidden: document.hidden,
+      holding: !!ending || resultOpen,
+      sent: sentTaunts,
+    });
+    if (cooldown) tauntCooldown = Math.max(tauntCooldown, Date.now() + TAUNT_COOLDOWN_MS);
+    if (route === 'hold') heldTaunts = hold(heldTaunts, { ev, at: Date.now() });
+    else if (route === 'show') showTaunt(ev);
+  }
+
+  $effect(() => {
+    if (ending || resultOpen) return;
+    untrack(() => {
+      const due = dueHeld(heldTaunts, Date.now(), { status: view.status, hidden: document.hidden });
+      heldTaunts = [];
+      due.forEach((h) => showTaunt(h.ev));
+    });
+  });
+
+  /** Shows at once (ground rule 1) and never holds up the cards: it doesn't go through act(). */
+  function sendTaunt(taunt: string, to: number | null) {
+    const sentAt = Date.now();
+    if (!tauntById(taunt) || sentAt < tauntCooldown) return;
+    // Not crypto.randomUUID, which plain http (a phone on the LAN) doesn't have.
+    tabId ||= crypto.getRandomValues(new Uint32Array(1))[0].toString(36);
+    const cid = `${tabId}.${++sends}`;
+    sentTaunts.add(cid);
+    const before = tauntCooldown;
+    tauntCooldown = sentAt + TAUNT_COOLDOWN_MS;
+    showTaunt({ taunt, from: view.me.userId, to, cid });
+    const body: TauntRequest = { taunt, to, cid };
+    postJson(`/api/games/${view.id}/taunt`, body).then((res) => {
+      const { until, forget, toast } = sendOutcome(res, before, Date.now());
+      if (until !== null) tauntCooldown = until;
+      if (forget) sentTaunts.delete(cid);
+      if (toast) showToast(toast);
+    });
   }
 
   // Alerts go through a service worker (public/sw.js), because Android Chrome won't let a page
@@ -459,6 +536,11 @@
         if (!leaving) location.href = '/games?notice=removed';
       });
       source.addEventListener('deleted', () => (location.href = '/games?notice=deleted'));
+      source.addEventListener('taunt', (e) => {
+        try {
+          onTaunt(JSON.parse((e as MessageEvent).data));
+        } catch {}
+      });
     };
     connect();
 
@@ -510,6 +592,10 @@
     finalBefore={ending?.held?.table ?? null}
     finalHand={ending?.held ? ending.hand : null}
     onShowResult={() => (resultOpen = true)}
+    {tauntFeed}
+    {tauntCooldown}
+    {sendTaunt}
+    {tauntShown}
   />
 {:else}
   <FinalResults {view} {act} {busy} onShowResult={() => (resultOpen = true)} />
@@ -548,6 +634,8 @@
     font-size: 14px;
     font-weight: 500;
     box-shadow: var(--shadow-lg);
+    /* Just words: taps go through to the hand or felt beneath (a tip can show up mid-play, unasked). */
+    pointer-events: none;
   }
 
   /* The sticky header grows by the top safe-area inset in a home-screen app, so these pills move down with it. */
@@ -621,7 +709,6 @@
 
     .toast {
       bottom: calc(84px + env(safe-area-inset-bottom, 0px));
-      pointer-events: none;
     }
   }
 </style>

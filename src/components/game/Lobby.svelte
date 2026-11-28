@@ -1,6 +1,8 @@
 <script lang="ts">
   import { CRIB_SIZE, MAX_PLAYERS, MIN_PLAYERS, cardsPerPlayer, moveTimerLabel, passCycle, passLabel } from '../../lib/engine/rules';
   import type { GameAction, GameView } from '../../lib/types';
+  import { onMount } from 'svelte';
+  import { SITE_NAME } from '../../lib/ui';
   import Avatar from '../Avatar.svelte';
 
   interface Props {
@@ -17,6 +19,20 @@
   const canStart = $derived(count >= MIN_PLAYERS && count <= MAX_PLAYERS);
   const previewPlayers = $derived(Math.min(Math.max(count, MIN_PLAYERS), MAX_PLAYERS));
   const s = $derived(view.settings);
+
+  // Only phones (and a few desktop browsers) have a share sheet, and the server can't tell, so look after mount.
+  let canShare = $state(false);
+  onMount(() => (canShare = typeof navigator.share === 'function'));
+
+  function share() {
+    // Called straight from the tap, with nothing awaited first, or Safari refuses: it needs the tap itself.
+    navigator
+      .share({ title: view.name, text: `Join me at ${view.name} on ${SITE_NAME}.`, url: `${location.origin}/join/${view.joinCode}` })
+      .catch((err: unknown) => {
+        // Closing the share sheet isn't a failure. Anything else falls back to copying the link.
+        if ((err as { name?: string })?.name !== 'AbortError') copy('link');
+      });
+  }
 
   async function copy(kind: 'code' | 'link') {
     const text = kind === 'code' ? view.joinCode : `${location.origin}/join/${view.joinCode}`;
@@ -51,6 +67,9 @@
         {#each view.joinCode.split('') as ch}<span>{ch}</span>{/each}
       </button>
       <div class="row">
+        {#if canShare}
+          <button class="btn btn-sm" onclick={share}>Share invite</button>
+        {/if}
         <button class="btn btn-sm" onclick={() => copy('code')}>{copied === 'code' ? 'Copied!' : 'Copy code'}</button>
         <button class="btn btn-sm" onclick={() => copy('link')}>{copied === 'link' ? 'Copied!' : 'Copy invite link'}</button>
       </div>
