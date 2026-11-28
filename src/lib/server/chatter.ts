@@ -209,7 +209,7 @@ export function catHit(gameId: string, catUserId: number, fromUserId: number, ta
   }
 }
 
-/** Drop a game's pending reaction: the game was deleted. */
+/** Drop a game's pending reaction: the game was deleted, or the playtest panel undid or redealt. */
 export function clearCatReaction(gameId: string): void {
   const timer = timers.get(gameId);
   if (timer) clearTimeout(timer);

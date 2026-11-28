@@ -81,7 +81,9 @@ function eventsSince(mark: FaceUpMark, state: GameState | null, settings: GameSe
     if (typeof record.moon === 'number') out.push({ kind: 'moon', seat: record.moon, handEnd: true });
     return out;
   }
-  // The same hand, moved on. A new deal, a redeal, an undo, End now or Keep playing is nothing the table watched.
+  // The same hand, moved on. A new deal, a redeal, an undo, End now or Keep playing is nothing the
+  // table watched. Counts can't tell an undo past a redeal (the same hand number, its old tricks
+  // back) from play, so performAction gives no events for the playtest panel's undo and deal.
   const hand = state.hand;
   if (!hand || hand.number !== mark.hand || hand.tricks.length < mark.done) return [];
   const out = trickEvents(hand.tricks.slice(mark.done), settings.jackOfDiamonds, false);

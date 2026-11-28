@@ -342,6 +342,63 @@ describe('a cat says nothing', () => {
     expect(tab.events.slice(before).map((e) => e.event)).toEqual(['deleted']);
   });
 
+  /** A playtest table on manual, dealt DEAL with trick 1 on the felt: seat 3, a cat, takes it and the J♦ with the A♣. */
+  function panel() {
+    const owner = addUser();
+    const id = createPlaytest(owner, 'Undo', normalizeSettings({}), 4);
+    performAction(id, owner, { type: 'dev:bots', botMode: 'manual' });
+    const custom = { hands: DEAL.map((h) => h.join(' ')), crib: CRIB.join(' ') };
+    performAction(id, owner, { type: 'dev:deal', preset: 'custom', custom, passOffset: 0 });
+    const tab = listen(id, owner);
+    const act = (seat: number, card: Card) => performAction(id, owner, { type: 'dev:act', seat, move: { type: 'play', card } });
+    for (const [seat, card] of [[0, '2C'], [1, '8C'], [2, 'JD']] as const) act(seat, card);
+    const tricks = () => loadGame(id)!.state!.hand!.tricks.length;
+    return { id, owner, tab, custom, act, tricks };
+  }
+
+  it('when the playtest panel takes the move back before its moment came', () => {
+    const { id, owner, tab, act, tricks } = panel();
+    script = [0, 0];
+    act(3, 'AC');
+    expect(catTimers().has(id)).toBe(true);
+    asked = [];
+    performAction(id, owner, { type: 'dev:undo' });
+    expect(tricks()).toBe(0);
+    expect(catTimers().has(id)).toBe(false);
+    expect(asked).toEqual([]);
+    vi.advanceTimersByTime(30_000);
+    expect(tab.taunts()).toEqual([]);
+  });
+
+  it('about tricks an undo brings back from before a redeal, or a redeal throwing them away', () => {
+    const { id, owner, tab, custom, act, tricks } = panel();
+    // The dice say no to the cat's J♦ this time.
+    act(3, 'AC');
+    expect(tricks()).toBe(1);
+    script = [0, 0, 0];
+    asked = [];
+    performAction(id, owner, { type: 'dev:deal', preset: 'custom', custom, passOffset: 0 });
+    expect(tricks()).toBe(0);
+    // Back to before the redeal: the same hand number with its trick again, which the table already saw.
+    performAction(id, owner, { type: 'dev:undo' });
+    expect(tricks()).toBe(1);
+    expect(asked).toEqual([]);
+    expect(catTimers().has(id)).toBe(false);
+    vi.advanceTimersByTime(30_000);
+    expect(tab.taunts()).toEqual([]);
+  });
+
+  it('about a card from a deal the playtest panel has since thrown away', () => {
+    const { id, owner, tab, custom, act } = panel();
+    script = [0, 0];
+    act(3, 'AC');
+    expect(catTimers().has(id)).toBe(true);
+    performAction(id, owner, { type: 'dev:deal', preset: 'custom', custom, passOffset: 0 });
+    expect(catTimers().has(id)).toBe(false);
+    vi.advanceTimersByTime(30_000);
+    expect(tab.taunts()).toEqual([]);
+  });
+
   it('when the chatter is switched off', () => {
     const { id, users } = table(['person', 'cat', 'person', 'cat']);
     deal(id);

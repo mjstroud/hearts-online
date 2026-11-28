@@ -310,6 +310,8 @@ describe('nothing to tell', () => {
     // Undo, as the playtest panel does: the saved state comes back.
     expect(change(game, S, () => Object.assign(game, JSON.parse(saved)))).toEqual([]);
     expect(change(game, S, () => redealHand(game, rng, { passOffset: 0 }))).toEqual([]);
+    // An undo past a redeal brings back the same hand number with more tricks, which counts can't
+    // tell from play: performAction gives no events for the panel's undo and deal (chatter.test.ts).
 
     // Across a hand: back from hand 2 to the final trick of hand 1.
     const full = { ...S, autoFinish: false };

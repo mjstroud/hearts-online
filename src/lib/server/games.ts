@@ -1143,6 +1143,8 @@ export function performAction(gameId: string, userId: number, action: GameAction
         }
         if (!target) throw new GameError('Nothing to undo.');
         clearBotTimer(gameId);
+        // A cat waiting to answer a move that's now taken back says nothing.
+        clearCatReaction(gameId);
         premoves.delete(gameId);
         const current = game.state;
         game.state = JSON.parse(target.state) as GameState;
@@ -1161,6 +1163,8 @@ export function performAction(gameId: string, userId: number, action: GameAction
         devOnly();
         inProgress();
         devDeal(game, players, me.seat, action);
+        // A cat waiting to answer a card from the deal just thrown away says nothing.
+        clearCatReaction(gameId);
         premoves.delete(gameId);
         touchClock(game.state, true);
         undoable();
@@ -1170,7 +1174,9 @@ export function performAction(gameId: string, userId: number, action: GameAction
         throw new GameError('Unknown action.');
     }
     saveGame(game);
-    events = tableEvents(mark, game.state, game.settings);
+    // An undo or a scenario deal swaps the hand for another with the same number, which the mark's
+    // counts can't tell from play (an undo past a redeal brings the old tricks back), so they tell nothing.
+    events = action.type === 'dev:undo' || action.type === 'dev:deal' ? [] : tableEvents(mark, game.state, game.settings);
   });
   if (!changed) {
     // Your other tabs show what you queued; nobody else hears a thing.
